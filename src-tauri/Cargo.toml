@@ -1,0 +1,36 @@
+[package]
+name = "file-catalog"
+version = "0.1.0"
+description = "File Catalog: a fast, keyboard-driven file manager for information workers"
+edition = "2021"
+rust-version = "1.85"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+toml_edit = "0.25"
+tokio = { version = "1", features = ["sync", "time"] }
+rayon = "1"
+notify = "8"
+directories = "6"
+open = "5"
+fs4 = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+tracing-appender = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,504 @@
+module Types exposing (..)
+
+{-| The application state and messages, shared by Main (update) and View.
+-}
+
+import Array exposing (Array)
+import Browser.Dom as Dom
+import Columns exposing (Column)
+import Dict exposing (Dict)
+import Item exposing (Item)
+import Json.Decode as D
+import Path
+import Set exposing (Set)
+import Settings exposing (Settings)
+import Time
+
+
+
+-- TABS
+
+
+{-| How a folder is shown (FR-VIEW-01). Saved per folder with Save View.
+-}
+type alias FolderView =
+    { columns : List ( Column, Float )
+
+    -- (column, descending); the first is the main sort, the second breaks ties.
+    , sort : List ( Column, Bool )
+    , foldersFirst : Bool
+    , showHidden : Bool
+    }
+
+
+type Status
+    = Idle
+    | Loading
+    | Loaded
+    | Failed String String
+
+
+type alias Tab =
+    { id : Int
+    , path : String
+    , back : List String
+    , forward : List String
+
+    -- Every item by name; all items in sort order; the items shown after filters.
+    , items : Dict String Item
+    , ordered : List Item
+    , visible : Array Item
+    , hiddenCount : Int
+    , folderCount : Int
+
+    -- Items that would be shown without the Quick Filter and column filters.
+    , unfilteredCount : Int
+    , status : Status
+
+    -- The dir_list request whose results this tab accepts.
+    , req : Int
+    , chunks : Int
+
+    -- Selected item names.
+    , selected : Set String
+    , cursor : Int
+    , anchor : Int
+    , scrollTop : Float
+    , view : FolderView
+
+    -- The saved (or default) view, to show when the current view has changes.
+    , savedView : FolderView
+
+    -- The folder whose saved view applies; Nothing means the default view.
+    , viewSource : Maybe String
+    , filter : String
+
+    -- Column name -> the values left checked in its filter drop-down.
+    , columnFilters : Dict String (Set String)
+
+    -- Name of the item to select once the listing is loaded (FR-NAV-03).
+    , pendingSelect : Maybe String
+    }
+
+
+
+-- BACKEND REQUESTS
+
+
+type Request
+    = ReqInit
+    | ReqList Int
+    | ReqView Int String
+    | ReqResolve Int
+    | ReqSubfolders SubfolderUse
+    | ReqFreeSpace String
+    | ReqBookmarks
+    | ReqBookmarkEdit
+    | ReqViewSaved Int String
+    | ReqViewReset Int String
+    | ReqOpenSettingsFile
+    | ReqOpen
+    | ReqIgnore
+
+
+type SubfolderUse
+    = ForCrumb String
+    | ForComplete String
+    | ForTree String
+
+
+
+-- MENUS AND POPUPS
+
+
+type MenuEntry
+    = Action { label : String, key : String, msg : Maybe Msg, checked : Maybe Bool }
+    | Submenu String (List MenuEntry)
+    | Separator
+
+
+{-| The open Menu Bar menu, the highlighted entry and, inside a submenu,
+the highlighted submenu entry.
+-}
+type alias MenuBarState =
+    { index : Int
+    , active : Int
+    , sub : Maybe Int
+    }
+
+
+type Popup
+    = MenuPopup { x : Float, y : Float, entries : List MenuEntry }
+    | ColumnFilterPopup ColumnFilterState
+
+
+type alias ColumnFilterState =
+    { column : Column
+    , x : Float
+    , y : Float
+    , search : String
+
+    -- Every value in the column with its item count, in display order.
+    , values : List ( String, Int )
+    , checked : Set String
+    , now : Time.Posix
+    }
+
+
+type Dialog
+    = BookmarkDialog BookmarkForm
+
+
+type alias BookmarkForm =
+    { index : Maybe Int
+    , name : String
+    , target : String
+    , group : String
+    , error : Maybe String
+    }
+
+
+
+-- SIDEBAR AND BOOKMARKS
+
+
+type SidebarMode
+    = TreeMode
+    | FavouritesMode
+    | BookmarksMode
+
+
+type alias Root =
+    { name : String
+    , path : String
+    , kind : String
+    }
+
+
+type alias Bookmark =
+    { index : Int
+    , name : String
+    , target : String
+    , kind : String
+    , group : List String
+    , exists : Bool
+    }
+
+
+type alias Favourite =
+    { path : String
+    , exists : Bool
+    }
+
+
+type Drag
+    = ResizeColumn Column Float Float
+    | MoveColumn { column : Column, startX : Float, moved : Bool, target : Maybe Column, shift : Bool }
+    | ResizeSidebar { startX : Float, startWidth : Float, width : Float }
+
+
+type Region
+    = RegionSidebar
+    | RegionList
+    | RegionFilter
+
+
+type Address
+    = ShowCrumbs
+    | Editing String (Maybe String)
+
+
+
+-- MODEL
+
+
+type alias Model =
+    { booted : Bool
+    , bootError : Maybe String
+    , nextReq : Int
+    , requests : Dict Int Request
+    , home : String
+    , sep : String
+    , syncSupported : Bool
+    , version : String
+    , settingsFile : String
+    , bookmarksFile : String
+    , settings : Settings
+    , zone : Time.Zone
+    , tabs : List Tab
+    , active : Int
+    , nextTabId : Int
+    , closedTabs : List String
+    , recent : List String
+    , address : Address
+    , viewportHeight : Float
+    , freeSpace : Maybe Int
+    , message : Maybe String
+    , messageSeq : Int
+    , warnings : List String
+    , typeahead : String
+    , typeaheadSeq : Int
+    , firstListingMarked : Bool
+    , menuBar : Maybe MenuBarState
+    , altAlone : Bool
+    , popup : Maybe Popup
+    , dialog : Maybe Dialog
+    , drag : Maybe Drag
+    , region : Region
+    , roots : List Root
+    , treeChildren : Dict String (List Path.Crumb)
+    , treeExpanded : Set String
+    , treeCursor : Maybe String
+    , favourites : List Favourite
+    , bookmarks : List Bookmark
+    , bookmarkWarnings : List String
+    , bookmarkSearch : String
+    }
+
+
+
+-- MESSAGES
+
+
+type Msg
+    = FromBackend D.Value
+    | GotZone Time.Zone
+    | KeyCommand Command
+    | KeyOther
+    | AltDown
+    | KeyUp String
+    | ListScrolled Float Float
+    | GotListViewport (Result Dom.Error Dom.Viewport)
+    | WindowResized
+    | RowClicked Int Mods
+    | RowActivated Int
+    | RowMiddleClicked Int
+    | NavigateTo String
+    | NavigateNewTab String
+    | OpenPath String
+    | ActivateTab Int
+    | CloseTab Int
+    | NewTab
+    | Retry
+    | StartEditAddress
+    | AddressInput String
+    | AddressKey String
+    | AddressBlur
+    | OpenCrumbMenu String Float Float
+    | ClosePopups
+    | HideMessage Int
+    | ClearTypeahead Int
+    | NoOp
+      -- Menu Bar
+    | MenuBarClick Int
+    | MenuBarHover Int
+    | MenuItemHover Int (Maybe Int)
+    | MenuRun Msg
+      -- Quick Filter
+    | FilterInput String
+    | FilterKey String
+      -- Columns
+    | HeaderMouseDown Column Float Bool
+    | HeaderResizeStart Column Float
+    | HeaderEnter Column
+    | MouseMove Float
+    | MouseUp
+    | HeaderContext Float Float
+    | ToggleColumn Column
+    | OpenColumnFilter Column Float Float
+    | ColumnFilterReady Column Float Float Time.Posix
+    | ColumnFilterSearch String
+    | ColumnFilterToggle (List String)
+    | ColumnFilterSelectAll
+    | ColumnFilterQuick String
+    | ColumnFilterApply
+    | ColumnFilterClear
+    | SaveViewMenu Float Float
+      -- Sidebar
+    | TreeToggle String
+    | TreeOpen String
+    | SidebarResizeStart Float
+    | ItemContextMenu (List MenuEntry) Float Float
+    | BookmarkSearch String
+    | OpenBookmark Bookmark Bool
+    | BookmarkEditOp (List ( String, D.Value ))
+    | EditBookmark Bookmark
+    | RegionFocused Region
+      -- Bookmark dialog
+    | DialogName String
+    | DialogTarget String
+    | DialogGroup String
+    | DialogSubmit
+    | DialogCancel
+
+
+type Command
+    = CmdBack
+    | CmdForward
+    | CmdUp
+    | CmdHome
+    | CmdRefresh
+    | CmdEditAddress
+    | CmdNewTab
+    | CmdCloseTab
+    | CmdReopenTab
+    | CmdDuplicateTab
+    | CmdNextTab
+    | CmdPrevTab
+    | CmdGotoTab Int
+    | CmdToggleHidden
+    | CmdSelectAll
+    | CmdSelectNone
+    | CmdInvertSelection
+    | CmdOpen
+    | CmdOpenNewTab
+    | CmdMove Int Bool Bool
+    | CmdPage Int Bool Bool
+    | CmdEdge Bool Bool
+    | CmdLeft
+    | CmdRight
+    | CmdToggleSelect
+    | CmdEscape
+    | CmdTypeahead String
+    | CmdFocusFilter
+    | CmdClearFilters
+    | CmdSaveView Bool
+    | CmdResetView
+    | CmdOpenViewFile
+    | CmdSortBy Column
+    | CmdSortDirection Bool
+    | CmdToggleFoldersFirst
+    | CmdSetting String Bool
+    | CmdSetTheme String
+    | CmdToggleSidebar
+    | CmdSidebarMode SidebarMode
+    | CmdSidebarSide String
+    | CmdBookmarkFolder
+    | CmdBookmarkItem
+    | CmdTogglePin
+    | CmdOpenSettingsFile
+    | CmdOpenBookmarksFile
+    | CmdOpenLogFolder
+    | CmdAbout
+    | CmdExit
+    | CmdMenuBar
+    | CmdMenuMnemonic Int
+    | CmdFocusRegion Bool
+
+
+type alias Mods =
+    { ctrl : Bool
+    , shift : Bool
+    }
+
+
+
+-- CONSTANTS
+
+
+rowHeight : Float
+rowHeight =
+    24
+
+
+headerHeight : Float
+headerHeight =
+    28
+
+
+listId : String
+listId =
+    "list"
+
+
+addressInputId : String
+addressInputId =
+    "address-input"
+
+
+filterInputId : String
+filterInputId =
+    "filter-input"
+
+
+sidebarId : String
+sidebarId =
+    "sidebar"
+
+
+sidebarBodyId : String
+sidebarBodyId =
+    "sidebar-body"
+
+
+treeCursorId : String
+treeCursorId =
+    "tree-cursor"
+
+
+dialogFirstInputId : String
+dialogFirstInputId =
+    "dialog-name"
+
+
+sidebarModeName : SidebarMode -> String
+sidebarModeName mode =
+    case mode of
+        TreeMode ->
+            "tree"
+
+        FavouritesMode ->
+            "favourites"
+
+        BookmarksMode ->
+            "bookmarks"
+
+
+sidebarModeFromString : String -> SidebarMode
+sidebarModeFromString s =
+    case s of
+        "favourites" ->
+            FavouritesMode
+
+        "bookmarks" ->
+            BookmarksMode
+
+        _ ->
+            TreeMode
+
+
+
+-- HELPERS
+
+
+activeTab : Model -> Maybe Tab
+activeTab model =
+    findTab model.active model
+
+
+findTab : Int -> Model -> Maybe Tab
+findTab tabId model =
+    List.filter (\tab -> tab.id == tabId) model.tabs |> List.head
+
+
+replaceTab : Tab -> Model -> Model
+replaceTab tab model =
+    { model
+        | tabs =
+            List.map
+                (\t ->
+                    if t.id == tab.id then
+                        tab
+
+                    else
+                        t
+                )
+                model.tabs
+    }
+
+
+{-| True when the Quick Filter or a column filter hides items (FR-QF-06).
+-}
+isFiltering : Tab -> Bool
+isFiltering tab =
+    String.trim tab.filter /= "" || not (Dict.isEmpty tab.columnFilters)
