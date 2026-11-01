@@ -12,6 +12,8 @@ type alias Settings =
     , startupFolder : String
     , restoreTabs : Bool
     , keepFilterOnNavigate : Bool
+    , confirmDelete : Bool
+    , confirmExtensionChange : Bool
     , menuBar : Bool
     , toolbar : Bool
     , bookmarkBar : Bool
@@ -39,6 +41,8 @@ default =
     , startupFolder = "last"
     , restoreTabs = True
     , keepFilterOnNavigate = False
+    , confirmDelete = False
+    , confirmExtensionChange = True
     , menuBar = True
     , toolbar = True
     , bookmarkBar = True
@@ -78,6 +82,8 @@ decoder =
         |> andMap (general "startupFolder" D.string)
         |> andMap (general "restoreTabs" D.bool)
         |> andMap (general "keepFilterOnNavigate" D.bool)
+        |> andMap (general "confirmDelete" D.bool)
+        |> andMap (general "confirmExtensionChange" D.bool)
         |> andMap (layout "menuBar")
         |> andMap (layout "toolbar")
         |> andMap (layout "bookmarkBar")

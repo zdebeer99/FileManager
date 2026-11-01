@@ -11,7 +11,9 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
 use crate::bookmarks::{self, Bookmarks};
+use crate::fileops;
 use crate::folder_view::{self, FolderView};
+use crate::jobs::{self, Action, JobManager, JobRequest, UndoStep};
 use crate::listing::{diff, error_kind, read_dir_streaming, DirCache, DirEvent};
 use crate::paths::{self, AppPaths};
 use crate::platform;
@@ -27,6 +29,9 @@ pub struct AppState {
     settings: Arc<RwLock<Settings>>,
     session: Mutex<Session>,
     watcher: Mutex<Option<DirWatcher>>,
+    jobs: Mutex<Option<Arc<JobManager>>>,
+    /// Kept open: on Linux, clipboard text lives only as long as its owner.
+    clipboard: Mutex<Option<arboard::Clipboard>>,
 }
 
 impl AppState {
@@ -38,6 +43,8 @@ impl AppState {
             settings: Arc::new(RwLock::new(Settings::default())),
             session: Mutex::new(Session::default()),
             watcher: Mutex::new(None),
+            jobs: Mutex::new(None),
+            clipboard: Mutex::new(None),
         }
     }
 
@@ -100,6 +107,10 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
     } else {
         PathBuf::from(paths::expand(&loaded.general.home_folder, &paths::home_dir()))
     };
+
+    if state.jobs.lock().unwrap().is_none() {
+        *state.jobs.lock().unwrap() = Some(JobManager::start(app.clone()));
+    }
 
     match DirWatcher::start(app, state.cache.clone(), state.paths.clone(), state.settings.clone()) {
         Ok(watcher) => *state.watcher.lock().unwrap() = Some(watcher),
@@ -366,4 +377,112 @@ pub async fn bookmarks_edit(state: State<'_, AppState>, edit: bookmarks::Edit) -
 pub async fn app_exit(app: AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
+}
+
+impl AppState {
+    fn jobs(&self) -> Result<Arc<JobManager>, String> {
+        self.jobs.lock().unwrap().clone().ok_or_else(|| "File operations are not ready yet.".into())
+    }
+}
+
+/// Starts a copy, move, duplicate or delete job and returns its id (FR-OP-02).
+#[tauri::command]
+pub async fn job_start(state: State<'_, AppState>, request: JobRequest) -> Result<u64, String> {
+    if request.sources.is_empty() {
+        return Err("Nothing is selected.".into());
+    }
+    Ok(state.jobs()?.submit(request))
+}
+
+#[tauri::command]
+pub async fn job_cancel(state: State<'_, AppState>, job_id: u64) -> Result<(), String> {
+    state.jobs()?.cancel(job_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn job_pause(state: State<'_, AppState>, job_id: u64, paused: bool) -> Result<(), String> {
+    state.jobs()?.pause(job_id, paused);
+    Ok(())
+}
+
+/// The answer to a name conflict (FR-COPY-04).
+#[tauri::command]
+pub async fn job_resolve(
+    state: State<'_, AppState>,
+    job_id: u64,
+    action: Action,
+    apply_to_all: bool,
+) -> Result<(), String> {
+    state.jobs()?.resolve(job_id, action, apply_to_all);
+    Ok(())
+}
+
+/// Renames in place and returns the new path (FR-REN-01, FR-REN-02).
+#[tauri::command]
+pub async fn fs_rename(state: State<'_, AppState>, path: String, new_name: String) -> Result<String, String> {
+    let jobs = state.jobs()?;
+    let from = PathBuf::from(&path);
+    let renamed = state.pools.run(&from.clone(), state.timeout(), move || fileops::rename(&from, &new_name)).await??;
+    jobs.push_undo(UndoStep::Renamed { from: PathBuf::from(path), to: renamed.clone() });
+    Ok(renamed.to_string_lossy().into_owned())
+}
+
+/// What to create in `fs_create`.
+#[derive(serde::Deserialize, Debug)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum NewItem {
+    Folder,
+    File { name: String },
+    Shortcut { name: String, target: String },
+    WebLink { name: String, url: String },
+}
+
+/// Creates a folder, file, shortcut or web link and returns its path (spec 6.7).
+#[tauri::command]
+pub async fn fs_create(state: State<'_, AppState>, parent: String, item: NewItem) -> Result<String, String> {
+    let jobs = state.jobs()?;
+    let dir = PathBuf::from(&parent);
+    let created = state
+        .pools
+        .run(&dir.clone(), state.timeout(), move || match item {
+            NewItem::Folder => fileops::create_folder(&dir, "New folder").map_err(|e| fileops::describe(&e, &dir)),
+            NewItem::File { name } => fileops::create_file(&dir, &name),
+            NewItem::Shortcut { name, target } => fileops::create_shortcut(&dir, &name, Path::new(&target)),
+            NewItem::WebLink { name, url } => fileops::create_weblink(&dir, &name, &url),
+        })
+        .await??;
+    jobs.push_undo(UndoStep::Created(vec![created.clone()]));
+    Ok(created.to_string_lossy().into_owned())
+}
+
+/// Takes back the last operation of this session (FR-UNDO-01).
+#[tauri::command]
+pub async fn undo_last(state: State<'_, AppState>) -> Result<String, String> {
+    let step = state.jobs()?.pop_undo().ok_or("There is nothing to undo.")?;
+    let home = paths::home_dir();
+    state.pools.run(&home, Duration::from_secs(60), move || jobs::undo(step)).await?
+}
+
+/// Puts text on the OS clipboard (Copy Path, FR-OPEN-04).
+#[tauri::command]
+pub async fn clipboard_write_text(state: State<'_, AppState>, text: String) -> Result<(), String> {
+    let mut clipboard = state.clipboard.lock().unwrap();
+    if clipboard.is_none() {
+        *clipboard = Some(arboard::Clipboard::new().map_err(|e| format!("The clipboard is not available: {e}"))?);
+    }
+    clipboard.as_mut().expect("just set").set_text(text).map_err(|e| format!("Could not copy to the clipboard: {e}"))
+}
+
+/// Opens a terminal in the folder (FR-OPEN-03).
+#[tauri::command]
+pub async fn open_terminal(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let configured = state.settings.read().unwrap().general.terminal.clone();
+    platform::open_terminal(Path::new(&path), configured.trim())
+}
+
+/// Shows the item in the system file manager.
+#[tauri::command]
+pub async fn reveal_item(path: String) -> Result<(), String> {
+    platform::reveal(Path::new(&path))
 }

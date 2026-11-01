@@ -25,7 +25,18 @@
     );
   });
 
-  for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed']) {
+  // Elm can't select part of a text box; wait for the redraw, then select.
+  app.ports.selectText.subscribe(({ id, start, end }) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const box = document.getElementById(id);
+      if (box) {
+        box.focus();
+        box.setSelectionRange(start, end);
+      }
+    }));
+  });
+
+  for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed', 'job-progress', 'job-conflict']) {
     listen(name, (event) => send({ id: -1, type: 'event', name, data: event.payload }));
   }
 

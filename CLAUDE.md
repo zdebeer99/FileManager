@@ -5,7 +5,7 @@ File Catalog is a fast, keyboard-driven desktop file manager for information wor
 ## Rules
 
 - **Ignore `HumansOnly/`.** It holds drafts for people only. Do not read it, search it or use it.
-- **[SpecificationDocument.md](SpecificationDocument.md) is the source of truth.** Code is built from it, milestone by milestone (spec section 11). M1 (core shell) and M2 (Organise) are done. M3 (Operate: job queue, copy/move/delete, undo, drag and drop, templates) is next. Before you build a feature, read its spec section and `FR-…`/`NFR-…` IDs. Cite those IDs in doc comments, as the existing code does (for example `// FR-QF-02`, `(spec 4.3)`).
+- **[SpecificationDocument.md](SpecificationDocument.md) is the source of truth.** Code is built from it, milestone by milestone (spec section 11). M1 (core shell), M2 (Organise) and M3a (Operate: job queue, copy/move/delete, rename, undo, create items) are done. M3b (clipboard exchange with other file managers, drag and drop, templates, ZIP, Compare) is next. Before you build a feature, read its spec section and `FR-…`/`NFR-…` IDs. Cite those IDs in doc comments, as the existing code does (for example `// FR-QF-02`, `(spec 4.3)`).
 - When a milestone or a deferred item is finished, update the status table and the deferral list in spec section 11.
 - [RequirementsDocument.md](RequirementsDocument.md) holds the user's original requirements. The user reviews documents by adding inline `[zdb]` comments. When asked to merge them, apply each decision to **both** documents, remove the markers, and add the decision to the decision log (spec 13.1).
 - **No lock-in:** everything the app creates must be a plain file or folder that still works without File Catalog. Never write anything into the user's folders. Per-folder settings go only in the app settings folder.
@@ -41,7 +41,7 @@ cargo fmt --check           # rustfmt.toml: max_width 120
 1. Elm calls `request cmd args stream kind model` ([Main.elm](ui/src/Main.elm), HELPERS section). It stores `kind` (a `Request` variant) in `model.requests` under a new id.
 2. The message goes out through `Ports.toBackend`. [bridge.js](ui/static/bridge.js) turns it into Tauri `invoke(cmd, args)`. When `stream` is true, the bridge also passes a `Channel` as `onEvent`.
 3. Replies come back through `Ports.fromBackend` as `{ id, type: ok|err|stream|event, data, name? }`. `handleEnvelope` and `handleResponse` match each reply to its stored request. Stale replies are dropped by id.
-4. Push events from Rust are emitted by [watcher.rs](src-tauri/src/watcher.rs): `dir-changed`, `settings-changed` and `bookmarks-changed`. They reach `handleEvent`. **If you add a new event, also add it to the `listen` list in bridge.js.**
+4. Push events from Rust are emitted by [watcher.rs](src-tauri/src/watcher.rs) (`dir-changed`, `settings-changed`, `bookmarks-changed`) and [jobs.rs](src-tauri/src/jobs.rs) (`job-progress`, `job-conflict`). They reach `handleEvent`. **If you add a new event, also add it to the `listen` list in bridge.js.**
 
 **To add a backend command:**
 1. Write a `#[tauri::command] pub async fn` in [commands.rs](src-tauri/src/commands.rs).
@@ -55,6 +55,8 @@ Command names are snake_case (`dir_list`, `folder_view_save`), even where spec 4
 | Module | Role |
 |---|---|
 | `commands.rs` | All IPC commands. `AppState` holds the paths, pools, `DirCache`, settings, session and watcher. `app_init` is the first call: it loads settings, the session and the start-up snapshot, and starts the watcher. |
+| `jobs.rs` | Background job queue (copy, move, duplicate, delete) on its own thread: progress events, conflict questions answered with `job_resolve`, pause and cancel, and the undo stack. Tests use `JobManager::start_with` with a recording event sink. |
+| `fileops.rs` | Blocking file operations used by jobs and commands: name checks, free names (`Report (2)`, `Report - Copy`), copy through a temporary name, create, rename, `describe` for readable errors |
 | `listing.rs` | `read_dir_streaming` (sends items in chunks), `DirEvent` (`Cached` → `Chunk`s or `Patch` → `Done`/`Error`), `diff`, LRU `DirCache` |
 | `watcher.rs` | `notify` watcher for the folders open in tabs (set with `watch_set`) and for the settings folder. Debounce is 100 ms. Sends patches, not full reloads. Reloads settings and bookmarks when their files change. |
 | `settings.rs` | `settings.toml`. Each section is read on its own, so an error in one section resets only that section and adds a warning. `set_value` edits a dotted key with `toml_edit`, keeps the user's comments, keeps a `.bak` copy, and never overwrites a file that has syntax errors. |
@@ -79,6 +81,7 @@ Notes:
   - `Filter.elm`: the Quick Filter syntax.
   - `Menu.elm`: the Menu Bar. Items from later milestones are shown disabled.
   - `Item.elm`: the item decoder and natural sort.
+  - `FileName.elm`: name checks while renaming or creating, and the F2 selection cycle.
   - `Path.elm`, `Format.elm` and `Settings.elm`: path helpers, size and date formatting, and the settings decoder.
 - **All user-facing text lives in `Text.elm`** (NFR-UX-04). Don't put text in other modules.
 - `ui/static/` holds `index.html`, `styles.css` and `bridge.js`. `ui/build.mjs` builds them into `ui/dist/`.

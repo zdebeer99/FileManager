@@ -187,7 +187,10 @@ All requests are asynchronous and carry a client-generated `reqId`. Responses an
 | `settings_set` | `{ key, value }` (dotted key, e.g. `layout.sidebar.width`) | — |
 | `folder_view_get` / `folder_view_save` / `folder_view_reset` / `folder_view_file` | `{ path, view?, applyToSubfolders? }` | resolved view / file path |
 | `bookmarks_get` / `bookmarks_edit` | `{ edit: { op, … } }` | favourites, bookmarks, warnings |
-| `undo.last` | — | `{ ok } \| { error }` |
+| `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
+| `fs_rename` / `fs_create` | `{ path, newName }` / `{ parent, item: { kind, … } }` | new path |
+| `clipboard_write_text` / `open_terminal` / `reveal_item` | `{ text }` / `{ path }` | — |
+| `undo_last` | — | `{ ok } \| { error }` |
 
 **Events (Rust → Elm):** `dir.chunk`, `dir.done`, `dir.changed`, `dir.error`, `job.progress`, `job.conflict`, `job.done`, `search.results`, `search.done`, `settings.changed`, `bookmarks.changed`, `syncStatus.changed`.
 
@@ -889,7 +892,8 @@ Messages say what happened, why (if known), and what the user can do next. Notif
 |---|---|---|
 | **M1 — Core shell** | Tauri + Elm skeleton, IPC bridge, directory listing with cache and watcher, Details view (virtualised), navigation, Address Bar, tabs, status bar, `settings.toml`. | Done (2026-10-31). Start-up still to be measured on Windows. |
 | **M2 — Organise** | See 11.1. | Done (2026-10-31), with the deferrals listed in 11.1. |
-| **M3 — Operate** | Job queue, copy/move/rename/delete, conflicts, Recycle Bin, undo, clipboard and drag and drop (including onto the sidebar and Bookmark Bar), create items, templates, right-click menu on items. | |
+| **M3a — Operate: core** | See 11.2. | Done (2026-10-31), with the deferrals listed in 11.2. |
+| **M3b — Operate: integration** | Clipboard exchange with Explorer and other file managers (including *Paste as Shortcut*), drag and drop (including onto the sidebar, Bookmark Bar and tabs), templates (6.8), Compress/Extract ZIP and Compare (6.12.6). | Next |
 | **M4 — Speed** | Command palette, key bindings file and editor (menus then show custom keys), customisable toolbar, Quick Find. | |
 | **M5 — Projects and polish** | Context bookmarks and Context view, project folders, sync status, Quick View, pinned tabs, lazy metadata columns (Owner, Windows document properties, registered type names), accessibility, themes, installer. | |
 
@@ -920,6 +924,25 @@ Also: find the 200–350 ms delay between UI start and first listing seen in M1.
 | *Locate…* for a bookmark whose target is missing (*Delete* works) | FR-BM-03 | M4 (needs Quick Find) |
 | Type-ahead in the folder tree (it works in the file list) | FR-SB-01 | M4 |
 | A folder's saved view follows it when File Catalog renames or moves it | FR-FS-02 | M3 (with rename and move) |
+
+### 11.2 M3a — Operate: core
+
+Built: background job queue with progress, speed, time left, pause and cancel, and a Jobs panel (FR-OP-02, 03, 04); copy and move with conflict dialog, *Keep both*, *Replace if newer* and *apply to all*, temporary-name copies, kept timestamps, folders never copied into themselves, cross-volume moves (FR-COPY-01 to 05); in-place rename with live name checks, F2 selection cycle and extension warning (FR-REN-01 to 03); Delete to the Recycle Bin / Trash, Shift+Del with confirmation, permanent-delete offer when the Recycle Bin refuses (FR-DEL-01 to 03); Undo of rename, move, copy, create and delete (FR-UNDO-01); New Folder / File / Shortcut / Web Link (FR-NEW-01 to 05); Duplicate (FR-DUP-01); Copy Path (FR-OPEN-04); Open in Terminal (FR-OPEN-03); Show in File Manager; right-click menus on items and on empty space (FR-CC-07); cut and paste inside File Catalog.
+
+**Deferred from M3a:**
+
+| Item | Requirement | Moved to |
+|---|---|---|
+| Several jobs at once on different drives (jobs now run one after another) | FR-OP-02 | M4 |
+| *Retry* and *Skip* buttons for failed items (*Show in folder* works) | FR-OP-04 | M4 |
+| Progress inside one very large file (progress now moves per file) | FR-OP-03 | M4 |
+| *Compare* button in the conflict dialog | FR-COPY-04 | M3b (with Compare) |
+| *"Downloading…"* label when copying online-only cloud files | FR-COPY-07 | M5 (with sync status) |
+| Batch rename | FR-REN-04 (Should) | M4 |
+| Checking that files changed since the operation before undoing a copy or create | FR-UNDO-02 (Should) | M4 |
+| Filling in a web link's name from the page title (the domain is used) | FR-NEW-04 | M5 |
+| *Open With* and *Properties* | FR-OPEN-02, FR-PROP-01 | M5 |
+| Windows "Show more options" (native Explorer menu) | FR-CC-07 | M5 |
 
 ---
 

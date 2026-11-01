@@ -105,6 +105,26 @@ fn unescape_mount(s: &str) -> String {
     out
 }
 
+/// Opens a terminal in `dir`: the configured command, else `$TERMINAL`,
+/// else the first common terminal found (FR-OPEN-03).
+pub fn open_terminal(dir: &Path, configured: &str) -> Result<(), String> {
+    let from_env = std::env::var("TERMINAL").unwrap_or_default();
+    let candidates =
+        [configured, from_env.as_str(), "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm"];
+    for program in candidates.into_iter().filter(|p| !p.is_empty()) {
+        if std::process::Command::new(program).current_dir(dir).spawn().is_ok() {
+            return Ok(());
+        }
+    }
+    Err("No terminal program was found. Set one with terminal = \"…\" in settings.toml.".into())
+}
+
+/// Opens the item's folder in the system file manager.
+pub fn reveal(path: &Path) -> Result<(), String> {
+    let folder = if path.is_dir() { path } else { path.parent().unwrap_or(path) };
+    open::that_detached(folder).map_err(|e| format!("Could not open the file manager: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

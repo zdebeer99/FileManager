@@ -26,6 +26,9 @@ view : Model -> Html Msg
 view model =
     div
         ([ class "app"
+
+         -- Focusable, so clicking an empty spot keeps keyboard focus inside the app.
+         , tabindex -1
          , preventDefaultOn "keydown" keyDecoder
          , on "mouseup" mouseNavDecoder
          ]
@@ -63,8 +66,14 @@ view model =
                     , viewIf model.settings.addressBar (viewAddressBar model tab)
                     , viewMain model tab
                     , viewIf model.settings.statusBar (viewStatusBar model tab)
+                    , viewIf model.jobsPanel (viewJobsPanel model)
                     , viewPopup model
-                    , viewDialog model
+                    , case model.conflicts of
+                        conflict :: _ ->
+                            viewConflict model conflict
+
+                        [] ->
+                            viewDialog model
                     ]
         )
 
@@ -727,6 +736,7 @@ viewContent model tab =
             , attribute "aria-rowcount" (String.fromInt count)
             , on "scroll" (D.map2 ListScrolled (D.at [ "target", "scrollTop" ] D.float) (D.at [ "target", "clientHeight" ] D.float))
             , on "focusin" (D.succeed (RegionFocused RegionList))
+            , preventDefaultOn "contextmenu" (D.map2 (\x y -> ( ListContext x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
             ]
             [ viewHeader model tab template
             , Html.Keyed.node "div" [ class "rows", style "height" (px (toFloat count * rowHeight)) ] rows
@@ -881,6 +891,7 @@ viewRow model tab query template index item =
             [ ( "selected", Set.member item.name tab.selected )
             , ( "cursor", index == tab.cursor )
             , ( "hidden-item", item.hidden )
+            , ( "cut", isCut model item )
             ]
         , style "top" (px (toFloat index * rowHeight))
         , style "grid-template-columns" template
@@ -892,13 +903,18 @@ viewRow model tab query template index item =
             )
         , on "dblclick" (D.succeed (RowActivated index))
         , on "auxclick" (middleClick (RowMiddleClicked index))
+        , Html.Events.custom "contextmenu"
+            (D.map2 (\x y -> { message = RowContext index x y, stopPropagation = True, preventDefault = True })
+                (D.field "clientX" D.float)
+                (D.field "clientY" D.float)
+            )
         ]
-        (List.map (\( column, _ ) -> viewCell model query item column) tab.view.columns)
+        (List.map (\( column, _ ) -> viewCell model tab query item column) tab.view.columns)
     )
 
 
-viewCell : Model -> Filter.Query -> Item -> Column -> Html Msg
-viewCell model query item column =
+viewCell : Model -> Tab -> Filter.Query -> Item -> Column -> Html Msg
+viewCell model tab query item column =
     let
         plain classes content =
             div [ class ("cell " ++ classes) ] [ text content ]
@@ -908,20 +924,16 @@ viewCell model query item column =
     in
     case column of
         Columns.Name ->
-            div [ class "cell name", title (Maybe.withDefault item.name item.target) ]
-                [ span [ class ("icon " ++ iconClass item) ] []
-                , span []
-                    (List.map
-                        (\( part, marked ) ->
-                            if marked then
-                                Html.mark [] [ text part ]
+            case model.rename of
+                Just r ->
+                    if r.tabId == tab.id && r.original == item.name then
+                        viewRenameCell item r
 
-                            else
-                                text part
-                        )
-                        (Filter.highlight query (Item.displayName model.settings.showExtensions item))
-                    )
-                ]
+                    else
+                        viewNameCell model query item
+
+                Nothing ->
+                    viewNameCell model query item
 
         Columns.Modified ->
             date item.modified
@@ -955,6 +967,62 @@ viewCell model query item column =
 
         Columns.Sync ->
             div [ class "cell center muted", title (Item.syncLabel item.sync) ] [ text (syncGlyph item.sync) ]
+
+
+viewNameCell : Model -> Filter.Query -> Item -> Html Msg
+viewNameCell model query item =
+    div [ class "cell name", title (Maybe.withDefault item.name item.target) ]
+        [ span [ class ("icon " ++ iconClass item) ] []
+        , span []
+            (List.map
+                (\( part, marked ) ->
+                    if marked then
+                        Html.mark [] [ text part ]
+
+                    else
+                        text part
+                )
+                (Filter.highlight query (Item.displayName model.settings.showExtensions item))
+            )
+        ]
+
+
+{-| The in-place rename box (FR-REN-01, FR-REN-02).
+-}
+viewRenameCell : Item -> RenameState -> Html Msg
+viewRenameCell item r =
+    div [ class "cell name renaming" ]
+        [ span [ class ("icon " ++ iconClass item) ] []
+        , input
+            [ id renameInputId
+            , class "rename-input"
+            , classList [ ( "invalid", r.error /= Nothing ) ]
+            , value r.text
+            , onInput RenameInput
+            , onBlur RenameBlur
+            , Html.Events.custom "keydown" (inputKeys [ "Enter", "Escape", "F2" ] RenameKey)
+            , stopPropagationOn "click" (D.succeed ( NoOp, True ))
+            , stopPropagationOn "dblclick" (D.succeed ( NoOp, True ))
+            , spellcheck False
+            ]
+            []
+        , case r.error of
+            Just error ->
+                span [ class "rename-error" ] [ text error ]
+
+            Nothing ->
+                text ""
+        ]
+
+
+isCut : Model -> Item -> Bool
+isCut model item =
+    case model.clipboard of
+        Just c ->
+            c.cut && List.member item.path c.paths
+
+        Nothing ->
+            False
 
 
 iconClass : Item -> String
@@ -1041,6 +1109,7 @@ viewStatusBar model tab =
             )
         , viewIf (tab.status == Loading) (span [] [ text Text.loading ])
         , span [ class "grow" ] []
+        , viewJobSummary model
         , case model.message of
             Just message ->
                 span [ class "message" ] [ text message ]
@@ -1228,6 +1297,32 @@ viewDialog model =
         Nothing ->
             text ""
 
+        Just (NewItemDialog form) ->
+            viewNewItemDialog form
+
+        Just (ConfirmDialog confirm) ->
+            div [ class "overlay" ]
+                [ div [ class "dialog", attribute "role" "alertdialog" ]
+                    [ div [ class "dialog-title" ] [ text confirm.title ]
+                    , viewIf (not (List.isEmpty confirm.lines)) (div [ class "dialog-list" ] (List.map (\line -> div [] [ text line ]) confirm.lines))
+                    , div [ class "dialog-actions" ]
+                        [ button [ id "confirm-no", onClick DialogCancel ] [ text Text.cancel ]
+                        , button
+                            [ id "confirm-yes"
+                            , class
+                                (if confirm.danger then
+                                    "danger"
+
+                                 else
+                                    "primary"
+                                )
+                            , onClick ConfirmYes
+                            ]
+                            [ text confirm.confirmLabel ]
+                        ]
+                    ]
+                ]
+
         Just (BookmarkDialog form) ->
             div [ class "overlay" ]
                 [ div
@@ -1412,7 +1507,52 @@ keyCommand { key, code, ctrl, shift, alt } =
             Just (CmdFocusRegion (not shift))
 
         ( "F10", _, _ ) ->
-            Just CmdMenuBar
+            Just
+                (if shift then
+                    CmdItemMenu
+
+                 else
+                    CmdMenuBar
+                )
+
+        ( "ContextMenu", _, _ ) ->
+            Just CmdItemMenu
+
+        ( "F2", _, _ ) ->
+            Just CmdRename
+
+        ( "Delete", False, False ) ->
+            Just (CmdDelete shift)
+
+        ( "x", True, False ) ->
+            Just CmdCut
+
+        ( "c", True, False ) ->
+            Just
+                (if shift then
+                    CmdCopyPath
+
+                 else
+                    CmdCopy
+                )
+
+        ( "v", True, False ) ->
+            Just CmdPaste
+
+        ( "z", True, False ) ->
+            Just CmdUndo
+
+        ( "n", True, False ) ->
+            Just
+                (if shift then
+                    CmdNewFolder
+
+                 else
+                    CmdNewItem NewFile
+                )
+
+        ( "`", True, False ) ->
+            Just CmdOpenTerminal
 
         ( "l", True, False ) ->
             Just
@@ -1559,3 +1699,245 @@ keepOnScreen x width =
 px : Float -> String
 px n =
     String.fromFloat n ++ "px"
+
+
+
+-- FILE OPERATIONS
+
+
+viewNewItemDialog : NewItemForm -> Html Msg
+viewNewItemDialog form =
+    let
+        ( titleText, fields ) =
+            case form.kind of
+                NewFile ->
+                    ( Text.newFileTitle, [ field Text.fileName dialogFirstInputId form.name NewItemName ] )
+
+                NewShortcut ->
+                    ( Text.newShortcutTitle
+                    , [ field Text.shortcutTarget dialogFirstInputId form.target NewItemTarget
+                      , field Text.shortcutNameHint "dialog-target" form.name NewItemName
+                      ]
+                    )
+
+                NewWebLink ->
+                    ( Text.newWebLinkTitle
+                    , [ field Text.webAddress dialogFirstInputId form.target NewItemTarget
+                      , field Text.webNameHint "dialog-target" form.name NewItemName
+                      ]
+                    )
+    in
+    div [ class "overlay" ]
+        [ div
+            [ class "dialog"
+            , attribute "role" "dialog"
+            , Html.Events.custom "keydown"
+                (inputKeys [ "Enter", "Escape" ]
+                    (\key ->
+                        if key == "Enter" then
+                            NewItemSubmit
+
+                        else
+                            DialogCancel
+                    )
+                )
+            ]
+            ([ div [ class "dialog-title" ] [ text titleText ] ]
+                ++ fields
+                ++ [ case form.error of
+                        Just error ->
+                            div [ class "dialog-error" ] [ text error ]
+
+                        Nothing ->
+                            text ""
+                   , div [ class "dialog-actions" ]
+                        [ button [ onClick DialogCancel ] [ text Text.cancel ]
+                        , button [ class "primary", onClick NewItemSubmit ] [ text Text.create ]
+                        ]
+                   ]
+            )
+        ]
+
+
+{-| Both files side by side and the four answers (FR-COPY-04).
+-}
+viewConflict : Model -> Conflict -> Html Msg
+viewConflict model conflict =
+    let
+        side heading info =
+            div [ class "conflict-side" ]
+                [ div [ class "conflict-heading" ] [ text heading ]
+                , div [ class "conflict-name" ]
+                    [ span
+                        [ class
+                            ("icon "
+                                ++ (if info.isDir then
+                                        "folder"
+
+                                    else
+                                        "file"
+                                   )
+                            )
+                        ]
+                        []
+                    , text info.name
+                    ]
+                , div [ class "muted" ]
+                    [ text
+                        ((if info.isDir then
+                            ""
+
+                          else
+                            Format.size info.size ++ " · "
+                         )
+                            ++ (Maybe.map (Format.date model.settings.dateFormat model.zone) info.modified |> Maybe.withDefault "")
+                        )
+                    ]
+                ]
+
+        answer key labelText =
+            button [ onClick (ConflictAnswer key) ] [ text labelText ]
+    in
+    div [ class "overlay" ]
+        [ div [ class "dialog conflict", attribute "role" "alertdialog" ]
+            [ div [ class "dialog-title" ] [ text Text.conflictTitle ]
+            , div [ class "conflict-sides" ]
+                [ side Text.conflictNew conflict.source
+                , side Text.conflictExisting conflict.target
+                ]
+            , label [ class "check-line" ]
+                [ input
+                    [ Html.Attributes.type_ "checkbox"
+                    , Html.Attributes.checked conflict.applyToAll
+                    , Html.Events.onCheck ConflictApplyAll
+                    ]
+                    []
+                , text Text.applyToAll
+                ]
+            , div [ class "dialog-actions" ]
+                [ answer "skip" Text.skip
+                , answer "keepBoth" Text.keepBoth
+                , answer "replaceIfNewer" Text.replaceIfNewer
+                , button [ class "primary", onClick (ConflictAnswer "replace") ] [ text Text.replace ]
+                ]
+            ]
+        ]
+
+
+activeJobs : Model -> List JobStatus
+activeJobs model =
+    Dict.values model.jobs |> List.filter (\job -> List.member job.state [ "queued", "running", "paused", "waiting" ])
+
+
+jobFraction : JobStatus -> Float
+jobFraction job =
+    if job.totalBytes > 0 then
+        toFloat job.doneBytes / toFloat job.totalBytes
+
+    else if job.totalItems > 0 then
+        toFloat job.doneItems / toFloat job.totalItems
+
+    else
+        0
+
+
+progressBar : Float -> Html msg
+progressBar fraction =
+    span [ class "progress" ] [ span [ class "bar", style "width" (String.fromFloat (clamp 0 100 (fraction * 100)) ++ "%") ] [] ]
+
+
+{-| The running job in the status bar; click it for the Jobs panel (FR-STAT-01).
+-}
+viewJobSummary : Model -> Html Msg
+viewJobSummary model =
+    case activeJobs model of
+        job :: rest ->
+            button [ class "job-summary", stopPropagationOn "click" (D.succeed ( ToggleJobsPanel, True )), tabindex -1 ]
+                [ text (Text.jobLabel job.kind False job.count job.first (Maybe.map (Path.name model.sep) job.dest) job.permanent)
+                , progressBar (jobFraction job)
+                , text (String.fromInt (round (jobFraction job * 100)) ++ "%")
+                , viewIf (not (List.isEmpty rest)) (span [ class "muted" ] [ text (Text.moreJobs (List.length rest)) ])
+                ]
+
+        [] ->
+            if Dict.isEmpty model.jobs then
+                text ""
+
+            else
+                button [ class "job-summary", stopPropagationOn "click" (D.succeed ( ToggleJobsPanel, True )), tabindex -1 ] [ text Text.jobs ]
+
+
+viewJobsPanel : Model -> Html Msg
+viewJobsPanel model =
+    let
+        jobs =
+            Dict.values model.jobs |> List.reverse
+    in
+    div [ class "jobs-panel", stopPropagationOn "click" (D.succeed ( NoOp, True )) ]
+        [ div [ class "jobs-header" ]
+            [ span [ class "dialog-title" ] [ text Text.jobs ]
+            , span [ class "grow" ] []
+            , button [ onClick ClearFinishedJobs ] [ text Text.clearFinished ]
+            , button [ onClick ToggleJobsPanel, title Text.close ] [ text "×" ]
+            ]
+        , if List.isEmpty jobs then
+            div [ class "muted" ] [ text Text.noJobs ]
+
+          else
+            div [ class "jobs-list" ] (List.map (viewJob model) jobs)
+        ]
+
+
+viewJob : Model -> JobStatus -> Html Msg
+viewJob model job =
+    let
+        active =
+            List.member job.state [ "queued", "running", "paused", "waiting" ]
+
+        seconds =
+            toFloat job.elapsedMs / 1000
+
+        rate =
+            if seconds > 1 && job.doneBytes > 0 then
+                Just (toFloat job.doneBytes / seconds)
+
+            else
+                Nothing
+
+        details =
+            case ( job.state, rate ) of
+                ( "running", Just perSecond ) ->
+                    Text.speed (Format.size (round perSecond)) (round (toFloat (job.totalBytes - job.doneBytes) / perSecond))
+
+                _ ->
+                    Text.jobState job.state
+    in
+    div [ class "job" ]
+        [ div [ class "job-line" ]
+            [ span [ class "job-label" ] [ text (Text.jobLabel job.kind (not active) job.count job.first (Maybe.map (Path.name model.sep) job.dest) job.permanent) ]
+            , viewIf (job.state == "running" || job.state == "paused")
+                (button [ onClick (JobPause job.id (job.state /= "paused")) ]
+                    [ text
+                        (if job.state == "paused" then
+                            Text.resume
+
+                         else
+                            Text.pause
+                        )
+                    ]
+                )
+            , viewIf active (button [ onClick (JobCancel job.id) ] [ text Text.cancelJob ])
+            ]
+        , viewIf active (div [ class "job-line" ] [ progressBar (jobFraction job), span [ class "muted" ] [ text details ] ])
+        , viewIf (active && job.current /= "") (div [ class "muted job-current" ] [ text job.current ])
+        , div [ class "job-errors" ]
+            (List.map
+                (\e ->
+                    div [ class "job-error" ]
+                        [ span [] [ text e.message ]
+                        , button [ onClick (RevealPath e.path) ] [ text Text.showInFolder ]
+                        ]
+                )
+                (List.take 20 job.errors)
+            )
+        ]

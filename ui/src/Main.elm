@@ -9,6 +9,7 @@ import Browser.Dom as Dom
 import Browser.Events
 import Columns exposing (Column)
 import Dict exposing (Dict)
+import FileName
 import Filter
 import Format
 import Item exposing (Item)
@@ -81,6 +82,12 @@ init _ =
             , bookmarks = []
             , bookmarkWarnings = []
             , bookmarkSearch = ""
+            , clipboard = Nothing
+            , jobs = Dict.empty
+            , jobsPanel = False
+            , conflicts = []
+            , rename = Nothing
+            , pendingRename = Nothing
             }
 
         ( withRequest, initCmd ) =
@@ -327,7 +334,10 @@ update msg model =
             ( { model | menuBar = Maybe.map (\s -> { s | active = index, sub = sub }) model.menuBar }, Cmd.none )
 
         MenuRun inner ->
+            -- The clicked menu item disappears, so give the list focus back first;
+            -- an action that opens a dialog then moves focus into the dialog.
             update inner { model | menuBar = Nothing, popup = Nothing }
+                |> (\( m, cmd ) -> ( m, Cmd.batch [ focusList, cmd ] ))
 
         -- Quick Filter
         FilterInput text ->
@@ -348,9 +358,14 @@ update msg model =
 
         -- Columns
         HeaderMouseDown column x shift ->
-            ( { model | drag = Just (MoveColumn { column = column, startX = x, moved = False, target = Nothing, shift = shift }), popup = Nothing }
-            , Cmd.none
-            )
+            if model.dialog /= Nothing || not (List.isEmpty model.conflicts) then
+                -- A click meant for a dialog must never re-sort the list.
+                ( model, Cmd.none )
+
+            else
+                ( { model | drag = Just (MoveColumn { column = column, startX = x, moved = False, target = Nothing, shift = shift }), popup = Nothing }
+                , Cmd.none
+                )
 
         HeaderResizeStart column x ->
             let
@@ -547,7 +562,133 @@ update msg model =
             submitDialog model
 
         DialogCancel ->
-            ( { model | dialog = Nothing }, focusList )
+            ( { model | dialog = Nothing, rename = Nothing }, focusList )
+
+        -- File operations
+        RowContext index x y ->
+            withActive model
+                (\tab ->
+                    Array.get index tab.visible
+                        |> Maybe.map
+                            (\item ->
+                                let
+                                    selected =
+                                        if Set.member item.name tab.selected then
+                                            tab
+
+                                        else
+                                            { tab | cursor = index, anchor = index, selected = Set.singleton item.name }
+
+                                    withSelection =
+                                        replaceTab selected model
+                                in
+                                ( { withSelection | popup = Just (MenuPopup { x = x, y = y, entries = itemEntries withSelection selected item }), menuBar = Nothing }
+                                , Cmd.none
+                                )
+                            )
+                )
+
+        ListContext x y ->
+            withActive model (\tab -> Just ( { model | popup = Just (MenuPopup { x = x, y = y, entries = folderMenuEntries model tab }), menuBar = Nothing }, Cmd.none ))
+
+        ItemMenuAt x y ->
+            withActive model
+                (\tab ->
+                    case Array.get tab.cursor tab.visible of
+                        Just item ->
+                            Just ( { model | popup = Just (MenuPopup { x = x, y = y, entries = itemEntries model tab item }) }, Cmd.none )
+
+                        Nothing ->
+                            Just ( { model | popup = Just (MenuPopup { x = x, y = y, entries = folderMenuEntries model tab }) }, Cmd.none )
+                )
+
+        RenameInput text ->
+            ( updateRename (\r -> { r | text = text, error = validateRename model r.original text }) model, Cmd.none )
+
+        RenameKey key ->
+            case key of
+                "Escape" ->
+                    ( { model | rename = Nothing }, focusList )
+
+                "F2" ->
+                    case model.rename of
+                        Just r ->
+                            ( updateRename (\s -> { s | step = s.step + 1 }) model, selectRenameText model { r | step = r.step + 1 } )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    commitRename True model
+
+        RenameBlur ->
+            commitRename False model
+
+        ApplyRename ->
+            applyRename { model | dialog = Nothing }
+
+        ConflictApplyAll on ->
+            ( { model
+                | conflicts =
+                    List.indexedMap
+                        (\i c ->
+                            if i == 0 then
+                                { c | applyToAll = on }
+
+                            else
+                                c
+                        )
+                        model.conflicts
+              }
+            , Cmd.none
+            )
+
+        ConflictAnswer action ->
+            case model.conflicts of
+                c :: rest ->
+                    request "job_resolve"
+                        (E.object [ ( "jobId", E.int c.jobId ), ( "action", E.string action ), ( "applyToAll", E.bool c.applyToAll ) ])
+                        False
+                        ReqIgnore
+                        { model | conflicts = rest }
+
+                [] ->
+                    ( model, Cmd.none )
+
+        StartJob kind sources dest permanent ->
+            startJob kind sources dest permanent { model | popup = Nothing, dialog = Nothing }
+
+        JobCancel jobId ->
+            request "job_cancel" (E.object [ ( "jobId", E.int jobId ) ]) False ReqIgnore model
+
+        JobPause jobId paused ->
+            request "job_pause" (E.object [ ( "jobId", E.int jobId ), ( "paused", E.bool paused ) ]) False ReqIgnore model
+
+        ToggleJobsPanel ->
+            ( { model | jobsPanel = not model.jobsPanel, popup = Nothing }, Cmd.none )
+
+        ClearFinishedJobs ->
+            ( { model | jobs = Dict.filter (\_ job -> isActiveJob job) model.jobs }, Cmd.none )
+
+        RevealPath path ->
+            request "reveal_item" (E.object [ ( "path", E.string path ) ]) False ReqOpen { model | popup = Nothing }
+
+        NewItemName text ->
+            ( updateNewItem (\f -> { f | name = text, error = Nothing }) model, Cmd.none )
+
+        NewItemTarget text ->
+            ( updateNewItem (\f -> { f | target = text, error = Nothing }) model, Cmd.none )
+
+        NewItemSubmit ->
+            submitNewItem model
+
+        ConfirmYes ->
+            case model.dialog of
+                Just (ConfirmDialog confirm) ->
+                    update confirm.onConfirm { model | dialog = Nothing }
+
+                _ ->
+                    ( model, Cmd.none )
 
 
 
@@ -901,6 +1042,151 @@ runCommand command model =
 
         CmdFocusRegion forward ->
             focusRegion forward model
+
+        CmdCut ->
+            toClipboard True model
+
+        CmdCopy ->
+            toClipboard False model
+
+        CmdPaste ->
+            withActive model
+                (\tab ->
+                    case model.clipboard of
+                        Just c ->
+                            Just
+                                (startJob
+                                    (if c.cut then
+                                        "move"
+
+                                     else
+                                        "copy"
+                                    )
+                                    c.paths
+                                    (Just tab.path)
+                                    False
+                                    (if c.cut then
+                                        { model | clipboard = Nothing }
+
+                                     else
+                                        model
+                                    )
+                                )
+
+                        Nothing ->
+                            Just (flash Text.clipboardEmpty model)
+                )
+
+        CmdDuplicate ->
+            withTargets model (\items -> startJob "duplicate" (List.map .path items) Nothing False model)
+
+        CmdCopyPath ->
+            withTargets model
+                (\items ->
+                    request "clipboard_write_text"
+                        (E.object [ ( "text", E.string (String.join "\n" (List.map .path items)) ) ])
+                        False
+                        (ReqCopied (Text.pathsCopied (List.length items)))
+                        model
+                )
+
+        CmdRename ->
+            withActive model
+                (\tab ->
+                    case targetItems tab of
+                        [ item ] ->
+                            Just (startRename tab item model)
+
+                        [] ->
+                            Nothing
+
+                        _ ->
+                            Just (flash Text.renameOne model)
+                )
+
+        CmdDelete permanent ->
+            withTargets model (\items -> deleteItems permanent items model)
+
+        CmdNewFolder ->
+            withActive model
+                (\tab ->
+                    Just
+                        (request "fs_create"
+                            (E.object [ ( "parent", E.string tab.path ), ( "item", E.object [ ( "kind", E.string "folder" ) ] ) ])
+                            False
+                            (ReqCreate tab.id True)
+                            model
+                        )
+                )
+
+        CmdNewItem kind ->
+            let
+                form =
+                    case kind of
+                        NewFile ->
+                            { kind = kind, name = Text.newFileName, target = "", error = Nothing }
+
+                        NewShortcut ->
+                            { kind = kind, name = "", target = "", error = Nothing }
+
+                        NewWebLink ->
+                            { kind = kind, name = "", target = "https://", error = Nothing }
+            in
+            ( { model | dialog = Just (NewItemDialog form), popup = Nothing, menuBar = Nothing }
+            , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+            )
+
+        CmdUndo ->
+            request "undo_last" (E.object []) False ReqUndo model
+
+        CmdOpenTerminal ->
+            withActive model
+                (\tab ->
+                    let
+                        dir =
+                            case targetItems tab of
+                                [ item ] ->
+                                    if item.isDir then
+                                        item.path
+
+                                    else
+                                        tab.path
+
+                                _ ->
+                                    tab.path
+                    in
+                    Just (request "open_terminal" (E.object [ ( "path", E.string dir ) ]) False ReqOpen model)
+                )
+
+        CmdReveal ->
+            withActive model
+                (\tab ->
+                    case targetItems tab of
+                        item :: _ ->
+                            Just (update (RevealPath item.path) model)
+
+                        [] ->
+                            Just (update (RevealPath tab.path) model)
+                )
+
+        CmdItemMenu ->
+            withActive model
+                (\tab ->
+                    Just
+                        ( model
+                        , Dom.getElement listId
+                            |> Task.attempt
+                                (\result ->
+                                    case result of
+                                        Ok el ->
+                                            ItemMenuAt (el.element.x + 60)
+                                                (el.element.y + headerHeight + toFloat (tab.cursor + 1) * rowHeight - tab.scrollTop)
+
+                                        Err _ ->
+                                            NoOp
+                                )
+                        )
+                )
 
 
 localBoolSetting : String -> Bool -> Settings -> Settings
@@ -2422,6 +2708,505 @@ revealTreeCursor =
 
 
 
+-- FILE OPERATIONS
+
+
+{-| The items a command acts on: the selection, or the cursor item.
+-}
+targetItems : Tab -> List Item
+targetItems tab =
+    case selectedItems tab of
+        [] ->
+            Array.get tab.cursor tab.visible |> Maybe.map List.singleton |> Maybe.withDefault []
+
+        items ->
+            items
+
+
+withTargets : Model -> (List Item -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
+withTargets model f =
+    case activeTab model |> Maybe.map targetItems |> Maybe.withDefault [] of
+        [] ->
+            flash Text.nothingSelected model
+
+        items ->
+            f items
+
+
+toClipboard : Bool -> Model -> ( Model, Cmd Msg )
+toClipboard cut model =
+    withTargets model
+        (\items ->
+            flash
+                (if cut then
+                    Text.itemsCut (List.length items)
+
+                 else
+                    Text.itemsCopied (List.length items)
+                )
+                { model | clipboard = Just { paths = List.map .path items, cut = cut } }
+        )
+
+
+startJob : String -> List String -> Maybe String -> Bool -> Model -> ( Model, Cmd Msg )
+startJob kind sources dest permanent model =
+    request "job_start"
+        (E.object
+            [ ( "request"
+              , E.object
+                    [ ( "kind", E.string kind )
+                    , ( "sources", E.list E.string sources )
+                    , ( "dest", Maybe.map E.string dest |> Maybe.withDefault E.null )
+                    , ( "permanent", E.bool permanent )
+                    ]
+              )
+            ]
+        )
+        False
+        ReqJobStart
+        model
+
+
+{-| Del sends to the Recycle Bin (asking only if confirmDelete is on);
+Shift+Del always asks first (FR-DEL-01, FR-DEL-02).
+-}
+deleteItems : Bool -> List Item -> Model -> ( Model, Cmd Msg )
+deleteItems permanent items model =
+    let
+        paths =
+            List.map .path items
+
+        names =
+            List.map .name items
+    in
+    if permanent then
+        askConfirm
+            { title = Text.deletePermanentlyTitle (List.length items)
+            , lines = Text.nameList names
+            , confirmLabel = Text.deletePermanently
+            , onConfirm = StartJob "delete" paths Nothing True
+            , danger = True
+            }
+            model
+
+    else if model.settings.confirmDelete then
+        askConfirm
+            { title = Text.recycleTitle (List.length items)
+            , lines = Text.nameList names
+            , confirmLabel = Text.delete
+            , onConfirm = StartJob "delete" paths Nothing False
+            , danger = False
+            }
+            model
+
+    else
+        startJob "delete" paths Nothing False model
+
+
+askConfirm : Confirm -> Model -> ( Model, Cmd Msg )
+askConfirm confirm model =
+    ( { model | dialog = Just (ConfirmDialog confirm), popup = Nothing, menuBar = Nothing }
+      -- For dangerous actions Enter cancels, so a double Enter can't delete anything.
+    , Task.attempt (\_ -> NoOp)
+        (Dom.focus
+            (if confirm.danger then
+                "confirm-no"
+
+             else
+                "confirm-yes"
+            )
+        )
+    )
+
+
+{-| Reloads the tab and selects `name` when it shows up (FR-NEW-05).
+-}
+selectAfterReload : Int -> String -> Model -> ( Model, Cmd Msg )
+selectAfterReload tabId name model =
+    case findTab tabId model of
+        Just tab ->
+            loadTab tabId (replaceTab { tab | pendingSelect = Just name } model)
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+reloadActive : Model -> ( Model, Cmd Msg )
+reloadActive model =
+    case activeTab model of
+        Just tab ->
+            if tab.status == Loaded then
+                loadTab tab.id model
+
+            else
+                ( model, Cmd.none )
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+isActiveJob : JobStatus -> Bool
+isActiveJob job =
+    List.member job.state [ "queued", "running", "paused", "waiting" ]
+
+
+{-| Updates the job list; when a job ends, reports it and offers a
+permanent delete for items the Recycle Bin refused (FR-DEL-03).
+-}
+jobProgress : JobStatus -> Model -> ( Model, Cmd Msg )
+jobProgress job model =
+    let
+        wasActive =
+            Dict.get job.id model.jobs |> Maybe.map isActiveJob |> Maybe.withDefault True
+
+        updated =
+            { model | jobs = Dict.insert job.id job model.jobs }
+
+        refused =
+            List.filter (\e -> e.code == "noTrash") job.errors
+    in
+    if isActiveJob job || not wasActive then
+        ( updated, Cmd.none )
+
+    else if job.kind == "delete" && not job.permanent && not (List.isEmpty refused) then
+        askConfirm
+            { title = Text.noRecycleTitle (List.length refused)
+            , lines = Text.nameList (List.map (\e -> Path.name model.sep e.path) refused)
+            , confirmLabel = Text.deletePermanently
+            , onConfirm = StartJob "delete" (List.map .path refused) Nothing True
+            , danger = True
+            }
+            updated
+            |> andThen reloadActive
+
+    else if not (List.isEmpty job.errors) then
+        flash (Text.jobProblems (List.length job.errors)) { updated | jobsPanel = True }
+            |> andThen reloadActive
+
+    else
+        flash (Text.jobFinished job.kind job.state job.count job.first job.permanent) updated
+            |> andThen reloadActive
+
+
+jobDecoder : D.Decoder JobStatus
+jobDecoder =
+    D.succeed JobStatus
+        |> andMap (D.field "id" D.int)
+        |> andMap (D.field "kind" D.string)
+        |> andMap (D.field "state" D.string)
+        |> andMap (D.field "permanent" D.bool)
+        |> andMap (D.field "count" D.int)
+        |> andMap (D.field "first" D.string)
+        |> andMap (D.field "dest" (D.nullable D.string))
+        |> andMap (D.field "doneItems" D.int)
+        |> andMap (D.field "totalItems" D.int)
+        |> andMap (D.field "doneBytes" D.int)
+        |> andMap (D.field "totalBytes" D.int)
+        |> andMap (D.field "current" D.string)
+        |> andMap (D.field "elapsedMs" D.int)
+        |> andMap (D.field "errors" (D.list (D.map3 JobError (D.field "path" D.string) (D.field "message" D.string) (D.field "code" D.string))))
+
+
+conflictDecoder : D.Decoder Conflict
+conflictDecoder =
+    let
+        info =
+            D.map5 FileInfo
+                (D.field "name" D.string)
+                (D.field "path" D.string)
+                (D.field "size" D.int)
+                (D.field "modified" (D.nullable D.int))
+                (D.field "isDir" D.bool)
+    in
+    D.map4 Conflict (D.field "jobId" D.int) (D.field "source" info) (D.field "target" info) (D.succeed False)
+
+
+{-| The right-click menu for items (FR-CC-07).
+-}
+itemEntries : Model -> Tab -> Item -> List MenuEntry
+itemEntries model tab item =
+    let
+        act label key msg =
+            Action { label = label, key = key, msg = Just msg, checked = Nothing }
+
+        single =
+            List.length (targetItems tab) == 1
+
+        pasteInto =
+            case ( model.clipboard, item.isDir ) of
+                ( Just c, True ) ->
+                    [ act Text.pasteInto
+                        ""
+                        (StartJob
+                            (if c.cut then
+                                "move"
+
+                             else
+                                "copy"
+                            )
+                            c.paths
+                            (Just item.path)
+                            False
+                        )
+                    ]
+
+                _ ->
+                    []
+    in
+    [ act Text.open "Enter" (KeyCommand CmdOpen) ]
+        ++ (if item.isDir then
+                [ act Text.openInNewTab "Ctrl+Enter" (NavigateNewTab item.path) ]
+
+            else
+                []
+           )
+        ++ [ Separator
+           , act Text.cut "Ctrl+X" (KeyCommand CmdCut)
+           , act Text.copy "Ctrl+C" (KeyCommand CmdCopy)
+           ]
+        ++ pasteInto
+        ++ [ act Text.duplicate "" (KeyCommand CmdDuplicate)
+           , act Text.copyPath "Ctrl+Shift+C" (KeyCommand CmdCopyPath)
+           , Separator
+           ]
+        ++ (if single then
+                [ act Text.rename "F2" (KeyCommand CmdRename) ]
+
+            else
+                []
+           )
+        ++ [ act Text.delete "Del" (KeyCommand (CmdDelete False))
+           , act Text.deletePermanently "Shift+Del" (KeyCommand (CmdDelete True))
+           , Separator
+           ]
+        ++ (if item.isDir then
+                [ act Text.pin "" (BookmarkEditOp [ ( "op", E.string "addFavourite" ), ( "path", E.string item.path ) ])
+                , act Text.openTerminalHere "" (KeyCommand CmdOpenTerminal)
+                ]
+
+            else
+                []
+           )
+        ++ [ act Text.bookmarkItem "" (KeyCommand CmdBookmarkItem)
+           , act Text.reveal "" (RevealPath item.path)
+           ]
+
+
+{-| The right-click menu for empty space in the list.
+-}
+folderMenuEntries : Model -> Tab -> List MenuEntry
+folderMenuEntries model tab =
+    let
+        act label key msg =
+            Action { label = label, key = key, msg = Just msg, checked = Nothing }
+    in
+    [ act Text.newFolder "Ctrl+Shift+N" (KeyCommand CmdNewFolder)
+    , act Text.newFile "Ctrl+N" (KeyCommand (CmdNewItem NewFile))
+    , act Text.newShortcut "" (KeyCommand (CmdNewItem NewShortcut))
+    , act Text.newWebLink "" (KeyCommand (CmdNewItem NewWebLink))
+    , Separator
+    , Action { label = Text.paste, key = "Ctrl+V", msg = Maybe.map (\_ -> KeyCommand CmdPaste) model.clipboard, checked = Nothing }
+    , act Text.undo "Ctrl+Z" (KeyCommand CmdUndo)
+    , Separator
+    , act Text.selectAllItems "Ctrl+A" (KeyCommand CmdSelectAll)
+    , act Text.refreshFolder "F5" (KeyCommand CmdRefresh)
+    , act Text.openTerminalHere "" (KeyCommand CmdOpenTerminal)
+    ]
+
+
+
+-- RENAME
+
+
+startRename : Tab -> Item -> Model -> ( Model, Cmd Msg )
+startRename tab item model =
+    let
+        state =
+            { tabId = tab.id, original = item.name, text = item.name, error = Nothing, step = 0 }
+    in
+    ( { model | rename = Just state, popup = Nothing, menuBar = Nothing }, selectRenameText model state )
+
+
+selectRenameText : Model -> RenameState -> Cmd Msg
+selectRenameText model state =
+    let
+        isDir =
+            activeTab model
+                |> Maybe.andThen (\tab -> Dict.get state.original tab.items)
+                |> Maybe.map .isDir
+                |> Maybe.withDefault False
+
+        ( start, end ) =
+            FileName.selection isDir state.step state.text
+    in
+    Ports.selectText (E.object [ ( "id", E.string renameInputId ), ( "start", E.int start ), ( "end", E.int end ) ])
+
+
+updateRename : (RenameState -> RenameState) -> Model -> Model
+updateRename f model =
+    { model | rename = Maybe.map f model.rename }
+
+
+validateRename : Model -> String -> String -> Maybe String
+validateRename model original text =
+    let
+        others =
+            activeTab model |> Maybe.map (.items >> Dict.keys) |> Maybe.withDefault [] |> List.filter ((/=) original)
+    in
+    FileName.validate (model.sep == "\\") others text
+
+
+{-| Enter or leaving the box ends the rename. A changed extension asks
+first (FR-REN-03).
+-}
+commitRename : Bool -> Model -> ( Model, Cmd Msg )
+commitRename pressedEnter model =
+    case ( model.rename, model.dialog ) of
+        ( Just r, Nothing ) ->
+            if r.text == r.original then
+                ( { model | rename = Nothing }, focusList )
+
+            else
+                case validateRename model r.original r.text of
+                    Just error ->
+                        if pressedEnter then
+                            ( updateRename (\s -> { s | error = Just error }) model, Cmd.none )
+
+                        else
+                            ( { model | rename = Nothing }, Cmd.none )
+
+                    Nothing ->
+                        if model.settings.confirmExtensionChange && String.toLower (FileName.extension r.text) /= String.toLower (FileName.extension r.original) && not (isFolderName model r.original) then
+                            askConfirm
+                                { title = Text.changeExtensionTitle
+                                , lines = [ Text.changeExtension (FileName.extension r.original) (FileName.extension r.text) ]
+                                , confirmLabel = Text.changeIt
+                                , onConfirm = ApplyRename
+                                , danger = False
+                                }
+                                model
+
+                        else
+                            applyRename model
+
+        _ ->
+            ( model, Cmd.none )
+
+
+isFolderName : Model -> String -> Bool
+isFolderName model name =
+    activeTab model |> Maybe.andThen (\tab -> Dict.get name tab.items) |> Maybe.map .isDir |> Maybe.withDefault False
+
+
+applyRename : Model -> ( Model, Cmd Msg )
+applyRename model =
+    case ( model.rename, activeTab model ) of
+        ( Just r, Just tab ) ->
+            case Dict.get r.original tab.items of
+                Just item ->
+                    request "fs_rename"
+                        (E.object [ ( "path", E.string item.path ), ( "newName", E.string r.text ) ])
+                        False
+                        (ReqRename r.tabId)
+                        { model | rename = Nothing }
+                        |> addCmd focusList
+
+                Nothing ->
+                    ( { model | rename = Nothing }, focusList )
+
+        _ ->
+            ( { model | rename = Nothing }, Cmd.none )
+
+
+
+-- NEW ITEMS
+
+
+updateNewItem : (NewItemForm -> NewItemForm) -> Model -> Model
+updateNewItem f model =
+    case model.dialog of
+        Just (NewItemDialog form) ->
+            { model | dialog = Just (NewItemDialog (f form)) }
+
+        _ ->
+            model
+
+
+submitNewItem : Model -> ( Model, Cmd Msg )
+submitNewItem model =
+    case ( model.dialog, activeTab model ) of
+        ( Just (NewItemDialog form), Just tab ) ->
+            let
+                target =
+                    String.trim form.target
+
+                name =
+                    case ( String.trim form.name, form.kind ) of
+                        ( "", NewShortcut ) ->
+                            Path.name model.sep target
+
+                        ( "", NewWebLink ) ->
+                            domainOf target
+
+                        ( n, _ ) ->
+                            n
+
+                item =
+                    case form.kind of
+                        NewFile ->
+                            [ ( "kind", E.string "file" ), ( "name", E.string name ) ]
+
+                        NewShortcut ->
+                            [ ( "kind", E.string "shortcut" ), ( "name", E.string name ), ( "target", E.string target ) ]
+
+                        NewWebLink ->
+                            [ ( "kind", E.string "webLink" ), ( "name", E.string name ), ( "url", E.string target ) ]
+
+                problem =
+                    if form.kind /= NewFile && (target == "" || target == "https://") then
+                        Just Text.targetNeeded
+
+                    else
+                        FileName.validate (model.sep == "\\") (Dict.keys tab.items) name
+            in
+            case problem of
+                Just error ->
+                    ( updateNewItem (\f -> { f | error = Just error }) model, Cmd.none )
+
+                Nothing ->
+                    request "fs_create"
+                        (E.object [ ( "parent", E.string tab.path ), ( "item", E.object item ) ])
+                        False
+                        (ReqCreate tab.id False)
+                        { model | dialog = Nothing }
+                        |> addCmd focusList
+
+        _ ->
+            ( model, Cmd.none )
+
+
+{-| "example.com" from "<https://www.example.com/page">.
+-}
+domainOf : String -> String
+domainOf url =
+    url
+        |> String.split "://"
+        |> List.reverse
+        |> List.head
+        |> Maybe.withDefault url
+        |> String.split "/"
+        |> List.head
+        |> Maybe.withDefault url
+        |> (\host ->
+                if String.startsWith "www." host then
+                    String.dropLeft 4 host
+
+                else
+                    host
+           )
+
+
+
 -- BOOKMARK DIALOG
 
 
@@ -2438,7 +3223,7 @@ updateDialog f model =
         Just (BookmarkDialog form) ->
             { model | dialog = Just (BookmarkDialog (f form)) }
 
-        Nothing ->
+        _ ->
             model
 
 
@@ -2475,7 +3260,7 @@ submitDialog model =
                 update (BookmarkEditOp op) { model | dialog = Nothing }
                     |> addCmd focusList
 
-        Nothing ->
+        _ ->
             ( model, Cmd.none )
 
 
@@ -2705,6 +3490,53 @@ handleResponse reqId req envelope model =
 
         ReqIgnore ->
             ( model, Cmd.none )
+
+        ReqJobStart ->
+            flashError model
+
+        ReqRename tabId ->
+            case ok D.string of
+                Just newPath ->
+                    selectAfterReload tabId (Path.name model.sep newPath) model
+
+                Nothing ->
+                    flashError model
+
+        ReqCreate tabId startRenaming ->
+            case ok D.string of
+                Just newPath ->
+                    let
+                        name =
+                            Path.name model.sep newPath
+                    in
+                    selectAfterReload tabId
+                        name
+                        { model
+                            | pendingRename =
+                                if startRenaming then
+                                    Just name
+
+                                else
+                                    Nothing
+                        }
+
+                Nothing ->
+                    flashError model
+
+        ReqUndo ->
+            case ok D.string of
+                Just message ->
+                    flash message model |> andThen reloadActive
+
+                Nothing ->
+                    flashError model
+
+        ReqCopied message ->
+            if envelope.kind == "ok" then
+                flash message model
+
+            else
+                flashError model
 
 
 type alias InitData =
@@ -2936,10 +3768,24 @@ finishLoading reqId tab model =
 
         updated =
             { model | requests = Dict.remove reqId model.requests } |> replaceTab selected
+
+        -- A new folder starts in rename mode once it shows up (FR-NEW-01).
+        renameNew m =
+            case ( m.pendingRename, Array.get selected.cursor selected.visible ) of
+                ( Just name, Just item ) ->
+                    if item.name == name then
+                        startRename selected item { m | pendingRename = Nothing }
+
+                    else
+                        ( m, Cmd.none )
+
+                _ ->
+                    ( m, Cmd.none )
     in
     if tab.id == model.active then
         ( updated, Cmd.none )
             |> ensureCursorVisible
+            |> andThen renameNew
             |> andThen (requestFreeSpace tab.path)
             |> andThen
                 (\m ->
@@ -3013,6 +3859,22 @@ handleEvent name data model =
 
         "bookmarks-changed" ->
             request "bookmarks_get" (E.object []) False ReqBookmarks model
+
+        "job-progress" ->
+            case D.decodeValue jobDecoder data of
+                Ok job ->
+                    jobProgress job model
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        "job-conflict" ->
+            case D.decodeValue conflictDecoder data of
+                Ok conflict ->
+                    ( { model | conflicts = model.conflicts ++ [ conflict ] }, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
 
         _ ->
             ( model, Cmd.none )

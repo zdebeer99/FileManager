@@ -111,3 +111,26 @@ pub fn is_slow_path(path: &Path) -> bool {
     let drive_type = unsafe { GetDriveTypeW(wide.as_ptr()) };
     matches!(drive_type, DRIVE_REMOVABLE | DRIVE_REMOTE | DRIVE_CDROM)
 }
+
+/// Opens a terminal in `dir`: the configured command, else Windows Terminal,
+/// else PowerShell (FR-OPEN-03).
+pub fn open_terminal(dir: &Path, configured: &str) -> Result<(), String> {
+    use std::process::Command;
+    let spawned = if !configured.is_empty() {
+        Command::new(configured).current_dir(dir).spawn()
+    } else {
+        Command::new("wt").arg("-d").arg(dir).spawn().or_else(|_| Command::new("powershell").current_dir(dir).spawn())
+    };
+    spawned.map(|_| ()).map_err(|e| format!("Could not open a terminal: {e}"))
+}
+
+/// Shows the item selected in Explorer.
+pub fn reveal(path: &Path) -> Result<(), String> {
+    let mut select = std::ffi::OsString::from("/select,");
+    select.push(path.as_os_str());
+    std::process::Command::new("explorer")
+        .arg(select)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open Explorer: {e}"))
+}

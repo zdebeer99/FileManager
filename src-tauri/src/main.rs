@@ -3,7 +3,9 @@
 
 mod bookmarks;
 mod commands;
+mod fileops;
 mod folder_view;
+mod jobs;
 mod listing;
 mod model;
 mod paths;
@@ -48,6 +50,16 @@ fn main() {
             commands::bookmarks_get,
             commands::bookmarks_edit,
             commands::app_exit,
+            commands::job_start,
+            commands::job_cancel,
+            commands::job_pause,
+            commands::job_resolve,
+            commands::fs_rename,
+            commands::fs_create,
+            commands::undo_last,
+            commands::clipboard_write_text,
+            commands::open_terminal,
+            commands::reveal_item,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the File Catalog window")

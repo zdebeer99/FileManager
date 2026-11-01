@@ -40,10 +40,10 @@ menus model tab =
             [ cmd "New Tab" "Ctrl+T" CmdNewTab
             , later "New Window" "Ctrl+Shift+W"
             , Separator
-            , later "New Folder" "Ctrl+Shift+N"
-            , later "New File" "Ctrl+N"
-            , later "New Shortcut" ""
-            , later "New Web Link" ""
+            , cmd "New Folder" "Ctrl+Shift+N" CmdNewFolder
+            , cmd "New File…" "Ctrl+N" (CmdNewItem NewFile)
+            , cmd "New Shortcut…" "" (CmdNewItem NewShortcut)
+            , cmd "New Web Link…" "" (CmdNewItem NewWebLink)
             , later "New from Template" "Ctrl+Alt+N"
             , Separator
             , cmd "Open" "Enter" CmdOpen
@@ -51,8 +51,8 @@ menus model tab =
             , later "Compress to ZIP" ""
             , later "Extract" ""
             , later "Compare" ""
-            , later "Open in Terminal" "Ctrl+`"
-            , later "Reveal in File Manager" ""
+            , cmd "Open in Terminal" "Ctrl+`" CmdOpenTerminal
+            , cmd "Show in File Manager" "" CmdReveal
             , later "Properties" "Alt+Enter"
             , Separator
             , cmd "Close Tab" "Ctrl+W" CmdCloseTab
@@ -61,18 +61,18 @@ menus model tab =
       }
     , { title = "Edit"
       , entries =
-            [ later "Undo" "Ctrl+Z"
+            [ cmd "Undo" "Ctrl+Z" CmdUndo
             , Separator
-            , later "Cut" "Ctrl+X"
-            , later "Copy" "Ctrl+C"
-            , later "Paste" "Ctrl+V"
+            , cmd "Cut" "Ctrl+X" CmdCut
+            , cmd "Copy" "Ctrl+C" CmdCopy
+            , Action { label = "Paste", key = "Ctrl+V", msg = Maybe.map (\_ -> KeyCommand CmdPaste) model.clipboard, checked = Nothing }
             , later "Paste as Shortcut" "Ctrl+Shift+V"
-            , later "Duplicate" ""
-            , later "Copy Path" "Ctrl+Shift+C"
+            , cmd "Duplicate" "" CmdDuplicate
+            , cmd "Copy Path" "Ctrl+Shift+C" CmdCopyPath
             , Separator
-            , later "Rename" "F2"
-            , later "Delete" "Del"
-            , later "Delete Permanently" "Shift+Del"
+            , cmd "Rename" "F2" CmdRename
+            , cmd "Delete" "Del" (CmdDelete False)
+            , cmd "Delete Permanently" "Shift+Del" (CmdDelete True)
             , Separator
             , cmd "Select All" "Ctrl+A" CmdSelectAll
             , cmd "Invert Selection" "Ctrl+I" CmdInvertSelection
@@ -183,7 +183,9 @@ menus model tab =
       }
     , { title = "Window"
       , entries =
-            [ cmd "Next Tab" "Ctrl+Tab" CmdNextTab
+            [ Action { label = "Jobs", key = "", msg = Just ToggleJobsPanel, checked = Just model.jobsPanel }
+            , Separator
+            , cmd "Next Tab" "Ctrl+Tab" CmdNextTab
             , cmd "Previous Tab" "Ctrl+Shift+Tab" CmdPrevTab
             , Submenu "Tabs"
                 (List.indexedMap

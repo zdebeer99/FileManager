@@ -20,11 +20,14 @@ notify = "8"
 directories = "6"
 open = "5"
 fs4 = "1"
+trash = "5"
+arboard = "3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 tracing-appender = "0.2"
 
 [target.'cfg(windows)'.dependencies]
+mslnk = "0.1"
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 
 [dev-dependencies]

@@ -99,6 +99,11 @@ type Request
     | ReqOpenSettingsFile
     | ReqOpen
     | ReqIgnore
+    | ReqJobStart
+    | ReqRename Int
+    | ReqCreate Int Bool
+    | ReqUndo
+    | ReqCopied String
 
 
 type SubfolderUse
@@ -147,6 +152,102 @@ type alias ColumnFilterState =
 
 type Dialog
     = BookmarkDialog BookmarkForm
+    | NewItemDialog NewItemForm
+    | ConfirmDialog Confirm
+
+
+type NewKind
+    = NewFile
+    | NewShortcut
+    | NewWebLink
+
+
+type alias NewItemForm =
+    { kind : NewKind
+    , name : String
+    , target : String
+    , error : Maybe String
+    }
+
+
+{-| A yes/no question. `onConfirm` runs when the user agrees.
+-}
+type alias Confirm =
+    { title : String
+    , lines : List String
+    , confirmLabel : String
+    , onConfirm : Msg
+    , danger : Bool
+    }
+
+
+
+-- FILE OPERATIONS
+
+
+{-| Progress of a background job, as sent by the backend (FR-OP-03).
+-}
+type alias JobStatus =
+    { id : Int
+    , kind : String
+    , state : String
+    , permanent : Bool
+    , count : Int
+    , first : String
+    , dest : Maybe String
+    , doneItems : Int
+    , totalItems : Int
+    , doneBytes : Int
+    , totalBytes : Int
+    , current : String
+    , elapsedMs : Int
+    , errors : List JobError
+    }
+
+
+type alias JobError =
+    { path : String
+    , message : String
+    , code : String
+    }
+
+
+type alias FileInfo =
+    { name : String
+    , path : String
+    , size : Int
+    , modified : Maybe Int
+    , isDir : Bool
+    }
+
+
+{-| A name conflict a job is waiting on (FR-COPY-04).
+-}
+type alias Conflict =
+    { jobId : Int
+    , source : FileInfo
+    , target : FileInfo
+    , applyToAll : Bool
+    }
+
+
+{-| In-place rename (FR-REN-01). `step` counts F2 presses.
+-}
+type alias RenameState =
+    { tabId : Int
+    , original : String
+    , text : String
+    , error : Maybe String
+    , step : Int
+    }
+
+
+{-| Items cut or copied inside File Catalog.
+-}
+type alias Clipboard =
+    { paths : List String
+    , cut : Bool
+    }
 
 
 type alias BookmarkForm =
@@ -253,6 +354,12 @@ type alias Model =
     , bookmarks : List Bookmark
     , bookmarkWarnings : List String
     , bookmarkSearch : String
+    , clipboard : Maybe Clipboard
+    , jobs : Dict Int JobStatus
+    , jobsPanel : Bool
+    , conflicts : List Conflict
+    , rename : Maybe RenameState
+    , pendingRename : Maybe String
     }
 
 
@@ -330,6 +437,26 @@ type Msg
     | DialogGroup String
     | DialogSubmit
     | DialogCancel
+      -- File operations
+    | RowContext Int Float Float
+    | ListContext Float Float
+    | ItemMenuAt Float Float
+    | RenameInput String
+    | RenameKey String
+    | RenameBlur
+    | ApplyRename
+    | ConflictApplyAll Bool
+    | ConflictAnswer String
+    | StartJob String (List String) (Maybe String) Bool
+    | JobCancel Int
+    | JobPause Int Bool
+    | ToggleJobsPanel
+    | ClearFinishedJobs
+    | RevealPath String
+    | NewItemName String
+    | NewItemTarget String
+    | NewItemSubmit
+    | ConfirmYes
 
 
 type Command
@@ -384,6 +511,19 @@ type Command
     | CmdMenuBar
     | CmdMenuMnemonic Int
     | CmdFocusRegion Bool
+    | CmdCut
+    | CmdCopy
+    | CmdPaste
+    | CmdDuplicate
+    | CmdCopyPath
+    | CmdRename
+    | CmdDelete Bool
+    | CmdNewFolder
+    | CmdNewItem NewKind
+    | CmdUndo
+    | CmdOpenTerminal
+    | CmdReveal
+    | CmdItemMenu
 
 
 type alias Mods =
@@ -439,6 +579,11 @@ treeCursorId =
 dialogFirstInputId : String
 dialogFirstInputId =
     "dialog-name"
+
+
+renameInputId : String
+renameInputId =
+    "rename-input"
 
 
 sidebarModeName : SidebarMode -> String
