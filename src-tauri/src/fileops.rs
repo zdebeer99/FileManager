@@ -219,6 +219,40 @@ pub fn remove_permanently(path: &Path) -> io::Result<()> {
     }
 }
 
+/// True when moving between the two paths is a rename, not a copy (FR-COPY-06).
+pub fn same_volume(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (a.symlink_metadata(), b.metadata()) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev(),
+            _ => false,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let root = |p: &Path| p.components().next().map(|c| c.as_os_str().to_string_lossy().to_lowercase());
+        root(a).is_some() && root(a) == root(b)
+    }
+}
+
+/// Makes a shortcut to `target` in `parent` with a free name, like Explorer's
+/// *Paste shortcut*: `Report.docx - Shortcut.lnk` on Windows, `Report.docx`
+/// (or `Report (2).docx`) as a symbolic link on Linux.
+pub fn create_shortcut_auto(parent: &Path, target: &Path) -> Result<PathBuf, String> {
+    let name =
+        target.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("This item can't have a shortcut.")?;
+    if cfg!(windows) {
+        let free = free_name(parent, &format!("{name} - Shortcut.lnk"), Naming::Numbered);
+        let stem = free.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        create_shortcut(parent, stem.trim_end_matches(".lnk"), target)
+    } else {
+        let free = free_name(parent, &name, Naming::Numbered);
+        let free_name = free.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        create_shortcut(parent, &free_name, target)
+    }
+}
+
 /// A short, readable explanation of a file system error (spec 9).
 pub fn describe(error: &io::Error, path: &Path) -> String {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
@@ -288,6 +322,23 @@ mod tests {
         assert!(renamed.exists());
         let link = create_weblink(d, "Example", "https://example.com").unwrap();
         assert!(fs::read_to_string(link).unwrap().contains("URL=https://example.com"));
+    }
+
+    #[test]
+    fn shortcuts_get_free_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("Report.docx");
+        fs::write(&target, "x").unwrap();
+        let links = dir.path().join("links");
+        fs::create_dir(&links).unwrap();
+        let first = create_shortcut_auto(&links, &target).unwrap();
+        let second = create_shortcut_auto(&links, &target).unwrap();
+        assert_ne!(first, second);
+        if cfg!(unix) {
+            assert_eq!(fs::read_link(&first).unwrap(), target);
+            assert_eq!(second, links.join("Report (2).docx"));
+        }
+        assert!(same_volume(&target, &links));
     }
 
     #[test]

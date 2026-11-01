@@ -1039,3 +1039,32 @@ button.danger {
 }
 
 .app:focus { outline: none; }
+
+/* Drag and drop (M3b) */
+
+.drop-target, .row.drop-target, .tree-row.drop-target, .side-item.drop-target, .tab.drop-target, .bookmarkbar.drop-target {
+  background: var(--bg-selected) !important;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.drag-ghost {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 320px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Menus with submenus must not clip them; long plain lists still scroll. */
+.popup > .menu.dropdown:has(.has-sub) { overflow: visible; max-height: none; }

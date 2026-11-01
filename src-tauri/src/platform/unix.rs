@@ -125,6 +125,14 @@ pub fn reveal(path: &Path) -> Result<(), String> {
     open::that_detached(folder).map_err(|e| format!("Could not open the file manager: {e}"))
 }
 
+/// Linux file managers can't be told about a *cut*; pasting there copies.
+pub fn set_clipboard_cut(_cut: bool) {}
+
+/// Unknown on Linux.
+pub fn clipboard_cut() -> Option<bool> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

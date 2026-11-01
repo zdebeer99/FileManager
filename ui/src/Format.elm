@@ -1,4 +1,4 @@
-module Format exposing (date, size)
+module Format exposing (date, monthNumber, size)
 
 import Time
 

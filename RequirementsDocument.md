@@ -14,6 +14,8 @@ File Catalog is designed as an ultra-fast, keyboard-driven, desktop file manager
 
 ## User Requirements
 
+> Project folders (linking documents into a project folder and filing it afterwards) are planned for a later version, not the first version.
+
 - Application Layout
 
   - Full Menu Bar - all actions grouped in standard menu layout
@@ -26,6 +28,7 @@ File Catalog is designed as an ultra-fast, keyboard-driven, desktop file manager
     - Content aware view: a side view of links to folders, documents and web sites that could be related to the folder you are looking at. Keep it minimal in the first version so the idea can take shape and evolve with the project.
   - Content container typical list files, name, created modified date, sync status
     - The standard file explorer columns are available and can be shown or hidden per view. Name, created and modified date, size and sync status are visible by default.
+    - Cloud sync status beyond a basic status column is not in the first version.
   - Status bar, number of files, folder, slece count, progress
 
 - Sorting and filtering by filename, size, date
@@ -51,8 +54,7 @@ File Catalog is designed as an ultra-fast, keyboard-driven, desktop file manager
   - Rename
   - Delete
   - Duplicate
-  - Compress to ZIP and extract ZIP
-  - Compare two files
+  - Compress to ZIP and extract ZIP (later version)
 
 - E-mails are handled as saved files (.eml, .msg) and work like any other file. No e-mail client integration in the first version.
 

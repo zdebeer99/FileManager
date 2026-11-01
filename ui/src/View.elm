@@ -31,6 +31,7 @@ view model =
          , tabindex -1
          , preventDefaultOn "keydown" keyDecoder
          , on "mouseup" mouseNavDecoder
+         , on "mouseleave" (D.succeed DragLeftWindow)
          ]
             ++ themeAttribute model.settings.theme
             ++ (if model.popup /= Nothing || model.menuBar /= Nothing then
@@ -68,6 +69,7 @@ view model =
                     , viewIf model.settings.statusBar (viewStatusBar model tab)
                     , viewIf model.jobsPanel (viewJobsPanel model)
                     , viewPopup model
+                    , viewDragGhost model
                     , case model.conflicts of
                         conflict :: _ ->
                             viewConflict model conflict
@@ -190,7 +192,7 @@ viewBookmarkBar model =
                 _ ->
                     False
     in
-    div [ class "bookmarkbar" ]
+    div (class "bookmarkbar" :: dropTarget model DropBookmarkBar "bookmark-bar")
         (if List.isEmpty entries then
             [ span [ class "hint" ] [ text Text.bookmarkBarHint ] ]
 
@@ -295,13 +297,15 @@ viewTabBar model =
 viewTab : Model -> Tab -> Html Msg
 viewTab model tab =
     div
-        [ class "tab"
-        , classList [ ( "active", tab.id == model.active ) ]
-        , attribute "role" "tab"
-        , onClick (ActivateTab tab.id)
-        , on "auxclick" (middleClick (CloseTab tab.id))
-        , title tab.path
-        ]
+        ([ class "tab"
+         , classList [ ( "active", tab.id == model.active ) ]
+         , attribute "role" "tab"
+         , onClick (ActivateTab tab.id)
+         , on "auxclick" (middleClick (CloseTab tab.id))
+         , title tab.path
+         ]
+            ++ dropTarget model (DropFolder tab.path) tab.path
+        )
         [ viewIf (isFiltering tab) (span [ class "icon filter", title Text.filtered ] [])
         , span [ class "label" ] [ text (Path.name model.sep tab.path) ]
         , button
@@ -522,21 +526,23 @@ viewTree model tab =
                                 "▸"
             in
             div
-                [ class "tree-row"
-                , classList [ ( "current", row.path == tab.path ), ( "cursor", Just row.path == model.treeCursor ) ]
-                , id
+                ([ class "tree-row"
+                 , classList [ ( "current", row.path == tab.path ), ( "cursor", Just row.path == model.treeCursor ) ]
+                 , id
                     (if Just row.path == model.treeCursor then
                         treeCursorId
 
                      else
                         ""
                     )
-                , style "padding-left" (px (toFloat row.depth * 14 + 4))
-                , onClick (TreeOpen row.path)
-                , on "auxclick" (middleClick (NavigateNewTab row.path))
-                , contextMenu (folderEntries model row.path)
-                , title row.path
-                ]
+                 , style "padding-left" (px (toFloat row.depth * 14 + 4))
+                 , onClick (TreeOpen row.path)
+                 , on "auxclick" (middleClick (NavigateNewTab row.path))
+                 , contextMenu (folderEntries model row.path)
+                 , title row.path
+                 ]
+                    ++ dropTarget model (DropFolder row.path) row.path
+                )
                 [ span [ class "twisty", stopPropagationOn "click" (D.succeed ( TreeToggle row.path, True )) ] [ text twisty ]
                 , span [ class ("icon " ++ rootIcon row.kind) ] []
                 , span [ class "label" ] [ text row.label ]
@@ -609,13 +615,15 @@ viewFavourites model tab =
         List.map
             (\f ->
                 button
-                    [ class "side-item"
-                    , classList [ ( "current", f.path == tab.path ), ( "missing", not f.exists ) ]
-                    , onClick (NavigateTo f.path)
-                    , on "auxclick" (middleClick (NavigateNewTab f.path))
-                    , contextMenu (entries f)
-                    , title f.path
-                    ]
+                    ([ class "side-item"
+                     , classList [ ( "current", f.path == tab.path ), ( "missing", not f.exists ) ]
+                     , onClick (NavigateTo f.path)
+                     , on "auxclick" (middleClick (NavigateNewTab f.path))
+                     , contextMenu (entries f)
+                     , title f.path
+                     ]
+                        ++ dropTarget model (DropFolder f.path) f.path
+                    )
                     [ span [ class "icon folder" ] [], span [ class "label" ] [ text (Path.name model.sep f.path) ] ]
             )
             model.favourites
@@ -736,6 +744,7 @@ viewContent model tab =
             , attribute "aria-rowcount" (String.fromInt count)
             , on "scroll" (D.map2 ListScrolled (D.at [ "target", "scrollTop" ] D.float) (D.at [ "target", "clientHeight" ] D.float))
             , on "focusin" (D.succeed (RegionFocused RegionList))
+            , attribute "data-drop" tab.path
             , preventDefaultOn "contextmenu" (D.map2 (\x y -> ( ListContext x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
             ]
             [ viewHeader model tab template
@@ -886,29 +895,47 @@ viewRow : Model -> Tab -> Filter.Query -> String -> Int -> Item -> ( String, Htm
 viewRow model tab query template index item =
     ( item.name
     , div
-        [ class "row"
-        , classList
+        ([ class "row"
+         , classList
             [ ( "selected", Set.member item.name tab.selected )
             , ( "cursor", index == tab.cursor )
             , ( "hidden-item", item.hidden )
             , ( "cut", isCut model item )
             ]
-        , style "top" (px (toFloat index * rowHeight))
-        , style "grid-template-columns" template
-        , attribute "role" "row"
-        , on "click"
+         , style "top" (px (toFloat index * rowHeight))
+         , style "grid-template-columns" template
+         , attribute "role" "row"
+         , on "click"
             (D.map2 (\c s -> RowClicked index { ctrl = c, shift = s })
                 (D.map2 (||) (D.field "ctrlKey" D.bool) (D.field "metaKey" D.bool))
                 (D.field "shiftKey" D.bool)
             )
-        , on "dblclick" (D.succeed (RowActivated index))
-        , on "auxclick" (middleClick (RowMiddleClicked index))
-        , Html.Events.custom "contextmenu"
+         , on "dblclick" (D.succeed (RowActivated index))
+         , on "auxclick" (middleClick (RowMiddleClicked index))
+         , on "mousedown"
+            (D.field "button" D.int
+                |> D.andThen
+                    (\b ->
+                        if b == 0 then
+                            D.map2 (ItemMouseDown index) (D.field "clientX" D.float) (D.field "clientY" D.float)
+
+                        else
+                            D.fail "not the left button"
+                    )
+            )
+         , Html.Events.custom "contextmenu"
             (D.map2 (\x y -> { message = RowContext index x y, stopPropagation = True, preventDefault = True })
                 (D.field "clientX" D.float)
                 (D.field "clientY" D.float)
             )
-        ]
+         ]
+            ++ (if item.isDir then
+                    dropTarget model (DropFolder item.path) item.path
+
+                else
+                    []
+               )
+        )
         (List.map (\( column, _ ) -> viewCell model tab query item column) tab.view.columns)
     )
 
@@ -995,6 +1022,7 @@ viewRenameCell item r =
         [ span [ class ("icon " ++ iconClass item) ] []
         , input
             [ id renameInputId
+            , stopPropagationOn "mousedown" (D.succeed ( NoOp, True ))
             , class "rename-input"
             , classList [ ( "invalid", r.error /= Nothing ) ]
             , value r.text
@@ -1537,10 +1565,19 @@ keyCommand { key, code, ctrl, shift, alt } =
                 )
 
         ( "v", True, False ) ->
-            Just CmdPaste
+            Just
+                (if shift then
+                    CmdPasteShortcut
+
+                 else
+                    CmdPaste
+                )
 
         ( "z", True, False ) ->
             Just CmdUndo
+
+        ( "n", True, True ) ->
+            Just CmdNewFromTemplate
 
         ( "n", True, False ) ->
             Just
@@ -1726,6 +1763,9 @@ viewNewItemDialog form =
                       , field Text.webNameHint "dialog-target" form.name NewItemName
                       ]
                     )
+
+                NewFromTemplate _ ->
+                    ( Text.newFromTemplateTitle, [ field Text.templateName dialogFirstInputId form.name NewItemName ] )
     in
     div [ class "overlay" ]
         [ div
@@ -1941,3 +1981,50 @@ viewJob model job =
                 (List.take 20 job.errors)
             )
         ]
+
+
+{-| Makes an element a drop target for items dragged inside File Catalog, and
+(through `data-drop`) for files dropped from other apps.
+-}
+dropTarget : Model -> DropTarget -> String -> List (Html.Attribute Msg)
+dropTarget model target value =
+    let
+        active =
+            case model.drag of
+                Just (DragItems d) ->
+                    d.moved && d.target == Just target
+
+                _ ->
+                    False
+    in
+    [ attribute "data-drop" value
+    , on "mouseenter" (D.succeed (DragOver (Just target)))
+    , on "mouseleave" (D.succeed (DragOver Nothing))
+    , classList [ ( "drop-target", active ) ]
+    ]
+
+
+{-| The label that follows the pointer while dragging items.
+-}
+viewDragGhost : Model -> Html Msg
+viewDragGhost model =
+    case model.drag of
+        Just (DragItems d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ]
+                    [ text
+                        (case d.names of
+                            [ single ] ->
+                                single
+
+                            many ->
+                                Text.plural (List.length many) "item" "items"
+                        )
+                    , span [ class "muted" ] [ text Text.dragHint ]
+                    ]
+
+            else
+                text ""
+
+        _ ->
+            text ""

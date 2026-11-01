@@ -20,6 +20,7 @@ use crate::platform;
 use crate::pools::IoPools;
 use crate::session::{self, Session};
 use crate::settings::{self, Settings};
+use crate::templates;
 use crate::watcher::DirWatcher;
 
 pub struct AppState {
@@ -485,4 +486,129 @@ pub async fn open_terminal(state: State<'_, AppState>, path: String) -> Result<(
 #[tauri::command]
 pub async fn reveal_item(path: String) -> Result<(), String> {
     platform::reveal(Path::new(&path))
+}
+
+/// The templates and the folder new templates are saved to (FR-TPL-01, FR-TPL-02).
+#[tauri::command]
+pub async fn templates_list(state: State<'_, AppState>) -> Result<templates::Templates, String> {
+    let folders = templates::folders(&state.paths, &state.settings.read().unwrap().templates.folders);
+    let first = folders[0].clone();
+    state.pools.run(&first, state.timeout(), move || templates::list(&folders)).await
+}
+
+/// Makes sure the first templates folder exists and returns it (Tools › Edit Templates Folder).
+#[tauri::command]
+pub async fn templates_folder(state: State<'_, AppState>) -> Result<String, String> {
+    let folder = templates::folders(&state.paths, &state.settings.read().unwrap().templates.folders).remove(0);
+    let created = folder.clone();
+    state
+        .pools
+        .run(&folder, state.timeout(), move || std::fs::create_dir_all(&created).map_err(|e| e.to_string()))
+        .await??;
+    Ok(folder.to_string_lossy().into_owned())
+}
+
+/// Creates an item from a template. `today` is [year, month, day] in the user's time zone (FR-TPL-03, FR-TPL-04).
+#[tauri::command]
+pub async fn fs_create_from_template(
+    state: State<'_, AppState>,
+    parent: String,
+    template: String,
+    name: String,
+    today: (i32, u32, u32),
+) -> Result<String, String> {
+    let jobs = state.jobs()?;
+    let date_format = state.settings.read().unwrap().templates.date_format.clone();
+    let dir = PathBuf::from(&parent);
+    let created = state
+        .pools
+        .run(&dir.clone(), Duration::from_secs(60), move || {
+            let values = templates::Values::new(&name, &dir, today, &date_format);
+            templates::create(Path::new(&template), &dir, &values)
+        })
+        .await??;
+    jobs.push_undo(UndoStep::Created(vec![created.clone()]));
+    Ok(created.to_string_lossy().into_owned())
+}
+
+/// Creates shortcuts to `targets` in `parent` (Paste as Shortcut, Alt+drag).
+#[tauri::command]
+pub async fn fs_create_shortcuts(
+    state: State<'_, AppState>,
+    parent: String,
+    targets: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let jobs = state.jobs()?;
+    let dir = PathBuf::from(&parent);
+    let created = state
+        .pools
+        .run(&dir.clone(), state.timeout(), move || {
+            targets.iter().map(|t| fileops::create_shortcut_auto(&dir, Path::new(t))).collect::<Result<Vec<_>, _>>()
+        })
+        .await??;
+    jobs.push_undo(UndoStep::Created(created.clone()));
+    Ok(created.iter().map(|p| p.to_string_lossy().into_owned()).collect())
+}
+
+/// Files on the system clipboard, shared with Explorer and other file managers (FR-OP-01).
+#[derive(Serialize)]
+pub struct ClipboardFiles {
+    paths: Vec<String>,
+    /// Set by another app's *Cut* (Windows only); None when unknown.
+    cut: Option<bool>,
+}
+
+#[tauri::command]
+pub async fn clipboard_set_files(state: State<'_, AppState>, paths: Vec<String>, cut: bool) -> Result<(), String> {
+    let mut clipboard = state.clipboard.lock().unwrap();
+    if clipboard.is_none() {
+        *clipboard = Some(arboard::Clipboard::new().map_err(|e| format!("The clipboard is not available: {e}"))?);
+    }
+    clipboard
+        .as_mut()
+        .expect("just set")
+        .set()
+        .file_list(&paths)
+        .map_err(|e| format!("Could not copy to the clipboard: {e}"))?;
+    platform::set_clipboard_cut(cut);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clipboard_get_files(state: State<'_, AppState>) -> Result<ClipboardFiles, String> {
+    let mut clipboard = state.clipboard.lock().unwrap();
+    if clipboard.is_none() {
+        *clipboard = Some(arboard::Clipboard::new().map_err(|e| format!("The clipboard is not available: {e}"))?);
+    }
+    let paths = clipboard.as_mut().expect("just set").get().file_list().unwrap_or_default();
+    Ok(ClipboardFiles {
+        paths: paths.iter().map(|p| p.to_string_lossy().into_owned()).collect(),
+        cut: platform::clipboard_cut(),
+    })
+}
+
+/// Starts a native drag of the files out of the window, to Explorer, the
+/// desktop or another app (FR-CC-08).
+#[tauri::command]
+pub async fn drag_out(window: tauri::WebviewWindow, paths: Vec<String>) -> Result<(), String> {
+    let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    let target = window.clone();
+    window
+        .run_on_main_thread(move || {
+            let item = drag::DragItem::Files(files);
+            let image = drag::Image::Raw(include_bytes!("../icons/32x32.png").to_vec());
+            #[cfg(target_os = "linux")]
+            let handle = target.gtk_window();
+            #[cfg(target_os = "linux")]
+            let result = handle.map_err(|e| e.to_string()).and_then(|w| {
+                drag::start_drag(&w, item, image, |_, _| {}, drag::Options::default()).map_err(|e| e.to_string())
+            });
+            #[cfg(not(target_os = "linux"))]
+            let result =
+                drag::start_drag(&target, item, image, |_, _| {}, drag::Options::default()).map_err(|e| e.to_string());
+            if let Err(e) = result {
+                tracing::warn!("drag out failed: {e}");
+            }
+        })
+        .map_err(|e| e.to_string())
 }

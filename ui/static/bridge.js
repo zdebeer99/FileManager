@@ -36,6 +36,15 @@
     }));
   });
 
+  // Files dropped from other apps: find the folder under the pointer
+  // (elements marked data-drop) before passing the drop to Elm.
+  listen('file-drop', (event) => {
+    const drop = event.payload;
+    const under = document.elementFromPoint(drop.x, drop.y);
+    const target = under && under.closest('[data-drop]');
+    send({ id: -1, type: 'event', name: 'file-drop', data: Object.assign({}, drop, { target: target ? target.dataset.drop : null }) });
+  });
+
   for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed', 'job-progress', 'job-conflict']) {
     listen(name, (event) => send({ id: -1, type: 'event', name, data: event.payload }));
   }

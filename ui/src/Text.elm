@@ -903,3 +903,28 @@ nameReservedWindows stem =
 nameTaken : String -> String
 nameTaken n =
     "\"" ++ n ++ "\" already exists."
+
+
+editTemplates : String
+editTemplates =
+    "Open Templates Folder"
+
+
+noTemplates : String
+noTemplates =
+    "No templates yet. Put files or folders in the templates folder."
+
+
+dragHint : String
+dragHint =
+    "Ctrl copies · Shift moves · Alt makes shortcuts"
+
+
+templateName : String
+templateName =
+    "Name (fills {name} in the template)"
+
+
+newFromTemplateTitle : String
+newFromTemplateTitle =
+    "New from template"

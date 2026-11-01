@@ -88,12 +88,15 @@ init _ =
             , conflicts = []
             , rename = Nothing
             , pendingRename = Nothing
+            , templates = []
+            , templatesFolder = ""
+            , now = Time.millisToPosix 0
             }
 
         ( withRequest, initCmd ) =
             request "app_init" (E.object []) False ReqInit model
     in
-    ( withRequest, Cmd.batch [ initCmd, Task.perform GotZone Time.here ] )
+    ( withRequest, Cmd.batch [ initCmd, Task.perform GotZone Time.here, Task.perform GotTime Time.now ] )
 
 
 emptyTab : Model -> Int -> String -> Tab
@@ -337,7 +340,13 @@ update msg model =
             -- The clicked menu item disappears, so give the list focus back first;
             -- an action that opens a dialog then moves focus into the dialog.
             update inner { model | menuBar = Nothing, popup = Nothing }
-                |> (\( m, cmd ) -> ( m, Cmd.batch [ focusList, cmd ] ))
+                |> (\( m, cmd ) ->
+                        if m.dialog == Nothing && m.rename == Nothing then
+                            ( m, Cmd.batch [ focusList, cmd ] )
+
+                        else
+                            ( m, cmd )
+                   )
 
         -- Quick Filter
         FilterInput text ->
@@ -385,11 +394,95 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        MouseMove x ->
-            mouseMove x model
+        MouseMove x y ->
+            mouseMove x y model
 
-        MouseUp ->
-            mouseUp model
+        MouseUp mods ->
+            mouseUp mods model
+
+        ItemMouseDown index x y ->
+            withActive model
+                (\tab ->
+                    Array.get index tab.visible
+                        |> Maybe.map
+                            (\item ->
+                                let
+                                    -- Dragging an unselected item drags just that item, like Explorer.
+                                    -- The selection itself is left alone, so Ctrl+click still works.
+                                    items =
+                                        if Set.member item.name tab.selected then
+                                            targetItems tab
+
+                                        else
+                                            [ item ]
+                                in
+                                ( { model
+                                    | drag =
+                                        Just
+                                            (DragItems
+                                                { paths = List.map .path items
+                                                , names = List.map .name items
+                                                , startX = x
+                                                , startY = y
+                                                , x = x
+                                                , y = y
+                                                , moved = False
+                                                , target = Nothing
+                                                }
+                                            )
+                                  }
+                                , Cmd.none
+                                )
+                            )
+                )
+
+        DragOver target ->
+            case model.drag of
+                Just (DragItems d) ->
+                    let
+                        -- Never drop a folder onto itself.
+                        allowed =
+                            case target of
+                                Just (DropFolder path) ->
+                                    if List.member path d.paths then
+                                        Nothing
+
+                                    else
+                                        target
+
+                                _ ->
+                                    target
+                    in
+                    ( { model | drag = Just (DragItems { d | target = allowed }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        DragLeftWindow ->
+            case model.drag of
+                Just (DragItems d) ->
+                    if d.moved then
+                        -- Leaving the window hands the drag to the system, so the items
+                        -- can be dropped on Explorer, the desktop or another app.
+                        request "drag_out" (E.object [ ( "paths", E.list E.string d.paths ) ]) False ReqIgnore { model | drag = Nothing }
+
+                    else
+                        ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        CreateFromTemplate template ->
+            if template.needsName then
+                ( { model | dialog = Just (NewItemDialog { kind = NewFromTemplate template.path, name = "", target = "", error = Nothing }), popup = Nothing, menuBar = Nothing }
+                , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+                )
+
+            else
+                createFromTemplate template.path "" { model | popup = Nothing }
+
+        GotTime now ->
+            ( { model | now = now }, Cmd.none )
 
         HeaderContext x y ->
             withActive model (\tab -> Just ( { model | popup = Just (MenuPopup { x = x, y = y, entries = Menu.columnEntries model tab }) }, Cmd.none ))
@@ -1050,32 +1143,35 @@ runCommand command model =
             toClipboard False model
 
         CmdPaste ->
+            request "clipboard_get_files" (E.object []) False (ReqClipboard False) model
+
+        CmdPasteShortcut ->
+            request "clipboard_get_files" (E.object []) False (ReqClipboard True) model
+
+        CmdNewFromTemplate ->
             withActive model
                 (\tab ->
-                    case model.clipboard of
-                        Just c ->
-                            Just
-                                (startJob
-                                    (if c.cut then
-                                        "move"
+                    Just
+                        ( model
+                        , Dom.getElement listId
+                            |> Task.attempt
+                                (\result ->
+                                    case result of
+                                        Ok el ->
+                                            ItemContextMenu (Menu.templateEntries model) (el.element.x + 60) (el.element.y + headerHeight + toFloat (tab.cursor + 1) * rowHeight - tab.scrollTop)
 
-                                     else
-                                        "copy"
-                                    )
-                                    c.paths
-                                    (Just tab.path)
-                                    False
-                                    (if c.cut then
-                                        { model | clipboard = Nothing }
-
-                                     else
-                                        model
-                                    )
+                                        Err _ ->
+                                            NoOp
                                 )
-
-                        Nothing ->
-                            Just (flash Text.clipboardEmpty model)
+                        )
+                        |> Maybe.map (andThen (request "templates_list" (E.object []) False ReqTemplates))
                 )
+
+        CmdSaveAsTemplate ->
+            withTargets model (\items -> request "templates_folder" (E.object []) False (ReqTemplatesFolder (Just (List.map .path items))) model)
+
+        CmdEditTemplates ->
+            request "templates_folder" (E.object []) False (ReqTemplatesFolder Nothing) model
 
         CmdDuplicate ->
             withTargets model (\items -> startJob "duplicate" (List.map .path items) Nothing False model)
@@ -1131,6 +1227,9 @@ runCommand command model =
 
                         NewWebLink ->
                             { kind = kind, name = "", target = "https://", error = Nothing }
+
+                        NewFromTemplate _ ->
+                            { kind = kind, name = "", target = "", error = Nothing }
             in
             ( { model | dialog = Just (NewItemDialog form), popup = Nothing, menuBar = Nothing }
             , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
@@ -1982,9 +2081,12 @@ sortClick column shift view =
     { view | sort = sort }
 
 
-mouseMove : Float -> Model -> ( Model, Cmd Msg )
-mouseMove x model =
+mouseMove : Float -> Float -> Model -> ( Model, Cmd Msg )
+mouseMove x y model =
     case model.drag of
+        Just (DragItems d) ->
+            ( { model | drag = Just (DragItems { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
         Just (ResizeColumn column startX startWidth) ->
             let
                 width =
@@ -2036,13 +2138,37 @@ mouseMove x model =
             ( model, Cmd.none )
 
 
-mouseUp : Model -> ( Model, Cmd Msg )
-mouseUp model =
+mouseUp : DropMods -> Model -> ( Model, Cmd Msg )
+mouseUp mods model =
     let
         done =
             { model | drag = Nothing }
     in
     case model.drag of
+        Just (DragItems d) ->
+            if d.moved then
+                let
+                    -- The element under the pointer decides; hover events can arrive late.
+                    target =
+                        case mods.under of
+                            Just "bookmark-bar" ->
+                                Just DropBookmarkBar
+
+                            Just path ->
+                                if List.member path d.paths then
+                                    Nothing
+
+                                else
+                                    Just (DropFolder path)
+
+                            Nothing ->
+                                d.target
+                in
+                dropItems mods d.paths target done
+
+            else
+                ( done, Cmd.none )
+
         Just (MoveColumn d) ->
             if not d.moved then
                 ( updateActive (\tab -> changeView (sortClick d.column d.shift) model tab) done, Cmd.none )
@@ -2745,6 +2871,13 @@ toClipboard cut model =
                     Text.itemsCopied (List.length items)
                 )
                 { model | clipboard = Just { paths = List.map .path items, cut = cut } }
+                -- Also on the system clipboard, so Explorer and other file managers can paste them (FR-OP-01).
+                |> andThen
+                    (request "clipboard_set_files"
+                        (E.object [ ( "paths", E.list E.string (List.map .path items) ), ( "cut", E.bool cut ) ])
+                        False
+                        ReqIgnore
+                    )
         )
 
 
@@ -3015,6 +3148,178 @@ folderMenuEntries model tab =
 
 
 
+-- CLIPBOARD, DRAG AND DROP, TEMPLATES
+
+
+{-| Pastes files from the system clipboard, or from File Catalog's own when
+the system one has no files. A cut made in File Catalog (or, on Windows, in
+Explorer) moves; anything else copies (FR-OP-01).
+-}
+pasteFiles : Bool -> List String -> Maybe Bool -> Model -> ( Model, Cmd Msg )
+pasteFiles asShortcut systemPaths systemCut model =
+    let
+        own =
+            model.clipboard
+
+        ( paths, cut, fromOwn ) =
+            case ( systemPaths, own ) of
+                ( [], Just c ) ->
+                    ( c.paths, c.cut, True )
+
+                ( _, Just c ) ->
+                    if List.sort c.paths == List.sort systemPaths then
+                        ( c.paths, c.cut, True )
+
+                    else
+                        ( systemPaths, Maybe.withDefault False systemCut, False )
+
+                _ ->
+                    ( systemPaths, Maybe.withDefault False systemCut, False )
+    in
+    case ( paths, activeTab model ) of
+        ( [], _ ) ->
+            flash Text.clipboardEmpty model
+
+        ( _, Just tab ) ->
+            if asShortcut then
+                request "fs_create_shortcuts" (E.object [ ( "parent", E.string tab.path ), ( "targets", E.list E.string paths ) ]) False (ReqShortcuts tab.id) model
+
+            else
+                startJob
+                    (if cut then
+                        "move"
+
+                     else
+                        "copy"
+                    )
+                    paths
+                    (Just tab.path)
+                    False
+                    (if cut && fromOwn then
+                        { model | clipboard = Nothing }
+
+                     else
+                        model
+                    )
+
+        ( _, Nothing ) ->
+            ( model, Cmd.none )
+
+
+{-| Drop: Ctrl copies, Shift moves, Alt makes shortcuts; otherwise a move on
+the same drive and a copy across drives (FR-COPY-06). On the Bookmark Bar,
+dropped items become bookmarks (FR-BB-03).
+-}
+dropItems : DropMods -> List String -> Maybe DropTarget -> Model -> ( Model, Cmd Msg )
+dropItems mods paths target model =
+    case target of
+        Just (DropFolder dest) ->
+            if mods.alt then
+                request "fs_create_shortcuts" (E.object [ ( "parent", E.string dest ), ( "targets", E.list E.string paths ) ]) False ReqIgnore model
+                    |> andThen reloadActive
+
+            else
+                startJob
+                    (if mods.ctrl then
+                        "copy"
+
+                     else if mods.shift then
+                        "move"
+
+                     else
+                        "transfer"
+                    )
+                    paths
+                    (Just dest)
+                    False
+                    model
+
+        Just DropBookmarkBar ->
+            List.foldl
+                (\path acc ->
+                    acc
+                        |> andThen
+                            (request "bookmarks_edit"
+                                (E.object
+                                    [ ( "edit"
+                                      , E.object
+                                            [ ( "op", E.string "add" )
+                                            , ( "name", E.string (Path.name model.sep path) )
+                                            , ( "target", E.string path )
+                                            , ( "group", E.list E.string [ "bar" ] )
+                                            ]
+                                      )
+                                    ]
+                                )
+                                False
+                                ReqBookmarkEdit
+                            )
+                )
+                ( model, Cmd.none )
+                paths
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+{-| The nearest `data-drop` value at or above an element.
+-}
+dropAttribute : D.Decoder (Maybe String)
+dropAttribute =
+    D.oneOf
+        [ D.at [ "dataset", "drop" ] D.string |> D.map Just
+        , D.field "parentElement" (D.nullable (D.lazy (\_ -> dropAttribute))) |> D.map (Maybe.andThen identity)
+        , D.succeed Nothing
+        ]
+
+
+templateDecoder : D.Decoder Template
+templateDecoder =
+    D.map5 Template
+        (D.field "name" D.string)
+        (D.field "path" D.string)
+        (D.field "isDir" D.bool)
+        (D.field "group" (D.list D.string))
+        (D.field "needsName" D.bool)
+
+
+createFromTemplate : String -> String -> Model -> ( Model, Cmd Msg )
+createFromTemplate template name model =
+    case activeTab model of
+        Just tab ->
+            request "fs_create_from_template"
+                (E.object
+                    [ ( "parent", E.string tab.path )
+                    , ( "template", E.string template )
+                    , ( "name", E.string name )
+                    , ( "today"
+                      , E.list E.int
+                            [ Time.toYear model.zone model.now
+                            , Format.monthNumber (Time.toMonth model.zone model.now)
+                            , Time.toDay model.zone model.now
+                            ]
+                      )
+                    ]
+                )
+                False
+                (ReqCreate tab.id False)
+                model
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+isTemplateForm : NewItemForm -> Bool
+isTemplateForm form =
+    case form.kind of
+        NewFromTemplate _ ->
+            True
+
+        _ ->
+            False
+
+
+
 -- RENAME
 
 
@@ -3153,6 +3458,9 @@ submitNewItem model =
 
                 item =
                     case form.kind of
+                        NewFromTemplate _ ->
+                            []
+
                         NewFile ->
                             [ ( "kind", E.string "file" ), ( "name", E.string name ) ]
 
@@ -3163,7 +3471,7 @@ submitNewItem model =
                             [ ( "kind", E.string "webLink" ), ( "name", E.string name ), ( "url", E.string target ) ]
 
                 problem =
-                    if form.kind /= NewFile && (target == "" || target == "https://") then
+                    if form.kind /= NewFile && not (isTemplateForm form) && (target == "" || target == "https://") then
                         Just Text.targetNeeded
 
                     else
@@ -3174,12 +3482,18 @@ submitNewItem model =
                     ( updateNewItem (\f -> { f | error = Just error }) model, Cmd.none )
 
                 Nothing ->
-                    request "fs_create"
-                        (E.object [ ( "parent", E.string tab.path ), ( "item", E.object item ) ])
-                        False
-                        (ReqCreate tab.id False)
-                        { model | dialog = Nothing }
-                        |> addCmd focusList
+                    case form.kind of
+                        NewFromTemplate template ->
+                            createFromTemplate template name { model | dialog = Nothing }
+                                |> addCmd focusList
+
+                        _ ->
+                            request "fs_create"
+                                (E.object [ ( "parent", E.string tab.path ), ( "item", E.object item ) ])
+                                False
+                                (ReqCreate tab.id False)
+                                { model | dialog = Nothing }
+                                |> addCmd focusList
 
         _ ->
             ( model, Cmd.none )
@@ -3538,6 +3852,46 @@ handleResponse reqId req envelope model =
             else
                 flashError model
 
+        ReqTemplates ->
+            case ok (D.map2 Tuple.pair (D.field "folder" D.string) (D.field "templates" (D.list templateDecoder))) of
+                Just ( folder, templates ) ->
+                    ( { model | templatesFolder = folder, templates = templates }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ReqTemplatesFolder saving ->
+            case ( ok D.string, saving ) of
+                ( Just folder, Just paths ) ->
+                    startJob "copy" paths (Just folder) False { model | templatesFolder = folder }
+                        |> andThen (request "templates_list" (E.object []) False ReqTemplates)
+
+                ( Just folder, Nothing ) ->
+                    addTab folder True model
+
+                _ ->
+                    flashError model
+
+        ReqClipboard asShortcut ->
+            case ok (D.map2 Tuple.pair (D.field "paths" (D.list D.string)) (D.field "cut" (D.nullable D.bool))) of
+                Just ( paths, systemCut ) ->
+                    pasteFiles asShortcut paths systemCut model
+
+                Nothing ->
+                    -- The system clipboard is not available: use File Catalog's own.
+                    pasteFiles asShortcut [] Nothing model
+
+        ReqShortcuts tabId ->
+            case ok (D.list D.string) of
+                Just (first :: _) ->
+                    selectAfterReload tabId (Path.name model.sep first) model
+
+                Just [] ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
 
 type alias InitData =
     { settings : Settings
@@ -3652,6 +4006,7 @@ boot data model =
         |> andThen (loadView booted.active)
         |> andThen persist
         |> andThen (request "bookmarks_get" (E.object []) False ReqBookmarks)
+        |> andThen (request "templates_list" (E.object []) False ReqTemplates)
         |> andThen (request "perf_mark" (E.object [ ( "label", E.string "ui-booted" ) ]) False ReqIgnore)
         |> addCmd (Cmd.batch [ focusList, measureList ])
 
@@ -3868,6 +4223,30 @@ handleEvent name data model =
                 Err _ ->
                     ( model, Cmd.none )
 
+        "file-drop" ->
+            case D.decodeValue (D.map3 (\k p t -> ( k, p, t )) (D.field "kind" D.string) (D.field "paths" (D.list D.string)) (D.field "target" (D.nullable D.string))) data of
+                Ok ( "drop", paths, target ) ->
+                    if List.isEmpty paths then
+                        ( model, Cmd.none )
+
+                    else
+                        let
+                            dropTarget =
+                                case target of
+                                    Just "bookmark-bar" ->
+                                        Just DropBookmarkBar
+
+                                    Just path ->
+                                        Just (DropFolder path)
+
+                                    Nothing ->
+                                        activeTab model |> Maybe.map (.path >> DropFolder)
+                        in
+                        dropItems { ctrl = False, shift = False, alt = False, under = Nothing } paths dropTarget model
+
+                _ ->
+                    ( model, Cmd.none )
+
         "job-conflict" ->
             case D.decodeValue conflictDecoder data of
                 Ok conflict ->
@@ -3971,10 +4350,18 @@ subscriptions model =
         [ Ports.fromBackend FromBackend
         , Browser.Events.onResize (\_ _ -> WindowResized)
         , Browser.Events.onKeyUp (D.map KeyUp (D.field "key" D.string))
+        , Time.every 60000 GotTime
         , if model.drag /= Nothing then
             Sub.batch
-                [ Browser.Events.onMouseMove (D.map MouseMove (D.field "clientX" D.float))
-                , Browser.Events.onMouseUp (D.succeed MouseUp)
+                [ Browser.Events.onMouseMove (D.map2 MouseMove (D.field "clientX" D.float) (D.field "clientY" D.float))
+                , Browser.Events.onMouseUp
+                    (D.map4 DropMods
+                        (D.map2 (||) (D.field "ctrlKey" D.bool) (D.field "metaKey" D.bool))
+                        (D.field "shiftKey" D.bool)
+                        (D.field "altKey" D.bool)
+                        (D.field "target" dropAttribute)
+                        |> D.map MouseUp
+                    )
                 ]
 
           else

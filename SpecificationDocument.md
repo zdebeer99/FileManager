@@ -6,7 +6,8 @@
 | Date | 2026-10-31 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
 | Status | For review |
-| Changes | 0.2: Platforms decided: Windows primary, Linux supported, macOS deferred. |
+| Changes | 0.4: Scope reduced (decision log 13.1, 2026-11-01): project folders, cloud sync status and pinned tabs moved out of v1.0; ZIP moved to a later version; Compare dropped. |
+| | 0.2: Platforms decided: Windows primary, Linux supported, macOS deferred. |
 | | 0.3: Review decisions merged: Rust confirmed, Elm 0.19.3, separate I/O threads, folder settings only in the app settings folder, minimal Context view, standard Explorer columns, Duplicate / ZIP / Compare added, e-mails handled as files. |
 
 ---
@@ -25,7 +26,7 @@ Its guiding principle is **no lock-in**: everything File Catalog creates (folder
 
 ### 1.3 Scope
 
-**In scope (v1.0):** the application layout, navigation, tabs, bookmarks, favourites, sorting/filtering, per-folder view persistence, quick filter, quick find (file and folder names), creating files, folders, shortcuts and items from templates, file operations, the command palette, customisable shortcuts and toolbar, cloud sync status, project folders (Section 6.14) and human-readable configuration.
+**In scope (v1.0):** the application layout, navigation, tabs, bookmarks, favourites, sorting/filtering, per-folder view persistence, quick filter, quick find (file and folder names), creating files, folders, shortcuts and items from templates, file operations, the command palette, customisable shortcuts and toolbar, and human-readable configuration.
 
 **Out of scope (v1.0):** see Section 12.
 
@@ -190,6 +191,8 @@ All requests are asynchronous and carry a client-generated `reqId`. Responses an
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `fs_rename` / `fs_create` | `{ path, newName }` / `{ parent, item: { kind, … } }` | new path |
 | `clipboard_write_text` / `open_terminal` / `reveal_item` | `{ text }` / `{ path }` | — |
+| `templates_list` / `templates_folder` / `fs_create_from_template` | `{ parent, template, name, today }` | templates / folder / new path |
+| `fs_create_shortcuts` / `clipboard_set_files` / `clipboard_get_files` / `drag_out` | `{ parent, targets }` / `{ paths, cut }` / — / `{ paths }` | — |
 | `undo_last` | — | `{ ok } \| { error }` |
 
 **Events (Rust → Elm):** `dir.chunk`, `dir.done`, `dir.changed`, `dir.error`, `job.progress`, `job.conflict`, `job.done`, `search.results`, `search.done`, `settings.changed`, `bookmarks.changed`, `syncStatus.changed`.
@@ -299,7 +302,7 @@ The cache directory is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache`
 
 - **FR-TAB-01 (Must)** Each tab has its own location, back/forward history, selection, scroll position, quick filter and sort.
 - **FR-TAB-02 (Must)** New tab (`Ctrl+T`) opens the current folder; close (`Ctrl+W`, middle-click); reopen closed tab (`Ctrl+Shift+T`, last 20 kept); switch (`Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+1…9`); reorder by dragging.
-- **FR-TAB-03 (Should)** Pinned tabs: small, cannot be closed by accident, always kept.
+- **FR-TAB-03 (Later)** Pinned tabs: small, cannot be closed by accident, always kept.
 - **FR-TAB-04 (Must)** Open tabs and their locations are restored on start-up (configurable).
 - **FR-TAB-05 (Should)** Dropping files onto a tab copies/moves them into that tab's folder.
 
@@ -338,6 +341,8 @@ The cache directory is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache`
 - **FR-CC-10 (Must)** Empty and error states: *"This folder is empty"*, *"Access denied"*, *"Location not available"* (with a *Retry* button).
 
 #### 5.8.1 Sync status column
+
+> **Not in v1.0** (decision 2026-11-01). The basic Windows column built in M1 (read from file attributes only, so it never downloads anything) stays available, but the requirements below are not developed further in v1.0.
 
 **FR-SYNC-01 (Must, Windows)** Shows the cloud state of items in folders managed by a cloud sync provider (OneDrive, SharePoint, Dropbox, Google Drive and others that use the Windows Cloud Files API):
 
@@ -594,9 +599,9 @@ The idea: when you look at a folder, the sidebar shows links to other folders, d
 #### 6.12.6 Duplicate, ZIP and Compare
 
 - **FR-DUP-01 (Must)** **Duplicate** makes a copy of each selected item next to the original, named like Explorer does: `Report - Copy.docx`, then `Report - Copy (2).docx`. Runs as a job.
-- **FR-ZIP-01 (Must)** **Compress to ZIP** packs the selected items into one `.zip` file in the current folder (named after the single item, or after the folder for several items) and starts renaming it. Runs as a job with progress.
-- **FR-ZIP-02 (Must)** **Extract ▸** for `.zip` files: *Extract here* and *Extract to "<zip name>"*. Runs as a job; name conflicts use the conflict dialog (FR-COPY-04). Entries that would land outside the destination folder (`../` paths) are refused.
-- **FR-CMP-01 (Should)** **Compare** (exactly two files selected) checks whether they are identical (size first, then content) and shows the result in the status bar. If a compare tool is set (`compare.tool` in `settings.toml`, e.g. WinMerge or Meld), it opens the two files in that tool instead. The conflict dialog's *Compare* button (FR-COPY-04) uses the same function.
+- **FR-ZIP-01 (Later)** **Compress to ZIP** packs the selected items into one `.zip` file in the current folder (named after the single item, or after the folder for several items) and starts renaming it. Runs as a job with progress.
+- **FR-ZIP-02 (Later)** **Extract ▸** for `.zip` files: *Extract here* and *Extract to "<zip name>"*. Runs as a job; name conflicts use the conflict dialog (FR-COPY-04). Entries that would land outside the destination folder (`../` paths) are refused.
+- **FR-CMP-01 (Excluded)** **Compare** (exactly two files selected) checks whether they are identical (size first, then content) and shows the result in the status bar. If a compare tool is set (`compare.tool` in `settings.toml`, e.g. WinMerge or Meld), it opens the two files in that tool instead. The conflict dialog's *Compare* button (FR-COPY-04) uses the same function.
 
 ### 6.13 Properties
 
@@ -604,6 +609,8 @@ The idea: when you look at a folder, the sidebar shows links to other folders, d
 - **FR-PROP-02 (Should)** On Windows, a button opens the native Explorer Properties dialog.
 
 ### 6.14 Project folders
+
+> **Not in v1.0** (decision 2026-11-01). Kept here for a later version.
 
 This section supports the main workflow in the requirements: open a project folder for a short task, gather links to documents and websites from other folders, work in it, and when the project is done, file it under the main subject folder (for example, a vendor folder). Everything stays plain files and folders, so the project folder still works without File Catalog.
 
@@ -757,13 +764,6 @@ skipOnlineOnlyFolders = true
 folders    = ["templates"]        # relative to the settings folder, or full paths
 dateFormat = "yyyy-MM-dd"
 
-[projects]
-root = ""                         # empty = current folder
-template = "_Projects/{date} {name}"
-
-[compare]
-tool = ""                         # e.g. 'C:\Program Files\WinMerge\WinMergeU.exe' or "meld"; empty = built-in check
-
 [network]
 timeoutSeconds = 5
 ```
@@ -893,9 +893,9 @@ Messages say what happened, why (if known), and what the user can do next. Notif
 | **M1 — Core shell** | Tauri + Elm skeleton, IPC bridge, directory listing with cache and watcher, Details view (virtualised), navigation, Address Bar, tabs, status bar, `settings.toml`. | Done (2026-10-31). Start-up still to be measured on Windows. |
 | **M2 — Organise** | See 11.1. | Done (2026-10-31), with the deferrals listed in 11.1. |
 | **M3a — Operate: core** | See 11.2. | Done (2026-10-31), with the deferrals listed in 11.2. |
-| **M3b — Operate: integration** | Clipboard exchange with Explorer and other file managers (including *Paste as Shortcut*), drag and drop (including onto the sidebar, Bookmark Bar and tabs), templates (6.8), Compress/Extract ZIP and Compare (6.12.6). | Next |
-| **M4 — Speed** | Command palette, key bindings file and editor (menus then show custom keys), customisable toolbar, Quick Find. | |
-| **M5 — Projects and polish** | Context bookmarks and Context view, project folders, sync status, Quick View, pinned tabs, lazy metadata columns (Owner, Windows document properties, registered type names), accessibility, themes, installer. | |
+| **M3b — Operate: integration** | Clipboard exchange with Explorer and other file managers (including *Paste as Shortcut*), drag and drop (including onto the sidebar, Bookmark Bar and tabs), templates (6.8). ZIP moved to a later version and Compare dropped (decision 2026-11-01). See 11.3. | Done (2026-11-01), with the deferrals listed in 11.3. |
+| **M4 — Speed** | Command palette, key bindings file and editor (menus then show custom keys), customisable toolbar, Quick Find. | Next |
+| **M5 — Projects and polish** | Context bookmarks and Context view, Quick View, lazy metadata columns (Owner, Windows document properties, registered type names), accessibility, themes, installer. | |
 
 ### 11.1 M2 — Organise
 
@@ -918,9 +918,9 @@ Also: find the 200–350 ms delay between UI start and first listing seen in M1.
 |---|---|---|
 | Custom "between" range in the Size column filter (the size buckets work) | FR-CF-01 | M4 |
 | Saving column filters as part of a folder view | FR-CF-04 (Should) | M4 |
-| Dragging items onto the Bookmark Bar, sidebar or tabs | FR-BB-03, FR-TAB-05 | M3 (with drag and drop) |
+| Dragging items onto the Bookmark Bar, sidebar or tabs | FR-BB-03, FR-TAB-05 | Done in M3b |
 | `»` overflow menu on a full Bookmark Bar | FR-BB-05 (Should) | M5 |
-| Reordering tabs and favourites by dragging (favourites can be moved with *Move Up/Down*) | FR-TAB-02, FR-SB-01 | M3 |
+| Reordering tabs and favourites by dragging (favourites can be moved with *Move Up/Down*) | FR-TAB-02, FR-SB-01 | M4 |
 | *Locate…* for a bookmark whose target is missing (*Delete* works) | FR-BM-03 | M4 (needs Quick Find) |
 | Type-ahead in the folder tree (it works in the file list) | FR-SB-01 | M4 |
 | A folder's saved view follows it when File Catalog renames or moves it | FR-FS-02 | M3 (with rename and move) |
@@ -936,18 +936,33 @@ Built: background job queue with progress, speed, time left, pause and cancel, a
 | Several jobs at once on different drives (jobs now run one after another) | FR-OP-02 | M4 |
 | *Retry* and *Skip* buttons for failed items (*Show in folder* works) | FR-OP-04 | M4 |
 | Progress inside one very large file (progress now moves per file) | FR-OP-03 | M4 |
-| *Compare* button in the conflict dialog | FR-COPY-04 | M3b (with Compare) |
-| *"Downloading…"* label when copying online-only cloud files | FR-COPY-07 | M5 (with sync status) |
+| *Compare* button in the conflict dialog | FR-COPY-04 | Dropped with Compare (FR-CMP-01) |
+| *"Downloading…"* label when copying online-only cloud files | FR-COPY-07 | Later version (with sync status) |
 | Batch rename | FR-REN-04 (Should) | M4 |
 | Checking that files changed since the operation before undoing a copy or create | FR-UNDO-02 (Should) | M4 |
 | Filling in a web link's name from the page title (the domain is used) | FR-NEW-04 | M5 |
 | *Open With* and *Properties* | FR-OPEN-02, FR-PROP-01 | M5 |
 | Windows "Show more options" (native Explorer menu) | FR-CC-07 | M5 |
 
+### 11.3 M3b — Operate: integration
+
+Built: files exchanged through the system clipboard with Explorer and other file managers, both ways (FR-OP-01), with Explorer's *cut* marker on Windows; *Paste as Shortcut* (Ctrl+Shift+V); drag and drop inside File Catalog onto folders, the folder tree, Favourites, tabs and the Bookmark Bar, with Ctrl = copy, Shift = move, Alt = shortcuts and otherwise move on the same drive / copy across drives (FR-COPY-06, FR-BB-03, FR-TAB-05); files dropped in from other apps; dragging items out of the window to other apps (FR-CC-08); templates with `_Group` menus, placeholders in names and in text-file contents, *Save Selection as Template* and *Edit Templates Folder* (FR-TPL-01 to 06); `[templates]` in settings.toml.
+
+**Deferred from M3b:**
+
+| Item | Requirement | Moved to |
+|---|---|---|
+| On Linux, a *cut* in File Catalog pastes as a copy in other file managers (the clipboard library can't mark a cut there) | FR-OP-01 | Later version |
+| Highlighting the target folder while files from another app are dragged over the window | FR-CC-08 | M5 |
+| A drag cursor that shows copy / move / shortcut | FR-COPY-06 | M5 |
+| Checked by hand only inside File Catalog: dropping onto Explorer / another app and dropping in from them still need a test on Windows and Linux | FR-CC-08 | Windows test |
+
 ---
 
 ## 12. Out of scope for v1.0
 
+- Project folders (6.14), cloud sync status beyond the basic Windows column (5.8.1), and pinned tabs (FR-TAB-03); decision 2026-11-01.
+- Compress/Extract ZIP (FR-ZIP-01, FR-ZIP-02): a later version. Compare (FR-CMP-01): dropped.
 - Searching inside file contents, and a background search index (FR-FIND-07).
 - Built-in cloud storage clients (the app uses the OS sync clients' folders).
 - E-mail client integration (e-mails are handled as saved files; FR-PRJ-07).
@@ -975,6 +990,8 @@ None at the moment. New questions are added here as they come up.
 | 2026-10-31 | Standard File Explorer columns available; Name, dates, Size, Sync status shown by default | 5.8.2 |
 | 2026-10-31 | *File Project* with link options kept | FR-PRJ-04 |
 | 2026-10-31 | Duplicate, Compress/Extract ZIP and Compare added | 6.12.6 |
+| 2026-11-01 | Project folders, cloud sync status (beyond the basic Windows column) and pinned tabs moved out of v1.0; this replaces the 2026-10-31 *File Project* decision | 1.3, 5.8.1, 6.14, 12 |
+| 2026-11-01 | Compress/Extract ZIP moved to a later version; Compare dropped | 6.12.6, 12 |
 
 ---
 
@@ -984,7 +1001,7 @@ None at the moment. New questions are added here as they come up.
 |---|---|
 | File explorer: find/open documents, basic file operations | 6.1, 6.11, 6.12 |
 | Focus on organising and navigating many files | 6.4, 6.5, 6.14 |
-| Link documents from several folders into a project, then move it back | 6.14 |
+| Link documents from several folders into a project, then move it back | 6.14 (later version) |
 | Use standard files/folders; works without the app | 1.2, 6.7, 6.14 |
 | Ultra-fast, keyboard-driven | 6.9, 6.10, 7.1, FR-UI-05 |
 | Full Menu Bar | 5.2 |

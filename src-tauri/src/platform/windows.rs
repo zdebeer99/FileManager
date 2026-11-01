@@ -134,3 +134,62 @@ pub fn reveal(path: &Path) -> Result<(), String> {
         .map(|_| ())
         .map_err(|e| format!("Could not open Explorer: {e}"))
 }
+
+const DROPEFFECT_MOVE: u32 = 2;
+
+fn drop_effect_format() -> u32 {
+    let name: Vec<u16> = "Preferred DropEffect".encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: `name` is a valid, NUL-terminated UTF-16 string that outlives the call.
+    unsafe { windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW(name.as_ptr()) }
+}
+
+/// Marks the files on the clipboard as cut or copied, so Explorer moves or
+/// copies them when it pastes (FR-OP-01).
+pub fn set_clipboard_cut(cut: bool) {
+    use windows_sys::Win32::System::DataExchange::{CloseClipboard, OpenClipboard, SetClipboardData};
+    use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    let effect: u32 = if cut { DROPEFFECT_MOVE } else { 5 }; // 5 = copy | link
+                                                             // SAFETY: standard clipboard protocol; the memory handle is handed to the
+                                                             // clipboard, which owns it after SetClipboardData succeeds.
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return;
+        }
+        let memory = GlobalAlloc(GMEM_MOVEABLE, std::mem::size_of::<u32>());
+        if !memory.is_null() {
+            let target = GlobalLock(memory) as *mut u32;
+            if !target.is_null() {
+                *target = effect;
+                GlobalUnlock(memory);
+                SetClipboardData(drop_effect_format(), memory);
+            }
+        }
+        CloseClipboard();
+    }
+}
+
+/// Whether the files on the clipboard were cut (Some(true)) or copied.
+pub fn clipboard_cut() -> Option<bool> {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    };
+    use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    let format = drop_effect_format();
+    // SAFETY: standard clipboard protocol; the data is only read while locked.
+    unsafe {
+        if IsClipboardFormatAvailable(format) == 0 || OpenClipboard(std::ptr::null_mut()) == 0 {
+            return None;
+        }
+        let handle = GetClipboardData(format);
+        let mut result = None;
+        if !handle.is_null() {
+            let value = GlobalLock(handle) as *const u32;
+            if !value.is_null() {
+                result = Some(*value & DROPEFFECT_MOVE != 0);
+                GlobalUnlock(handle);
+            }
+        }
+        CloseClipboard();
+        result
+    }
+}

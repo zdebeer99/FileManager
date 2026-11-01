@@ -31,6 +31,9 @@ pub enum JobKind {
     Move,
     Duplicate,
     Delete,
+    /// Drag and drop: a move on the same volume, otherwise a copy (FR-COPY-06).
+    /// Resolved to Move or Copy when the job is submitted.
+    Transfer,
 }
 
 #[derive(Deserialize, Debug)]
@@ -156,7 +159,12 @@ impl JobManager {
     }
 
     /// Queues a job and returns its id.
-    pub fn submit(&self, request: JobRequest) -> u64 {
+    pub fn submit(&self, mut request: JobRequest) -> u64 {
+        if request.kind == JobKind::Transfer {
+            let dest = PathBuf::from(request.dest.clone().unwrap_or_default());
+            let same = request.sources.iter().all(|s| fileops::same_volume(Path::new(s), &dest));
+            request.kind = if same { JobKind::Move } else { JobKind::Copy };
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let control = Arc::new(Control::default());
         let first = request
@@ -298,7 +306,7 @@ impl<'a> Runner<'a> {
                 }
                 (!created.is_empty()).then_some(UndoStep::Created(created))
             }
-            JobKind::Move => {
+            JobKind::Move | JobKind::Transfer => {
                 self.emit(true);
                 let dest = PathBuf::from(self.request.dest.clone().unwrap_or_default());
                 let moved: Vec<(PathBuf, PathBuf)> = sources.iter().filter_map(|s| self.move_entry(s, &dest)).collect();
@@ -804,6 +812,18 @@ mod tests {
         let message = undo(manager.pop_undo().unwrap()).unwrap();
         assert!(message.contains("back"), "{message}");
         assert!(src.exists());
+    }
+
+    #[test]
+    fn a_transfer_on_the_same_volume_is_a_move() {
+        let dir = tempfile::tempdir().unwrap();
+        let (src, dst) = (dir.path().join("a.txt"), dir.path().join("dst"));
+        fs::write(&src, "x").unwrap();
+        fs::create_dir(&dst).unwrap();
+        let (manager, log) = start(Action::Skip);
+        let status = run(&manager, &log, request(JobKind::Transfer, &[&src], Some(&dst)));
+        assert_eq!(status["kind"], "move");
+        assert!(!src.exists() && dst.join("a.txt").exists());
     }
 
     #[test]

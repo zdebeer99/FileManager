@@ -16,7 +16,22 @@ pub struct Settings {
     pub general: General,
     pub layout: Layout,
     pub view: ViewSection,
+    pub templates: TemplateSettings,
     pub network: Network,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TemplateSettings {
+    /// Relative to the settings folder, or full paths (FR-TPL-01).
+    pub folders: Vec<String>,
+    pub date_format: String,
+}
+
+impl Default for TemplateSettings {
+    fn default() -> Self {
+        Self { folders: vec!["templates".into()], date_format: "yyyy-MM-dd".into() }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -186,6 +201,7 @@ pub fn parse(text: &str) -> (Settings, Vec<String>) {
         general: section(&table, "general", "general", &mut warnings),
         layout: section(&table, "layout", "layout", &mut warnings),
         view: ViewSection { default: section(&view_table, "default", "view.default", &mut warnings) },
+        templates: section(&table, "templates", "templates", &mut warnings),
         network: section(&table, "network", "network", &mut warnings),
     };
     (settings, warnings)
@@ -235,6 +251,10 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 # showHidden   = false
 # showExtensions = true
 # dateFormat   = "yyyy-MM-dd HH:mm"
+
+# [templates]
+# folders    = ["templates"]        # relative to this settings folder, or full paths (e.g. a shared team folder)
+# dateFormat = "yyyy-MM-dd"         # how {date} is written in template names
 
 # [network]
 # timeoutSeconds = 5                # how long to wait for a network folder

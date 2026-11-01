@@ -13,6 +13,7 @@ mod platform;
 mod pools;
 mod session;
 mod settings;
+mod templates;
 mod watcher;
 
 use std::sync::OnceLock;
@@ -60,7 +61,15 @@ fn main() {
             commands::clipboard_write_text,
             commands::open_terminal,
             commands::reveal_item,
+            commands::templates_list,
+            commands::templates_folder,
+            commands::fs_create_from_template,
+            commands::fs_create_shortcuts,
+            commands::clipboard_set_files,
+            commands::clipboard_get_files,
+            commands::drag_out,
         ])
+        .on_window_event(forward_file_drops)
         .build(tauri::generate_context!())
         .expect("failed to build the File Catalog window")
         .run(|app, event| {
@@ -68,6 +77,22 @@ fn main() {
                 app.state::<commands::AppState>().write_snapshot();
             }
         });
+}
+
+/// Files dragged in from Explorer, the desktop or another app go to the UI as
+/// `file-drop` events, in CSS pixels (FR-CC-08).
+fn forward_file_drops(window: &tauri::Window, event: &tauri::WindowEvent) {
+    use tauri::{DragDropEvent, Emitter};
+    let tauri::WindowEvent::DragDrop(drop) = event else { return };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let (kind, paths, position) = match drop {
+        DragDropEvent::Enter { paths, position } => ("enter", paths.clone(), Some(*position)),
+        DragDropEvent::Over { position } => ("over", Vec::new(), Some(*position)),
+        DragDropEvent::Drop { paths, position } => ("drop", paths.clone(), Some(*position)),
+        _ => ("leave", Vec::new(), None),
+    };
+    let (x, y) = position.map_or((0.0, 0.0), |p| (p.x / scale, p.y / scale));
+    let _ = window.emit("file-drop", serde_json::json!({ "kind": kind, "paths": paths, "x": x, "y": y }));
 }
 
 /// Daily log files in `<settings folder>/logs`, kept for 7 days (NFR-MNT-03).

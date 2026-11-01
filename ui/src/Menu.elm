@@ -1,4 +1,4 @@
-module Menu exposing (Menu, columnEntries, menus, selectable, viewDropdown, viewMenuBar)
+module Menu exposing (Menu, columnEntries, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
 
 {-| The Menu Bar (FR-MENU-01): every command grouped in standard menus.
 Commands that later milestones add are shown disabled, so the menus
@@ -11,6 +11,7 @@ import Html.Attributes exposing (attribute, class, classList, disabled, tabindex
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
 import Json.Decode as D
 import Path
+import Text
 import Types exposing (..)
 
 
@@ -44,13 +45,10 @@ menus model tab =
             , cmd "New File…" "Ctrl+N" (CmdNewItem NewFile)
             , cmd "New Shortcut…" "" (CmdNewItem NewShortcut)
             , cmd "New Web Link…" "" (CmdNewItem NewWebLink)
-            , later "New from Template" "Ctrl+Alt+N"
+            , Submenu "New from Template" (templateEntries model)
             , Separator
             , cmd "Open" "Enter" CmdOpen
             , later "Open With" ""
-            , later "Compress to ZIP" ""
-            , later "Extract" ""
-            , later "Compare" ""
             , cmd "Open in Terminal" "Ctrl+`" CmdOpenTerminal
             , cmd "Show in File Manager" "" CmdReveal
             , later "Properties" "Alt+Enter"
@@ -66,7 +64,7 @@ menus model tab =
             , cmd "Cut" "Ctrl+X" CmdCut
             , cmd "Copy" "Ctrl+C" CmdCopy
             , Action { label = "Paste", key = "Ctrl+V", msg = Maybe.map (\_ -> KeyCommand CmdPaste) model.clipboard, checked = Nothing }
-            , later "Paste as Shortcut" "Ctrl+Shift+V"
+            , cmd "Paste as Shortcut" "Ctrl+Shift+V" CmdPasteShortcut
             , cmd "Duplicate" "" CmdDuplicate
             , cmd "Copy Path" "Ctrl+Shift+C" CmdCopyPath
             , Separator
@@ -173,8 +171,8 @@ menus model tab =
             [ later "Quick Find" "Ctrl+Shift+F"
             , cmd "Quick Filter" "Ctrl+F" CmdFocusFilter
             , later "Command Palette" "Ctrl+P"
-            , later "Project" ""
-            , later "Edit Templates Folder" ""
+            , cmd "Save Selection as Template" "" CmdSaveAsTemplate
+            , cmd "Edit Templates Folder" "" CmdEditTemplates
             , Separator
             , cmd "Open Settings File" "Ctrl+," CmdOpenSettingsFile
             , later "Open Key Bindings File" ""
@@ -398,3 +396,43 @@ viewDropdown active sub trackHover entries =
             )
             entries
         )
+
+
+{-| The New from Template menu: templates, grouped by their `_Group` folders (FR-TPL-02).
+-}
+templateEntries : Model -> List MenuEntry
+templateEntries model =
+    let
+        entry t =
+            Action { label = t.name, key = "", msg = Just (CreateFromTemplate t), checked = Nothing }
+
+        topLevel =
+            List.filter (\t -> List.isEmpty t.group) model.templates
+
+        groups =
+            List.foldl
+                (\t acc ->
+                    case List.head t.group of
+                        Just g ->
+                            if List.member g acc then
+                                acc
+
+                            else
+                                acc ++ [ g ]
+
+                        Nothing ->
+                            acc
+                )
+                []
+                model.templates
+
+        footer =
+            [ Separator, Action { label = Text.editTemplates, key = "", msg = Just (KeyCommand CmdEditTemplates), checked = Nothing } ]
+    in
+    if List.isEmpty model.templates then
+        Action { label = Text.noTemplates, key = "", msg = Nothing, checked = Nothing } :: footer
+
+    else
+        List.map entry topLevel
+            ++ List.map (\g -> Submenu g (List.map entry (List.filter (\t -> List.head t.group == Just g) model.templates))) groups
+            ++ footer

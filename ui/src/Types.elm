@@ -104,6 +104,10 @@ type Request
     | ReqCreate Int Bool
     | ReqUndo
     | ReqCopied String
+    | ReqTemplates
+    | ReqTemplatesFolder (Maybe (List String))
+    | ReqClipboard Bool
+    | ReqShortcuts Int
 
 
 type SubfolderUse
@@ -160,6 +164,49 @@ type NewKind
     = NewFile
     | NewShortcut
     | NewWebLink
+    | NewFromTemplate String
+
+
+{-| A template from the templates folder (spec 6.8).
+-}
+type alias Template =
+    { name : String
+    , path : String
+    , isDir : Bool
+    , group : List String
+    , needsName : Bool
+    }
+
+
+{-| Where dragged items can be dropped (FR-COPY-06, FR-BB-03).
+-}
+type DropTarget
+    = DropFolder String
+    | DropBookmarkBar
+
+
+type alias DragState =
+    { paths : List String
+    , names : List String
+    , startX : Float
+    , startY : Float
+    , x : Float
+    , y : Float
+    , moved : Bool
+    , target : Maybe DropTarget
+    }
+
+
+{-| Modifier keys when the mouse button is released.
+-}
+type alias DropMods =
+    { ctrl : Bool
+    , shift : Bool
+    , alt : Bool
+
+    -- The `data-drop` value of the element under the pointer, if any.
+    , under : Maybe String
+    }
 
 
 type alias NewItemForm =
@@ -296,6 +343,7 @@ type Drag
     = ResizeColumn Column Float Float
     | MoveColumn { column : Column, startX : Float, moved : Bool, target : Maybe Column, shift : Bool }
     | ResizeSidebar { startX : Float, startWidth : Float, width : Float }
+    | DragItems DragState
 
 
 type Region
@@ -360,6 +408,9 @@ type alias Model =
     , conflicts : List Conflict
     , rename : Maybe RenameState
     , pendingRename : Maybe String
+    , templates : List Template
+    , templatesFolder : String
+    , now : Time.Posix
     }
 
 
@@ -408,8 +459,13 @@ type Msg
     | HeaderMouseDown Column Float Bool
     | HeaderResizeStart Column Float
     | HeaderEnter Column
-    | MouseMove Float
-    | MouseUp
+    | MouseMove Float Float
+    | MouseUp DropMods
+    | ItemMouseDown Int Float Float
+    | DragOver (Maybe DropTarget)
+    | DragLeftWindow
+    | CreateFromTemplate Template
+    | GotTime Time.Posix
     | HeaderContext Float Float
     | ToggleColumn Column
     | OpenColumnFilter Column Float Float
@@ -524,6 +580,10 @@ type Command
     | CmdOpenTerminal
     | CmdReveal
     | CmdItemMenu
+    | CmdPasteShortcut
+    | CmdNewFromTemplate
+    | CmdSaveAsTemplate
+    | CmdEditTemplates
 
 
 type alias Mods =
