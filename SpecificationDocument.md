@@ -2,11 +2,12 @@
 
 | | |
 |---|---|
-| Version | 0.3 (Draft) |
-| Date | 2026-10-31 |
+| Version | 0.5 (Draft) |
+| Date | 2026-11-01 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
 | Status | For review |
-| Changes | 0.4: Scope reduced (decision log 13.1, 2026-11-01): project folders, cloud sync status and pinned tabs moved out of v1.0; ZIP moved to a later version; Compare dropped. |
+| Changes | 0.5: M4 (Speed) done; `[search] maxDepth` added (8.3); fuzzy matching runs in the UI (3.3); deferral lists updated (11.1 to 11.4). |
+| | 0.4: Scope reduced (decision log 13.1, 2026-11-01): project folders, cloud sync status and pinned tabs moved out of v1.0; ZIP moved to a later version; Compare dropped. |
 | | 0.2: Platforms decided: Windows primary, Linux supported, macOS deferred. |
 | | 0.3: Review decisions merged: Rust confirmed, Elm 0.19.3, separate I/O threads, folder settings only in the app settings folder, minimal Context view, standard Explorer columns, Duplicate / ZIP / Compare added, e-mails handled as files. |
 
@@ -105,7 +106,7 @@ Its guiding principle is **no lock-in**: everything File Catalog creates (folder
 | Recycle Bin / Trash | `trash` |
 | Settings | `serde`, `toml_edit` (keeps user comments and formatting) |
 | Config paths | `directories` |
-| Fuzzy matching | `nucleo-matcher` |
+| Fuzzy matching | in the UI (Elm), so the palette needs no backend call (M4); `nucleo-matcher` if it is ever needed in Rust |
 | Windows Shell, `.lnk`, Cloud Files | `windows` |
 | Logging | `tracing`, `tracing-appender` |
 
@@ -194,8 +195,12 @@ All requests are asynchronous and carry a client-generated `reqId`. Responses an
 | `templates_list` / `templates_folder` / `fs_create_from_template` | `{ parent, template, name, today }` | templates / folder / new path |
 | `fs_create_shortcuts` / `clipboard_set_files` / `clipboard_get_files` / `drag_out` | `{ parent, targets }` / `{ paths, cut }` / — / `{ paths }` | — |
 | `undo_last` | — | `{ ok } \| { error }` |
+| `find_start` / `find_cancel` | `{ searchId, root, query, clock: { nowMs, utcOffsetMinutes } }` / `{ searchId }` | streamed `batch` (items with `folder`, scanned, found) every 50 ms, then `done` |
+| `keybindings_get` / `keybindings_set` / `keybindings_file` | — / `{ changes: [{ command, when, keys, removeDefaults }] }` / — | bindings with line numbers and warnings / file path |
+| `toolbar_get` / `toolbar_save` / `toolbar_file` | — / `{ style, items }` / — | style, items, defaults, warnings / file path |
+| `nearest_folder` | `{ path }` | the closest existing folder above it (*Locate…*) |
 
-**Events (Rust → Elm):** `dir.chunk`, `dir.done`, `dir.changed`, `dir.error`, `job.progress`, `job.conflict`, `job.done`, `search.results`, `search.done`, `settings.changed`, `bookmarks.changed`, `syncStatus.changed`.
+**Events (Rust → Elm):** `dir.chunk`, `dir.done`, `dir.changed`, `dir.error`, `job.progress`, `job.conflict`, `job.done`, `search.results`, `search.done`, `settings.changed`, `bookmarks.changed`, `syncStatus.changed`. As built: `dir-changed`, `settings-changed`, `bookmarks-changed`, `keybindings-changed`, `toolbar-changed`, `job-progress`, `job-conflict`, `file-drop`.
 
 **Item record (shared shape):**
 
@@ -757,6 +762,7 @@ dateFormat  = "yyyy-MM-dd HH:mm"
 [search]
 includeHidden   = false
 followLinks     = false
+maxDepth        = 0               # 0 = no limit
 maxResults      = 10000
 skipOnlineOnlyFolders = true
 
@@ -894,8 +900,8 @@ Messages say what happened, why (if known), and what the user can do next. Notif
 | **M2 — Organise** | See 11.1. | Done (2026-10-31), with the deferrals listed in 11.1. |
 | **M3a — Operate: core** | See 11.2. | Done (2026-10-31), with the deferrals listed in 11.2. |
 | **M3b — Operate: integration** | Clipboard exchange with Explorer and other file managers (including *Paste as Shortcut*), drag and drop (including onto the sidebar, Bookmark Bar and tabs), templates (6.8). ZIP moved to a later version and Compare dropped (decision 2026-11-01). See 11.3. | Done (2026-11-01), with the deferrals listed in 11.3. |
-| **M4 — Speed** | Command palette, key bindings file and editor (menus then show custom keys), customisable toolbar, Quick Find. | Next |
-| **M5 — Projects and polish** | Context bookmarks and Context view, Quick View, lazy metadata columns (Owner, Windows document properties, registered type names), accessibility, themes, installer. | |
+| **M4 — Speed** | Command palette, key bindings file and editor (menus then show custom keys), customisable toolbar, Quick Find. See 11.4. | Done (2026-11-01), with the deferrals listed in 11.4. |
+| **M5 — Projects and polish** | Context bookmarks and Context view, Quick View, lazy metadata columns (Owner, Windows document properties, registered type names), accessibility, themes, installer, and the items deferred to M5 in 11.1 to 11.4. | Next |
 
 ### 11.1 M2 — Organise
 
@@ -916,13 +922,13 @@ Also: find the 200–350 ms delay between UI start and first listing seen in M1.
 
 | Item | Requirement | Moved to |
 |---|---|---|
-| Custom "between" range in the Size column filter (the size buckets work) | FR-CF-01 | M4 |
-| Saving column filters as part of a folder view | FR-CF-04 (Should) | M4 |
+| Custom "between" range in the Size column filter (the size buckets work) | FR-CF-01 | Done in M4 |
+| Saving column filters as part of a folder view | FR-CF-04 (Should) | M5 |
 | Dragging items onto the Bookmark Bar, sidebar or tabs | FR-BB-03, FR-TAB-05 | Done in M3b |
 | `»` overflow menu on a full Bookmark Bar | FR-BB-05 (Should) | M5 |
-| Reordering tabs and favourites by dragging (favourites can be moved with *Move Up/Down*) | FR-TAB-02, FR-SB-01 | M4 |
-| *Locate…* for a bookmark whose target is missing (*Delete* works) | FR-BM-03 | M4 (needs Quick Find) |
-| Type-ahead in the folder tree (it works in the file list) | FR-SB-01 | M4 |
+| Reordering tabs and favourites by dragging (favourites can be moved with *Move Up/Down*) | FR-TAB-02, FR-SB-01 | Tabs done in M4; favourites M5 |
+| *Locate…* for a bookmark whose target is missing (*Delete* works) | FR-BM-03 | Done in M4 |
+| Type-ahead in the folder tree (it works in the file list) | FR-SB-01 | Done in M4 |
 | A folder's saved view follows it when File Catalog renames or moves it | FR-FS-02 | M3 (with rename and move) |
 
 ### 11.2 M3a — Operate: core
@@ -933,13 +939,13 @@ Built: background job queue with progress, speed, time left, pause and cancel, a
 
 | Item | Requirement | Moved to |
 |---|---|---|
-| Several jobs at once on different drives (jobs now run one after another) | FR-OP-02 | M4 |
-| *Retry* and *Skip* buttons for failed items (*Show in folder* works) | FR-OP-04 | M4 |
-| Progress inside one very large file (progress now moves per file) | FR-OP-03 | M4 |
+| Several jobs at once on different drives (jobs now run one after another) | FR-OP-02 | M5 |
+| *Retry* and *Skip* buttons for failed items (*Show in folder* works) | FR-OP-04 | Done in M4 |
+| Progress inside one very large file (progress now moves per file) | FR-OP-03 | Done in M4 |
 | *Compare* button in the conflict dialog | FR-COPY-04 | Dropped with Compare (FR-CMP-01) |
 | *"Downloading…"* label when copying online-only cloud files | FR-COPY-07 | Later version (with sync status) |
-| Batch rename | FR-REN-04 (Should) | M4 |
-| Checking that files changed since the operation before undoing a copy or create | FR-UNDO-02 (Should) | M4 |
+| Batch rename | FR-REN-04 (Should) | M5 |
+| Checking that files changed since the operation before undoing a copy or create | FR-UNDO-02 (Should) | M5 |
 | Filling in a web link's name from the page title (the domain is used) | FR-NEW-04 | M5 |
 | *Open With* and *Properties* | FR-OPEN-02, FR-PROP-01 | M5 |
 | Windows "Show more options" (native Explorer menu) | FR-CC-07 | M5 |
@@ -956,6 +962,20 @@ Built: files exchanged through the system clipboard with Explorer and other file
 | Highlighting the target folder while files from another app are dragged over the window | FR-CC-08 | M5 |
 | A drag cursor that shows copy / move / shortcut | FR-COPY-06 | M5 |
 | Checked by hand only inside File Catalog: dropping onto Explorer / another app and dropping in from them still need a test on Windows and Linux | FR-CC-08 | Windows test |
+
+### 11.4 M4 — Speed
+
+Built: the **command palette** (`Ctrl+P`, `Ctrl+Shift+P`) with all six modes (go to, `>` commands, `@` bookmarks, `/` path with sub-folder completion and `Tab`, `?` find, `#` tabs), fuzzy matching with the matched letters marked, ranking by match and by how often and how recently a result was picked, `Ctrl+Enter` for a new tab, and every command available (FR-CMD-01 to 05); **key bindings** from `keybindings.toml` with chords and a status-bar hint, `when` contexts, mistakes skipped and reported with their line, live reload, and menus that show the current keys (FR-KEY-01 to 03, 05); **Help › Keyboard Shortcuts** with search, recording a key or chord, conflicts shown before saving, remove and reset, all written to `keybindings.toml` (FR-KEY-04); the **toolbar** from `toolbar.toml` with icon / icon and text / text styles, separators, flexible space, disabled buttons and Save View, and **Customise Toolbar** from its right-click menu (FR-TB-01 to 04); **Quick Find** (`Ctrl+Shift+F`, `F3`, or `?` in the palette) in a results tab with a Folder column, the Quick Filter syntax plus `size:`, `modified:`, `type:` and `in:`, results every 50 ms, progress in the status bar, `Esc` to stop, the `[search]` options, all CPU cores, and the last 20 searches (FR-FIND-01 to 06). Also built from the M2 and M3a deferrals: the Size column's "between" range (FR-CF-01), *Locate…* for a missing bookmark (FR-BM-03), type-ahead in the folder tree (FR-SB-01), reordering tabs by dragging (FR-TAB-02), *Retry* and *Skip* for failed items (FR-OP-04), and progress inside large files, which are now copied in pieces and can be paused or cancelled part way (FR-OP-03). *Copy Name* (FR-OPEN-04) was added.
+
+Notes: fuzzy matching runs in the UI rather than with `nucleo` (3.3), so the palette never waits for the backend; in *Go to* mode it searches the first 5,000 items of the current folder. A folder opened from search results opens in a new tab, so the results stay.
+
+**Deferred from M4:**
+
+| Item | Requirement | Moved to |
+|---|---|---|
+| Reordering toolbar buttons by dragging in *Customise Toolbar* (*Move Up/Down* works) | FR-TB-02 (Should) | M5 |
+| Hints that name a key (for example "(Ctrl+H)" in the status bar, tooltips on the Bookmark Bar) still show the default key after it is changed; menus, the toolbar and the palette show the current key | FR-KEY-01 | M5 |
+| Search results are not updated by the folder watcher; *Refresh* runs the search again | FR-FIND-01 | M5 |
 
 ---
 
@@ -1033,6 +1053,8 @@ None at the moment. New questions are added here as they come up.
 ---
 
 ## Appendix A — Commands and default key bindings
+
+The application has more commands than this table lists (for example `edit.copyName`, `toolbar.customise`, `view.toggleStatusBar`). Help › Keyboard Shortcuts shows every command with its id, and those ids are what `keybindings.toml` and `toolbar.toml` use.
 
 | Command ID | Name | Default key |
 |---|---|---|

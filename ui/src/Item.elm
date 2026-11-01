@@ -38,6 +38,12 @@ type alias Item =
     , sync : Sync
     , target : Maybe String
 
+    -- Quick Find results: the folder relative to the search root (spec 6.6).
+    , folder : String
+
+    -- Unique in its tab: the name in a folder, the relative path in search results.
+    , id : String
+
     -- Computed once when decoded, so sorting and filtering stay fast.
     , key : String
     , lower : String
@@ -61,10 +67,11 @@ decoder =
         |> andMap (D.field "readonly" D.bool)
         |> andMap (D.field "sync" syncDecoder)
         |> andMap (D.field "target" (D.nullable D.string))
+        |> andMap (D.oneOf [ D.field "folder" D.string, D.succeed "" ])
 
 
-build : String -> String -> Kind -> Bool -> Int -> Maybe Int -> Maybe Int -> Maybe Int -> String -> String -> Bool -> Bool -> Sync -> Maybe String -> Item
-build name path kind isDir size created modified accessed attributes ext hidden readonly sync target =
+build : String -> String -> Kind -> Bool -> Int -> Maybe Int -> Maybe Int -> Maybe Int -> String -> String -> Bool -> Bool -> Sync -> Maybe String -> String -> Item
+build name path kind isDir size created modified accessed attributes ext hidden readonly sync target folder =
     { name = name
     , path = path
     , kind = kind
@@ -79,6 +86,13 @@ build name path kind isDir size created modified accessed attributes ext hidden 
     , readonly = readonly
     , sync = sync
     , target = target
+    , folder = folder
+    , id =
+        if folder == "" then
+            name
+
+        else
+            folder ++ "/" ++ name
     , key = naturalKey name
     , lower = String.toLower name
     }

@@ -9,6 +9,7 @@ import Columns exposing (Column)
 import Dict exposing (Dict)
 import Item exposing (Item)
 import Json.Decode as D
+import Keys exposing (Keymap, UserBinding)
 import Path
 import Set exposing (Set)
 import Settings exposing (Settings)
@@ -78,6 +79,28 @@ type alias Tab =
 
     -- Name of the item to select once the listing is loaded (FR-NAV-03).
     , pendingSelect : Maybe String
+
+    -- Set for a Quick Find results tab (FR-FIND-01); `path` is the search root.
+    , search : Maybe Search
+    }
+
+
+{-| A Quick Find search and its progress (FR-FIND-03).
+-}
+type alias Search =
+    { query : String
+
+    -- The find_start request; also the id used to cancel it.
+    , id : Int
+    , running : Bool
+    , scanned : Int
+    , found : Int
+    , truncated : Bool
+    , cancelled : Bool
+    , millis : Int
+
+    -- Locate…: the missing bookmark the chosen result becomes the new target of (FR-BM-03).
+    , relink : Maybe Bookmark
     }
 
 
@@ -108,12 +131,18 @@ type Request
     | ReqTemplatesFolder (Maybe (List String))
     | ReqClipboard Bool
     | ReqShortcuts Int
+    | ReqFind Int
+    | ReqKeybindings
+    | ReqToolbar
+    | ReqOpenReturnedFile
+    | ReqLocate Bookmark
 
 
 type SubfolderUse
     = ForCrumb String
     | ForComplete String
     | ForTree String
+    | ForPalette String
 
 
 
@@ -151,6 +180,10 @@ type alias ColumnFilterState =
     , values : List ( String, Int )
     , checked : Set String
     , now : Time.Posix
+
+    -- Size column: a custom "between" range, as typed (FR-CF-01).
+    , rangeFrom : String
+    , rangeTo : String
     }
 
 
@@ -158,6 +191,79 @@ type Dialog
     = BookmarkDialog BookmarkForm
     | NewItemDialog NewItemForm
     | ConfirmDialog Confirm
+    | ShortcutsDialog ShortcutsState
+    | ToolbarDialog ToolbarForm
+
+
+{-| Help › Keyboard Shortcuts (FR-KEY-04).
+-}
+type alias ShortcutsState =
+    { search : String
+
+    -- The command whose new key is being recorded, and the keys pressed so far.
+    , recording : Maybe { command : String, strokes : List String, seq : Int }
+
+    -- A recorded key waiting for Save, with the command it would be taken from.
+    , proposal : Maybe { command : String, key : String }
+    }
+
+
+{-| Customise Toolbar (FR-TB-02).
+-}
+type alias ToolbarForm =
+    { style : String
+    , items : List String
+    , active : Int
+    , search : String
+    }
+
+
+{-| The toolbar from toolbar.toml (FR-TB-01).
+-}
+type alias ToolbarConfig =
+    { style : String
+    , items : List String
+    , defaults : List String
+    , file : String
+    }
+
+
+
+-- COMMAND PALETTE
+
+
+{-| The command palette (spec 6.9). The first character of `text` picks the mode.
+-}
+type alias Palette =
+    { text : String
+    , active : Int
+    , results : List PaletteItem
+
+    -- Path mode: the folder whose sub-folders are in `subfolders`.
+    , listed : String
+    , subfolders : List Path.Crumb
+    }
+
+
+type alias PaletteItem =
+    { label : String
+    , detail : String
+    , key : String
+    , icon : String
+
+    -- Positions of the matched letters in `label` (FR-CMD-03).
+    , hits : List Int
+    , action : PaletteAction
+    }
+
+
+type PaletteAction
+    = PalCommand String Command
+    | PalFolder String
+    | PalFile String
+    | PalBookmark Bookmark
+    | PalTab Int
+    | PalFind String
 
 
 type NewKind
@@ -254,6 +360,9 @@ type alias JobStatus =
 
 type alias JobError =
     { path : String
+
+    -- The folder the item was going into, for Retry (FR-OP-04).
+    , dest : Maybe String
     , message : String
     , code : String
     }
@@ -282,6 +391,9 @@ type alias Conflict =
 -}
 type alias RenameState =
     { tabId : Int
+
+    -- The item's id in its tab (Item.id).
+    , key : String
     , original : String
     , text : String
     , error : Maybe String
@@ -344,6 +456,8 @@ type Drag
     | MoveColumn { column : Column, startX : Float, moved : Bool, target : Maybe Column, shift : Bool }
     | ResizeSidebar { startX : Float, startWidth : Float, width : Float }
     | DragItems DragState
+      -- Reordering tabs (FR-TAB-02): the dragged tab and the tab under the pointer.
+    | MoveTab { tabId : Int, startX : Float, moved : Bool, over : Maybe Int }
 
 
 type Region
@@ -411,6 +525,21 @@ type alias Model =
     , templates : List Template
     , templatesFolder : String
     , now : Time.Posix
+
+    -- Key bindings (spec 6.10): the defaults with keybindings.toml applied.
+    , keymap : Keymap
+    , userBindings : List UserBinding
+    , keyWarnings : List String
+
+    -- The first key of a chord, waiting for the second (FR-KEY-02).
+    , chord : Maybe String
+    , palette : Maybe Palette
+
+    -- Palette picks and Quick Find searches, most recent first (FR-CMD-03, FR-FIND-06).
+    , paletteHistory : List String
+    , findHistory : List String
+    , toolbar : ToolbarConfig
+    , toolbarWarnings : List String
     }
 
 
@@ -476,6 +605,7 @@ type Msg
     | ColumnFilterQuick String
     | ColumnFilterApply
     | ColumnFilterClear
+    | ColumnFilterRange Bool String
     | SaveViewMenu Float Float
       -- Sidebar
     | TreeToggle String
@@ -486,6 +616,9 @@ type Msg
     | OpenBookmark Bookmark Bool
     | BookmarkEditOp (List ( String, D.Value ))
     | EditBookmark Bookmark
+    | LocateBookmark Bookmark
+    | TabMouseDown Int Float
+    | TabHover Int
     | RegionFocused Region
       -- Bookmark dialog
     | DialogName String
@@ -505,6 +638,8 @@ type Msg
     | ConflictAnswer String
     | StartJob String (List String) (Maybe String) Bool
     | JobCancel Int
+    | JobRetry Int (List JobError)
+    | JobSkip Int (List JobError)
     | JobPause Int Bool
     | ToggleJobsPanel
     | ClearFinishedJobs
@@ -513,6 +648,34 @@ type Msg
     | NewItemTarget String
     | NewItemSubmit
     | ConfirmYes
+      -- Key bindings
+    | KeyChord String
+    | KeyChordMiss String
+      -- Command palette and Quick Find
+    | StartFind String Time.Posix
+    | PaletteInput String
+    | PaletteKey String Bool
+    | PaletteRun Int Bool
+    | PaletteHover Int
+      -- Keyboard Shortcuts editor
+    | ShortcutsSearch String
+    | ShortcutsRecord String
+    | KeyRecorded String
+    | RecordDone Int
+    | ShortcutsSave
+    | ShortcutsDiscard
+    | ShortcutsRemove String String
+    | ShortcutsReset String
+      -- Customise Toolbar
+    | ToolbarContext Float Float
+    | ToolbarPick Int
+    | ToolbarMove Int
+    | ToolbarRemove
+    | ToolbarAdd String
+    | ToolbarStyle String
+    | ToolbarSearch String
+    | ToolbarSave
+    | ToolbarDefaults
 
 
 type Command
@@ -584,6 +747,16 @@ type Command
     | CmdNewFromTemplate
     | CmdSaveAsTemplate
     | CmdEditTemplates
+    | CmdPalette String
+    | CmdShortcuts
+    | CmdOpenKeybindingsFile
+    | CmdOpenToolbarFile
+    | CmdCustomiseToolbar
+    | CmdToggleSetting String
+    | CmdOpenBookmarkNamed String
+    | CmdGoto String
+    | CmdCopyName
+    | CmdToggleJobs
 
 
 type alias Mods =
@@ -644,6 +817,21 @@ dialogFirstInputId =
 renameInputId : String
 renameInputId =
     "rename-input"
+
+
+paletteInputId : String
+paletteInputId =
+    "palette-input"
+
+
+shortcutsDialogId : String
+shortcutsDialogId =
+    "shortcuts-dialog"
+
+
+shortcutsSearchId : String
+shortcutsSearchId =
+    "shortcuts-search"
 
 
 sidebarModeName : SidebarMode -> String

@@ -928,3 +928,604 @@ templateName =
 newFromTemplateTitle : String
 newFromTemplateTitle =
     "New from template"
+
+
+
+-- COMMANDS (spec Appendix A)
+
+
+{-| The name of a command, shown in menus, the palette, tooltips and
+Help › Keyboard Shortcuts.
+-}
+commandName : String -> String
+commandName id =
+    case id of
+        "nav.back" ->
+            "Back"
+
+        "nav.forward" ->
+            "Forward"
+
+        "nav.up" ->
+            "Up"
+
+        "nav.home" ->
+            "Home"
+
+        "nav.refresh" ->
+            "Refresh"
+
+        "nav.focusAddress" ->
+            "Go to Address"
+
+        "tab.new" ->
+            "New Tab"
+
+        "tab.close" ->
+            "Close Tab"
+
+        "tab.reopen" ->
+            "Reopen Closed Tab"
+
+        "tab.duplicate" ->
+            "Duplicate Tab"
+
+        "tab.next" ->
+            "Next Tab"
+
+        "tab.prev" ->
+            "Previous Tab"
+
+        "palette.open" ->
+            "Command Palette"
+
+        "palette.commands" ->
+            "Command Palette: Commands"
+
+        "palette.bookmarks" ->
+            "Command Palette: Bookmarks"
+
+        "palette.tabs" ->
+            "Command Palette: Tabs"
+
+        "filter.focus" ->
+            "Quick Filter"
+
+        "filter.clearAll" ->
+            "Clear All Filters"
+
+        "find.open" ->
+            "Quick Find"
+
+        "new.file" ->
+            "New File…"
+
+        "new.folder" ->
+            "New Folder"
+
+        "new.fromTemplate" ->
+            "New from Template"
+
+        "new.shortcut" ->
+            "New Shortcut…"
+
+        "new.webLink" ->
+            "New Web Link…"
+
+        "template.saveSelection" ->
+            "Save Selection as Template"
+
+        "template.editFolder" ->
+            "Edit Templates Folder"
+
+        "edit.undo" ->
+            "Undo"
+
+        "edit.cut" ->
+            "Cut"
+
+        "edit.copy" ->
+            "Copy"
+
+        "edit.paste" ->
+            "Paste"
+
+        "edit.pasteShortcut" ->
+            "Paste as Shortcut"
+
+        "edit.duplicate" ->
+            "Duplicate"
+
+        "edit.copyPath" ->
+            "Copy Path"
+
+        "edit.copyName" ->
+            "Copy Name"
+
+        "edit.rename" ->
+            "Rename"
+
+        "edit.delete" ->
+            "Delete"
+
+        "edit.deletePermanent" ->
+            "Delete Permanently"
+
+        "edit.selectAll" ->
+            "Select All"
+
+        "edit.invertSelection" ->
+            "Invert Selection"
+
+        "edit.selectNone" ->
+            "Select None"
+
+        "item.open" ->
+            "Open"
+
+        "item.openNewTab" ->
+            "Open in New Tab"
+
+        "item.openTerminal" ->
+            "Open in Terminal"
+
+        "item.reveal" ->
+            "Show in File Manager"
+
+        "item.contextMenu" ->
+            "Show Item Menu"
+
+        "view.saveForFolder" ->
+            "Save View for This Folder"
+
+        "view.saveForSubfolders" ->
+            "Save View for This Folder and Subfolders"
+
+        "view.resetForFolder" ->
+            "Reset View for This Folder"
+
+        "view.openFolderSettings" ->
+            "Open Folder Settings File"
+
+        "view.toggleSidebar" ->
+            "Toggle Sidebar"
+
+        "view.sidebarMode.tree" ->
+            "Sidebar: Folder Tree"
+
+        "view.sidebarMode.favourites" ->
+            "Sidebar: Favourites"
+
+        "view.sidebarMode.bookmarks" ->
+            "Sidebar: Bookmarks"
+
+        "view.sidebarLeft" ->
+            "Sidebar on the Left"
+
+        "view.sidebarRight" ->
+            "Sidebar on the Right"
+
+        "view.toggleMenuBar" ->
+            "Toggle Menu Bar"
+
+        "view.toggleToolbar" ->
+            "Toggle Toolbar"
+
+        "view.toggleBookmarkBar" ->
+            "Toggle Bookmark Bar"
+
+        "view.toggleTabBar" ->
+            "Toggle Tab Bar"
+
+        "view.toggleAddressBar" ->
+            "Toggle Address Bar"
+
+        "view.toggleStatusBar" ->
+            "Toggle Status Bar"
+
+        "view.toggleExtensions" ->
+            "Show File Extensions"
+
+        "view.toggleHidden" ->
+            "Show Hidden Files"
+
+        "view.foldersFirst" ->
+            "Folders First"
+
+        "view.theme.system" ->
+            "Theme: Follow System"
+
+        "view.theme.light" ->
+            "Theme: Light"
+
+        "view.theme.dark" ->
+            "Theme: Dark"
+
+        "focus.nextRegion" ->
+            "Next Region"
+
+        "focus.prevRegion" ->
+            "Previous Region"
+
+        "menu.open" ->
+            "Open Menu Bar"
+
+        "bookmark.addFolder" ->
+            "Bookmark This Folder"
+
+        "bookmark.addItem" ->
+            "Bookmark Selected Item"
+
+        "bookmark.manage" ->
+            "Manage Bookmarks"
+
+        "bookmark.openFile" ->
+            "Open Bookmarks File"
+
+        "bookmark.open" ->
+            "Open Bookmark"
+
+        "nav.goto" ->
+            "Go to Folder"
+
+        "favourite.toggle" ->
+            "Pin / Unpin Favourite"
+
+        "jobs.toggle" ->
+            "Jobs"
+
+        "settings.open" ->
+            "Open Settings File"
+
+        "keybindings.open" ->
+            "Open Key Bindings File"
+
+        "toolbar.open" ->
+            "Open Toolbar File"
+
+        "toolbar.customise" ->
+            "Customise Toolbar…"
+
+        "help.shortcuts" ->
+            "Keyboard Shortcuts"
+
+        "help.logFolder" ->
+            "Open Log Folder"
+
+        "help.about" ->
+            "About File Catalog"
+
+        "app.exit" ->
+            "Exit"
+
+        _ ->
+            if String.startsWith "tab.goto" id then
+                "Go to Tab " ++ String.dropLeft 8 id
+
+            else
+                id
+
+
+
+-- KEY BINDINGS (spec 6.10)
+
+
+keyLine : Int -> String -> String
+keyLine line problem =
+    "keybindings.toml line " ++ String.fromInt line ++ ": " ++ problem ++ ". This binding is skipped."
+
+
+unknownCommand : String -> String
+unknownCommand command =
+    "\"" ++ command ++ "\" is not a command (Help › Keyboard Shortcuts lists them)"
+
+
+unknownContext : String -> String
+unknownContext when =
+    "when = \"" ++ when ++ "\" is not known (use global, list, tree, addressBar, palette or filter)"
+
+
+missingArgs : String
+missingArgs =
+    "this command needs args, such as args = { name = \"Acme\" }"
+
+
+chordWaiting : String -> String
+chordWaiting key =
+    key ++ " was pressed. Waiting for the second key of the chord…"
+
+
+chordUnknown : String -> String
+chordUnknown chord =
+    chord ++ " is not a command."
+
+
+shortcutsTitle : String
+shortcutsTitle =
+    "Keyboard Shortcuts"
+
+
+shortcutsSearch : String
+shortcutsSearch =
+    "Search commands or keys"
+
+
+shortcutsHint : String
+shortcutsHint =
+    "Your changes are saved in keybindings.toml."
+
+
+addKey : String
+addKey =
+    "Add key"
+
+
+resetKeys : String
+resetKeys =
+    "Reset"
+
+
+removeKey : String
+removeKey =
+    "Remove this key"
+
+
+pressKeys : String
+pressKeys =
+    "Press the keys… (Esc cancels; a second key within a moment makes a chord)"
+
+
+keyConflict : String -> String -> String
+keyConflict key command =
+    key ++ " is used by " ++ command ++ ". Saving moves it to this command."
+
+
+keyFree : String -> String
+keyFree key =
+    key ++ " is free."
+
+
+saveKey : String
+saveKey =
+    "Save"
+
+
+openFile : String
+openFile =
+    "Open File"
+
+
+noBinding : String
+noBinding =
+    "—"
+
+
+customised : String
+customised =
+    "changed"
+
+
+
+-- COMMAND PALETTE (spec 6.9)
+
+
+palettePlaceholder : String
+palettePlaceholder =
+    "Go to folder or file.  > commands   @ bookmarks   / path   ? find   # tabs"
+
+
+paletteNoResults : String
+paletteNoResults =
+    "No matches"
+
+
+paletteRecent : String
+paletteRecent =
+    "Recent"
+
+
+paletteFavourite : String
+paletteFavourite =
+    "Favourite"
+
+
+paletteBookmark : String
+paletteBookmark =
+    "Bookmark"
+
+
+paletteInFolder : String
+paletteInFolder =
+    "In this folder"
+
+
+paletteTab : String
+paletteTab =
+    "Tab"
+
+
+paletteFolder : String
+paletteFolder =
+    "Folder"
+
+
+paletteFindIn : String -> String -> String
+paletteFindIn query folder =
+    "Find \"" ++ query ++ "\" in " ++ folder
+
+
+paletteFindHint : String
+paletteFindHint =
+    "Type what to find. Also: size:>10mb  modified:7d  type:folder  in:name  ext:pdf  !word"
+
+
+paletteFindRecent : String
+paletteFindRecent =
+    "Recent search"
+
+
+
+-- QUICK FIND (spec 6.6)
+
+
+searchTabLabel : String -> String
+searchTabLabel query =
+    "Find: " ++ query
+
+
+searchRunning : Int -> Int -> String
+searchRunning scanned found =
+    "Searching… " ++ String.fromInt scanned ++ " folders, " ++ String.fromInt found ++ " found (Esc stops)"
+
+
+searchDone : Int -> Int -> Int -> String
+searchDone scanned found millis =
+    String.fromInt found ++ " found in " ++ String.fromInt scanned ++ " folders (" ++ String.fromFloat (toFloat (millis // 100) / 10) ++ " s)"
+
+
+searchStopped : Int -> String
+searchStopped found =
+    "Search stopped. " ++ String.fromInt found ++ " found."
+
+
+searchTruncated : Int -> String
+searchTruncated limit =
+    "Only the first " ++ String.fromInt limit ++ " results are shown (search.maxResults)."
+
+
+searchResultsIn : String -> String -> String
+searchResultsIn query folder =
+    "Results for \"" ++ query ++ "\" in " ++ folder
+
+
+searchNothing : String
+searchNothing =
+    "Nothing found."
+
+
+searchAgain : String
+searchAgain =
+    "Search again"
+
+
+
+-- TOOLBAR (spec 5.3)
+
+
+customiseToolbar : String
+customiseToolbar =
+    "Customise Toolbar"
+
+
+toolbarButtons : String
+toolbarButtons =
+    "Buttons"
+
+
+toolbarAvailable : String
+toolbarAvailable =
+    "Add a button"
+
+
+toolbarSeparator : String
+toolbarSeparator =
+    "Separator"
+
+
+toolbarSpace : String
+toolbarSpace =
+    "Flexible space (pushes the rest right)"
+
+
+toolbarStyle : String
+toolbarStyle =
+    "Show"
+
+
+toolbarStyleIcon : String
+toolbarStyleIcon =
+    "Icons"
+
+
+toolbarStyleIconText : String
+toolbarStyleIconText =
+    "Icons and text"
+
+
+toolbarStyleText : String
+toolbarStyleText =
+    "Text"
+
+
+toolbarDefaults : String
+toolbarDefaults =
+    "Restore Defaults"
+
+
+toolbarUnknown : String -> String
+toolbarUnknown item =
+    "toolbar.toml: \"" ++ item ++ "\" is not a command, so it is not shown."
+
+
+noBookmarkNamed : String -> String
+noBookmarkNamed bookmarkName =
+    "There is no bookmark named \"" ++ bookmarkName ++ "\"."
+
+
+notInSearch : String
+notInSearch =
+    "Search results have no saved view. Open a folder to save its view."
+
+
+namesCopied : Int -> String
+namesCopied n =
+    if n == 1 then
+        "Name copied to the clipboard"
+
+    else
+        String.fromInt n ++ " names copied to the clipboard"
+
+
+locate : String
+locate =
+    "Locate…"
+
+
+locateHint : String -> String
+locateHint bookmarkName =
+    "Choose the new location of \"" ++ bookmarkName ++ "\" in the results and press Enter."
+
+
+bookmarkRelinked : String -> String
+bookmarkRelinked bookmarkName =
+    "Bookmark \"" ++ bookmarkName ++ "\" now points to the new location."
+
+
+retryAll : String
+retryAll =
+    "Retry All"
+
+
+skipAll : String
+skipAll =
+    "Skip All"
+
+
+sizeBetween : String
+sizeBetween =
+    "Between"
+
+
+sizeAnd : String
+sizeAnd =
+    "and"
+
+
+sizeFromHint : String
+sizeFromHint =
+    "0"
+
+
+sizeToHint : String
+sizeToHint =
+    "e.g. 10 MB"

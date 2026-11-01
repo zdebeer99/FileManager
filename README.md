@@ -13,7 +13,7 @@ Info File Catalog is a file manager similar to windows explorer but with core fo
 
 ## Building and running
 
-The specification is [SpecificationDocument.md](SpecificationDocument.md). The code is built in milestones (spec section 11); **M1 (core shell)** is in place.
+The specification is [SpecificationDocument.md](SpecificationDocument.md). The code is built in milestones (spec section 11); **M1 to M4** (core shell, organise, operate, speed) are in place.
 
 | Folder | Contents |
 |---|---|

@@ -60,7 +60,8 @@ pub fn read_item(dir: &Path, entry: &DirEntry) -> Option<Item> {
     Some(build(name, dir.join(entry.file_name()), &link_meta))
 }
 
-fn build(name: String, path: PathBuf, link_meta: &Metadata) -> Item {
+/// Builds an item from its symlink metadata (the link itself, not its target).
+pub fn build(name: String, path: PathBuf, link_meta: &Metadata) -> Item {
     let is_symlink = link_meta.file_type().is_symlink();
     let followed = if is_symlink { fs::metadata(&path).ok() } else { None };
     let meta = followed.as_ref().unwrap_or(link_meta);

@@ -48,6 +48,14 @@ impl AppPaths {
         self.config.join("bookmarks.toml")
     }
 
+    pub fn keybindings_file(&self) -> PathBuf {
+        self.config.join("keybindings.toml")
+    }
+
+    pub fn toolbar_file(&self) -> PathBuf {
+        self.config.join("toolbar.toml")
+    }
+
     pub fn snapshot_file(&self) -> PathBuf {
         self.cache.join("session-snapshot.json")
     }
@@ -67,6 +75,27 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, contents)?;
     fs::rename(&tmp, path)
+}
+
+/// Splits a TOML file into its leading comment block and the rest. The
+/// comments belong to the file, not to its first entry, so they are kept
+/// at the top when that entry is replaced (toml_edit would move them).
+pub fn split_header(text: &str) -> (&str, &str) {
+    let mut end = 0;
+    for line in text.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if !(trimmed.is_empty() || trimmed.starts_with('#')) {
+            break;
+        }
+        end += line.len();
+    }
+    text.split_at(end)
+}
+
+/// Joins a header from `split_header` and an edited document.
+pub fn join_header(header: &str, doc: &str) -> String {
+    let gap = if header.is_empty() || header.ends_with("\n\n") { "" } else { "\n" };
+    format!("{header}{gap}{}", doc.trim_start())
 }
 
 /// The form of a folder path used everywhere as its key: no trailing separator

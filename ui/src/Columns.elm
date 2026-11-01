@@ -32,6 +32,8 @@ type Column
     | Attributes
     | LinkTarget
     | Sync
+      -- Search results only: the folder relative to the search root (FR-FIND-01).
+    | Folder
 
 
 {-| Every column that can be shown, in the order the column chooser lists them.
@@ -80,6 +82,9 @@ toString column =
         Sync ->
             "sync"
 
+        Folder ->
+            "folder"
+
 
 fromString : String -> Maybe Column
 fromString s =
@@ -113,6 +118,9 @@ fromString s =
 
         "sync" ->
             Just Sync
+
+        "folder" ->
+            Just Folder
 
         _ ->
             Nothing
@@ -151,6 +159,9 @@ title column =
         Sync ->
             "Sync"
 
+        Folder ->
+            "Folder"
+
 
 defaultWidth : Column -> Float
 defaultWidth column =
@@ -175,6 +186,9 @@ defaultWidth column =
 
         Sync ->
             56
+
+        Folder ->
+            240
 
         _ ->
             140
@@ -224,6 +238,9 @@ sortKey column item =
 
         Sync ->
             String.fromInt (Item.syncRank item.sync)
+
+        Folder ->
+            String.toLower item.folder
 
 
 timeKey : Maybe Int -> String
@@ -286,6 +303,13 @@ filterValue zone column item =
 
                 label ->
                     label
+
+        Folder ->
+            if item.folder == "" then
+                "(top folder)"
+
+            else
+                item.folder
 
 
 sizeBuckets : List ( Int, String )

@@ -1,4 +1,4 @@
-//! Watches the folders shown in tabs and settings.toml, on its own thread.
+//! Watches the folders shown in tabs and the settings files, on its own thread.
 //! Folder changes are debounced (100 ms) and sent to the UI as patches (spec 4.6).
 
 use std::collections::{HashMap, HashSet};
@@ -12,10 +12,12 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::keybindings;
 use crate::listing::{diff, read_dir_streaming, DirCache, Patch};
 use crate::paths::AppPaths;
 use crate::platform;
 use crate::settings::{self, Settings};
+use crate::toolbar;
 
 const DEBOUNCE: Duration = Duration::from_millis(100);
 
@@ -100,10 +102,14 @@ fn event_loop(
 ) {
     let settings_file = paths.settings_file();
     let bookmarks_file = paths.bookmarks_file();
+    let keybindings_file = paths.keybindings_file();
+    let toolbar_file = paths.toolbar_file();
     while let Ok(first) = rx.recv() {
         let mut dirty: HashSet<PathBuf> = HashSet::new();
         let mut settings_dirty = false;
         let mut bookmarks_dirty = false;
+        let mut keybindings_dirty = false;
+        let mut toolbar_dirty = false;
         let mut collect = |event: notify::Result<notify::Event>| {
             let Ok(event) = event else { return };
             if matches!(event.kind, EventKind::Access(_)) {
@@ -117,6 +123,8 @@ fn event_loop(
                 if path == bookmarks_file {
                     bookmarks_dirty = true;
                 }
+                keybindings_dirty |= path == keybindings_file;
+                toolbar_dirty |= path == toolbar_file;
                 if watched.contains_key(&path) {
                     dirty.insert(path.clone());
                 }
@@ -139,6 +147,14 @@ fn event_loop(
 
         if bookmarks_dirty {
             let _ = app.emit("bookmarks-changed", ());
+        }
+
+        if keybindings_dirty {
+            let _ = app.emit("keybindings-changed", keybindings::load(&keybindings_file));
+        }
+
+        if toolbar_dirty {
+            let _ = app.emit("toolbar-changed", toolbar::load(&toolbar_file));
         }
 
         for dir in dirty {

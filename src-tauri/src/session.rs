@@ -19,6 +19,10 @@ pub struct Session {
     pub active_tab: usize,
     pub tabs: Vec<String>,
     pub recent: Vec<String>,
+    /// Command palette picks, most recent first, for ranking (FR-CMD-03).
+    pub palette_history: Vec<String>,
+    /// The last Quick Find searches (FR-FIND-06).
+    pub find_history: Vec<String>,
 }
 
 pub fn load(paths: &AppPaths) -> Session {
@@ -27,7 +31,7 @@ pub fn load(paths: &AppPaths) -> Session {
 
 pub fn save(paths: &AppPaths, session: &Session) -> io::Result<()> {
     let body = toml::to_string(session).map_err(io::Error::other)?;
-    let text = format!("# Written by File Catalog: open tabs and recent folders. Safe to delete.\n\n{body}");
+    let text = format!("# Written by File Catalog: open tabs, recent folders and searches. Safe to delete.\n\n{body}");
     write_atomic(&paths.session_file(), text.as_bytes())
 }
 

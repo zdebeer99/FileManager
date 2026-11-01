@@ -145,13 +145,27 @@ pub fn rename(path: &Path, new_name: &str) -> Result<PathBuf, String> {
     Ok(target)
 }
 
+/// Files at least this big are copied in pieces, so the job's progress moves
+/// while they copy and they can be paused or cancelled part way (FR-OP-03).
+pub const PIECEWISE_FROM: u64 = 32 * 1024 * 1024;
+const PIECE: usize = 4 * 1024 * 1024;
+
 /// Copies one file through a temporary name, then renames it into place, so
 /// a failed or cancelled copy never leaves a half-written file (FR-COPY-03).
 /// `fs::copy` uses CopyFileEx on Windows and copy_file_range on Linux (FR-COPY-02).
 pub fn copy_file(source: &Path, target: &Path) -> io::Result<u64> {
+    copy_file_with(source, target, &mut |_| true)
+}
+
+/// `copy_file` that reports the bytes copied so far for large files.
+/// `progress` gets each piece's size and returns false to stop the copy.
+pub fn copy_file_with(source: &Path, target: &Path, progress: &mut dyn FnMut(u64) -> bool) -> io::Result<u64> {
     let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let partial = target.with_file_name(format!(".{name}.fc-partial"));
-    let result = fs::copy(source, &partial).and_then(|bytes| {
+    let size = fs::metadata(source)?.len();
+    let copied =
+        if size >= PIECEWISE_FROM { copy_in_pieces(source, &partial, progress) } else { fs::copy(source, &partial) };
+    let result = copied.and_then(|bytes| {
         let meta = fs::metadata(source)?;
         let mut times = FileTimes::new();
         if let Ok(modified) = meta.modified() {
@@ -168,6 +182,30 @@ pub fn copy_file(source: &Path, target: &Path) -> io::Result<u64> {
         let _ = fs::remove_file(&partial);
     }
     result
+}
+
+fn copy_in_pieces(source: &Path, target: &Path, progress: &mut dyn FnMut(u64) -> bool) -> io::Result<u64> {
+    use std::io::{Read, Write};
+    let mut from = File::open(source)?;
+    let mut to = File::create(target)?;
+    let mut buffer = vec![0u8; PIECE];
+    let mut total = 0u64;
+    loop {
+        let read = match from.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        to.write_all(&buffer[..read])?;
+        total += read as u64;
+        if !progress(read as u64) {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "The copy was cancelled."));
+        }
+    }
+    to.flush()?;
+    fs::set_permissions(target, fs::metadata(source)?.permissions())?;
+    Ok(total)
 }
 
 /// True when `inner` is `outer` or inside it (FR-COPY-05).
@@ -293,6 +331,32 @@ mod tests {
         fs::write(d.join("Report - Copy.docx"), "").unwrap();
         assert_eq!(free_name(d, "Report.docx", Naming::Copy), d.join("Report - Copy (2).docx"));
         assert_eq!(free_name(d, ".bashrc", Naming::Copy), d.join(".bashrc - Copy"));
+    }
+
+    #[test]
+    fn large_files_are_copied_in_pieces_with_progress_and_can_be_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("big.bin");
+        let data: Vec<u8> = (0..PIECEWISE_FROM + 1000).map(|i| (i % 251) as u8).collect();
+        fs::write(&source, &data).unwrap();
+        let target = dir.path().join("copy.bin");
+        let mut reports = Vec::new();
+        assert_eq!(
+            copy_file_with(&source, &target, &mut |n| {
+                reports.push(n);
+                true
+            })
+            .unwrap(),
+            data.len() as u64
+        );
+        assert!(reports.len() > 1, "progress is reported per piece");
+        assert_eq!(reports.iter().sum::<u64>(), data.len() as u64);
+        assert_eq!(fs::read(&target).unwrap(), data);
+
+        let stopped = dir.path().join("stopped.bin");
+        assert!(copy_file_with(&source, &stopped, &mut |_| false).is_err());
+        assert!(!stopped.exists());
+        assert!(!dir.path().join(".stopped.bin.fc-partial").exists(), "no partial file is left");
     }
 
     #[test]

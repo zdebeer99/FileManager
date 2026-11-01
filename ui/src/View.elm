@@ -5,6 +5,7 @@ module View exposing (filterPopupValues, treeRows, view)
 
 import Array
 import Columns exposing (Column)
+import Commands
 import Dict
 import Filter
 import Format
@@ -15,6 +16,7 @@ import Html.Keyed
 import Item exposing (Item)
 import Json.Decode as D
 import Json.Encode
+import Keys
 import Menu
 import Path
 import Set
@@ -29,7 +31,7 @@ view model =
 
          -- Focusable, so clicking an empty spot keeps keyboard focus inside the app.
          , tabindex -1
-         , preventDefaultOn "keydown" keyDecoder
+         , preventDefaultOn "keydown" (keyDecoder model)
          , on "mouseup" mouseNavDecoder
          , on "mouseleave" (D.succeed DragLeftWindow)
          ]
@@ -76,6 +78,7 @@ view model =
 
                         [] ->
                             viewDialog model
+                    , viewPalette model
                     ]
         )
 
@@ -104,49 +107,112 @@ viewIf condition html =
 
 viewToolbar : Model -> Tab -> Html Msg
 viewToolbar model tab =
+    div
+        [ class ("toolbar style-" ++ model.toolbar.style)
+        , preventDefaultOn "contextmenu" (D.map2 (\x y -> ( ToolbarContext x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
+        ]
+        (List.map (viewToolbarItem model tab) model.toolbar.items)
+
+
+{-| One toolbar.toml item: a command button, `|` a separator, `->` flexible space (spec 8.5).
+-}
+viewToolbarItem : Model -> Tab -> String -> Html Msg
+viewToolbarItem model tab item =
+    case item of
+        "|" ->
+            span [ class "sep" ] []
+
+        "->" ->
+            span [ class "grow" ] []
+
+        "view.saveForFolder" ->
+            viewSaveViewButton model tab
+
+        id ->
+            case Commands.find id of
+                Just def ->
+                    let
+                        name =
+                            Commands.name id
+
+                        key =
+                            Commands.keyLabel model.keymap id
+
+                        label =
+                            if key == "" then
+                                name
+
+                            else
+                                name ++ " (" ++ key ++ ")"
+                    in
+                    button
+                        [ onClick (KeyCommand def.command)
+                        , title label
+                        , attribute "aria-label" label
+                        , disabled (not (Commands.enabled model tab def.command))
+                        , tabindex -1
+                        ]
+                        (toolbarFace model.toolbar.style def.icon name)
+
+                Nothing ->
+                    text ""
+
+
+toolbarFace : String -> String -> String -> List (Html msg)
+toolbarFace style icon name =
+    let
+        glyph =
+            if String.startsWith "." icon then
+                span [ class ("icon " ++ String.dropLeft 1 icon) ] []
+
+            else
+                span [ class "tb-icon" ] [ text icon ]
+    in
+    case style of
+        "text" ->
+            [ span [ class "tb-text" ] [ text name ] ]
+
+        "iconText" ->
+            [ glyph, span [ class "tb-text" ] [ text name ] ]
+
+        _ ->
+            [ glyph ]
+
+
+{-| Save View, with a dot when the view has unsaved changes (FR-TB-04, FR-VIEW-05).
+-}
+viewSaveViewButton : Model -> Tab -> Html Msg
+viewSaveViewButton model tab =
     let
         changed =
-            tab.view /= tab.savedView
+            tab.view /= tab.savedView && tab.search == Nothing
     in
-    div [ class "toolbar" ]
-        [ toolButton "←" Text.back (KeyCommand CmdBack) (List.isEmpty tab.back)
-        , toolButton "→" Text.forward (KeyCommand CmdForward) (List.isEmpty tab.forward)
-        , toolButton "↑" Text.up (KeyCommand CmdUp) (Path.parent model.sep tab.path == Nothing)
-        , toolButton "⟳" Text.refresh (KeyCommand CmdRefresh) False
-        , span [ class "sep" ] []
-        , toolButton "⌂" Text.home (KeyCommand CmdHome) False
-        , toolButton "◧" Text.toggleSidebar (KeyCommand CmdToggleSidebar) False
-        , span [ class "sep" ] []
-        , div [ class "split-button" ]
-            [ button
-                [ class "wide"
-                , onClick (KeyCommand (CmdSaveView False))
-                , title
-                    (if changed then
-                        Text.saveViewChanged
+    div [ class "split-button" ]
+        [ button
+            [ class "wide"
+            , onClick (KeyCommand (CmdSaveView False))
+            , title
+                (if changed then
+                    Text.saveViewChanged
 
-                     else
-                        Text.saveView
-                    )
-                , tabindex -1
-                ]
-                [ text Text.saveViewLabel
-                , viewIf changed (span [ class "dot" ] [])
-                ]
-            , button
-                [ class "arrow"
-                , stopPropagationOn "click" (D.map2 (\x y -> ( SaveViewMenu x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
-                , title Text.saveViewOptions
-                , tabindex -1
-                ]
-                [ text "▾" ]
+                 else
+                    Text.saveView
+                )
+            , disabled (tab.search /= Nothing)
+            , tabindex -1
             ]
+            [ text Text.saveViewLabel
+            , viewIf changed (span [ class "dot" ] [])
+            ]
+        , button
+            [ class "arrow"
+            , stopPropagationOn "click" (D.map2 (\x y -> ( SaveViewMenu x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
+            , title Text.saveViewOptions
+            , disabled (tab.search /= Nothing)
+            , tabindex -1
+            ]
+            [ text "▾" ]
         ]
-
-
-toolButton : String -> String -> Msg -> Bool -> Html Msg
-toolButton icon label msg isDisabled =
-    button [ onClick msg, title label, attribute "aria-label" label, disabled isDisabled, tabindex -1 ] [ text icon ]
 
 
 
@@ -273,6 +339,12 @@ bookmarkEntries b =
             else
                 []
            )
+        ++ (if b.exists then
+                []
+
+            else
+                [ action Text.locate (LocateBookmark b) ]
+           )
         ++ [ Separator
            , action Text.edit (EditBookmark b)
            , action Text.moveUp (edit "move" [ ( "delta", Json.Encode.int -1 ) ])
@@ -296,9 +368,30 @@ viewTabBar model =
 
 viewTab : Model -> Tab -> Html Msg
 viewTab model tab =
+    let
+        dragOver =
+            case model.drag of
+                Just (MoveTab d) ->
+                    d.moved && d.over == Just tab.id && d.tabId /= tab.id
+
+                _ ->
+                    False
+    in
     div
         ([ class "tab"
-         , classList [ ( "active", tab.id == model.active ) ]
+         , classList [ ( "active", tab.id == model.active ), ( "tab-drop", dragOver ) ]
+         , on "mousedown"
+            (D.map2 Tuple.pair (D.field "button" D.int) (D.field "clientX" D.float)
+                |> D.andThen
+                    (\( b, x ) ->
+                        if b == 0 then
+                            D.succeed (TabMouseDown tab.id x)
+
+                        else
+                            D.fail "not the left button"
+                    )
+            )
+         , on "mouseover" (D.succeed (TabHover tab.id))
          , attribute "role" "tab"
          , onClick (ActivateTab tab.id)
          , on "auxclick" (middleClick (CloseTab tab.id))
@@ -307,7 +400,12 @@ viewTab model tab =
             ++ dropTarget model (DropFolder tab.path) tab.path
         )
         [ viewIf (isFiltering tab) (span [ class "icon filter", title Text.filtered ] [])
-        , span [ class "label" ] [ text (Path.name model.sep tab.path) ]
+        , case tab.search of
+            Just search ->
+                span [ class "label search" ] [ text (Text.searchTabLabel search.query) ]
+
+            Nothing ->
+                span [ class "label" ] [ text (Path.name model.sep tab.path) ]
         , button
             [ class "close"
             , stopPropagationOn "click" (D.succeed ( CloseTab tab.id, True ))
@@ -842,7 +940,7 @@ viewHeader model tab template =
             (\( column, _ ) ->
                 let
                     filtered =
-                        Dict.member (Columns.toString column) tab.columnFilters
+                        Dict.member (Columns.toString column) tab.columnFilters || (column == Columns.Size && Dict.member "sizeRange" tab.columnFilters)
                 in
                 div
                     [ class "hcell"
@@ -893,11 +991,11 @@ viewHeader model tab template =
 
 viewRow : Model -> Tab -> Filter.Query -> String -> Int -> Item -> ( String, Html Msg )
 viewRow model tab query template index item =
-    ( item.name
+    ( item.id
     , div
         ([ class "row"
          , classList
-            [ ( "selected", Set.member item.name tab.selected )
+            [ ( "selected", Set.member item.id tab.selected )
             , ( "cursor", index == tab.cursor )
             , ( "hidden-item", item.hidden )
             , ( "cut", isCut model item )
@@ -953,7 +1051,7 @@ viewCell model tab query item column =
         Columns.Name ->
             case model.rename of
                 Just r ->
-                    if r.tabId == tab.id && r.original == item.name then
+                    if r.tabId == tab.id && r.key == item.id then
                         viewRenameCell item r
 
                     else
@@ -994,6 +1092,9 @@ viewCell model tab query item column =
 
         Columns.Sync ->
             div [ class "cell center muted", title (Item.syncLabel item.sync) ] [ text (syncGlyph item.sync) ]
+
+        Columns.Folder ->
+            plain "muted" item.folder
 
 
 viewNameCell : Model -> Filter.Query -> Item -> Html Msg
@@ -1103,13 +1204,13 @@ viewStatusBar model tab =
 
         selectedSize =
             Set.toList tab.selected
-                |> List.filterMap (\name -> Dict.get name tab.items)
+                |> List.filterMap (\id -> Dict.get id tab.items)
                 |> List.filter (not << .isDir)
                 |> List.map .size
                 |> List.sum
 
         warnings =
-            model.warnings ++ model.bookmarkWarnings
+            model.warnings ++ model.bookmarkWarnings ++ model.keyWarnings ++ model.toolbarWarnings
     in
     div [ class "statusbar" ]
         [ span []
@@ -1135,8 +1236,19 @@ viewStatusBar model tab =
                     )
                 ]
             )
-        , viewIf (tab.status == Loading) (span [] [ text Text.loading ])
+        , case tab.search of
+            Just search ->
+                span [ class "search-status" ] [ text (searchStatus search) ]
+
+            Nothing ->
+                viewIf (tab.status == Loading) (span [] [ text Text.loading ])
         , span [ class "grow" ] []
+        , case model.chord of
+            Just key ->
+                span [ class "message" ] [ text (Text.chordWaiting key) ]
+
+            Nothing ->
+                text ""
         , viewJobSummary model
         , case model.message of
             Just message ->
@@ -1157,6 +1269,345 @@ viewStatusBar model tab =
             Nothing ->
                 text ""
         ]
+
+
+
+-- QUICK FIND
+
+
+{-| Progress and outcome of a Quick Find search (FR-FIND-03).
+-}
+searchStatus : Search -> String
+searchStatus search =
+    case ( search.relink, search.running ) of
+        ( Just bookmark, False ) ->
+            Text.locateHint bookmark.name
+
+        _ ->
+            searchProgress search
+
+
+searchProgress : Search -> String
+searchProgress search =
+    if search.running then
+        Text.searchRunning search.scanned search.found
+
+    else if search.cancelled then
+        Text.searchStopped search.found
+
+    else if search.truncated then
+        Text.searchTruncated search.found
+
+    else if search.found == 0 then
+        Text.searchNothing
+
+    else
+        Text.searchDone search.scanned search.found search.millis
+
+
+
+-- COMMAND PALETTE
+
+
+viewPalette : Model -> Html Msg
+viewPalette model =
+    case model.palette of
+        Nothing ->
+            text ""
+
+        Just p ->
+            div [ class "palette-overlay", onClick (PaletteKey "Escape" False) ]
+                [ div [ class "palette", stopPropagationOn "click" (D.succeed ( NoOp, True )) ]
+                    [ input
+                        [ id paletteInputId
+                        , value p.text
+                        , onInput PaletteInput
+                        , placeholder Text.palettePlaceholder
+                        , spellcheck False
+                        , attribute "autocomplete" "off"
+                        , Html.Events.custom "keydown"
+                            (D.map2 Tuple.pair (D.field "key" D.string) (D.map2 (||) (D.field "ctrlKey" D.bool) (D.field "metaKey" D.bool))
+                                |> D.andThen
+                                    (\( key, ctrl ) ->
+                                        if List.member key [ "ArrowDown", "ArrowUp", "PageDown", "PageUp", "Enter", "Escape", "Tab" ] then
+                                            D.succeed { message = PaletteKey key ctrl, stopPropagation = True, preventDefault = True }
+
+                                        else
+                                            D.fail "typing"
+                                    )
+                            )
+                        ]
+                        []
+                    , if String.startsWith "?" p.text then
+                        div [ class "palette-hint" ] [ text Text.paletteFindHint ]
+
+                      else
+                        text ""
+                    , if List.isEmpty p.results && String.length p.text > 1 then
+                        div [ class "palette-empty" ] [ text Text.paletteNoResults ]
+
+                      else
+                        Html.Keyed.node "div"
+                            [ class "palette-results", attribute "role" "listbox" ]
+                            (List.indexedMap (viewPaletteItem p.active) p.results)
+                    ]
+                ]
+
+
+viewPaletteItem : Int -> Int -> PaletteItem -> ( String, Html Msg )
+viewPaletteItem active index result =
+    ( String.fromInt index ++ result.label ++ result.detail
+    , div
+        [ class "palette-item"
+        , classList [ ( "active", index == active ) ]
+        , attribute "role" "option"
+        , on "click" (D.map (\ctrl -> PaletteRun index ctrl) (D.map2 (||) (D.field "ctrlKey" D.bool) (D.field "metaKey" D.bool)))
+        , onMouseEnter (PaletteHover index)
+        ]
+        [ span [ class ("icon " ++ result.icon) ] []
+        , span [ class "palette-label" ] (highlightHits result.label result.hits)
+        , span [ class "palette-detail" ] [ text result.detail ]
+        , span [ class "key" ] [ text result.key ]
+        ]
+    )
+
+
+{-| The label with its matched letters marked (FR-CMD-03).
+-}
+highlightHits : String -> List Int -> List (Html msg)
+highlightHits label hits =
+    if List.isEmpty hits then
+        [ text label ]
+
+    else
+        String.toList label
+            |> List.indexedMap
+                (\i c ->
+                    if List.member i hits then
+                        Html.mark [] [ text (String.fromChar c) ]
+
+                    else
+                        text (String.fromChar c)
+                )
+
+
+
+-- KEYBOARD SHORTCUTS (FR-KEY-04)
+
+
+viewShortcuts : Model -> ShortcutsState -> Html Msg
+viewShortcuts model state =
+    let
+        search =
+            String.toLower (String.trim state.search)
+
+        rows =
+            Commands.all
+                |> List.filter (\d -> d.id /= "bookmark.manage")
+                |> List.filter
+                    (\d ->
+                        search
+                            == ""
+                            || String.contains search (String.toLower (Commands.name d.id))
+                            || String.contains search d.id
+                            || List.any (\k -> String.contains search (String.toLower k)) (Keys.keysFor d.id model.keymap)
+                    )
+                |> List.sortBy (\d -> String.toLower (Commands.name d.id))
+
+        changedByUser id =
+            List.any (\b -> b.command == id) model.userBindings
+    in
+    div [ class "overlay" ]
+        [ div [ class "dialog shortcuts", id shortcutsDialogId, tabindex -1, attribute "role" "dialog" ]
+            [ div [ class "dialog-title" ] [ text Text.shortcutsTitle ]
+            , input
+                [ id shortcutsSearchId
+                , class "shortcuts-search"
+                , value state.search
+                , onInput ShortcutsSearch
+                , placeholder Text.shortcutsSearch
+                , spellcheck False
+                ]
+                []
+            , case ( state.recording, state.proposal ) of
+                ( Just r, _ ) ->
+                    div [ class "shortcuts-banner recording" ]
+                        [ text (Commands.name r.command ++ ": ")
+                        , text
+                            (if List.isEmpty r.strokes then
+                                Text.pressKeys
+
+                             else
+                                String.join " " r.strokes ++ " …"
+                            )
+                        ]
+
+                ( Nothing, Just p ) ->
+                    let
+                        owners =
+                            Keys.lookup "global" p.key model.keymap
+                                |> Maybe.map .command
+                                |> Maybe.andThen
+                                    (\c ->
+                                        if c == p.command then
+                                            Nothing
+
+                                        else
+                                            Just c
+                                    )
+                    in
+                    div
+                        [ class "shortcuts-banner"
+                        , classList [ ( "conflict", owners /= Nothing ) ]
+                        ]
+                        [ span [ class "grow" ]
+                            [ text (Commands.name p.command ++ ": ")
+                            , case owners of
+                                Just other ->
+                                    text (Text.keyConflict p.key (Commands.name other))
+
+                                Nothing ->
+                                    text (Text.keyFree p.key)
+                            ]
+                        , button [ onClick ShortcutsDiscard ] [ text Text.cancel ]
+                        , button [ class "primary", onClick ShortcutsSave ] [ text Text.saveKey ]
+                        ]
+
+                ( Nothing, Nothing ) ->
+                    div [ class "shortcuts-banner muted" ] [ text Text.shortcutsHint ]
+            , div [ class "shortcuts-list" ]
+                (List.map
+                    (\d ->
+                        div [ class "shortcut-row" ]
+                            [ span [ class "shortcut-name" ]
+                                [ text (Commands.name d.id)
+                                , viewIf (changedByUser d.id) (span [ class "shortcut-changed" ] [ text Text.customised ])
+                                ]
+                            , span [ class "shortcut-id" ] [ text d.id ]
+                            , span [ class "shortcut-keys" ]
+                                (case Keys.keysFor d.id model.keymap of
+                                    [] ->
+                                        [ span [ class "muted" ] [ text Text.noBinding ] ]
+
+                                    keys ->
+                                        List.map
+                                            (\k ->
+                                                span [ class "keycap" ]
+                                                    [ text k
+                                                    , button [ class "keycap-remove", title Text.removeKey, onClick (ShortcutsRemove d.id k) ] [ text "×" ]
+                                                    ]
+                                            )
+                                            keys
+                                )
+                            , button [ class "small", onClick (ShortcutsRecord d.id) ] [ text Text.addKey ]
+                            , button [ class "small", disabled (not (changedByUser d.id)), onClick (ShortcutsReset d.id) ] [ text Text.resetKeys ]
+                            ]
+                    )
+                    rows
+                )
+            , div [ class "dialog-actions" ]
+                [ button [ onClick (KeyCommand CmdOpenKeybindingsFile) ] [ text Text.openFile ]
+                , button [ class "primary", onClick DialogCancel ] [ text Text.close ]
+                ]
+            ]
+        ]
+
+
+
+-- CUSTOMISE TOOLBAR (FR-TB-02)
+
+
+viewToolbarDialog : Model -> ToolbarForm -> Html Msg
+viewToolbarDialog model form =
+    let
+        itemLabel item =
+            case item of
+                "|" ->
+                    "— " ++ Text.toolbarSeparator ++ " —"
+
+                "->" ->
+                    "↔ " ++ Text.toolbarSpace
+
+                id ->
+                    Commands.name id
+
+        search =
+            String.toLower (String.trim form.search)
+
+        available =
+            List.filter (\i -> search == "" || String.contains search (String.toLower (itemLabel i))) [ "|", "->" ]
+                ++ (Commands.all
+                        |> List.map .id
+                        |> List.filter (\id -> id /= "bookmark.manage" && not (List.member id form.items))
+                        |> List.filter (\id -> search == "" || String.contains search (String.toLower (Commands.name id)) || String.contains search id)
+                        |> List.sortBy (Commands.name >> String.toLower)
+                   )
+
+        styleChoice value_ label_ =
+            label [ class "radio" ]
+                [ input [ Html.Attributes.type_ "radio", Html.Attributes.checked (form.style == value_), onClick (ToolbarStyle value_) ] []
+                , text label_
+                ]
+    in
+    div [ class "overlay" ]
+        [ div [ class "dialog toolbar-dialog", attribute "role" "dialog" ]
+            [ div [ class "dialog-title" ] [ text Text.customiseToolbar ]
+            , div [ class "toolbar-preview toolbar" ] (List.map (viewToolbarPreview model form.style) form.items)
+            , div [ class "toolbar-columns" ]
+                [ div [ class "toolbar-column" ]
+                    [ div [ class "column-title" ] [ text Text.toolbarButtons ]
+                    , div [ class "toolbar-list" ]
+                        (List.indexedMap
+                            (\i item ->
+                                div
+                                    [ class "toolbar-entry"
+                                    , classList [ ( "active", i == form.active ) ]
+                                    , onClick (ToolbarPick i)
+                                    ]
+                                    [ text (itemLabel item) ]
+                            )
+                            form.items
+                        )
+                    , div [ class "toolbar-buttons" ]
+                        [ button [ onClick (ToolbarMove -1), disabled (form.active <= 0) ] [ text ("↑ " ++ Text.moveUp) ]
+                        , button [ onClick (ToolbarMove 1), disabled (form.active >= List.length form.items - 1) ] [ text ("↓ " ++ Text.moveDown) ]
+                        , button [ onClick ToolbarRemove, disabled (List.isEmpty form.items) ] [ text Text.delete ]
+                        ]
+                    ]
+                , div [ class "toolbar-column" ]
+                    [ div [ class "column-title" ] [ text Text.toolbarAvailable ]
+                    , input [ class "toolbar-search", value form.search, onInput ToolbarSearch, placeholder Text.shortcutsSearch, spellcheck False ] []
+                    , div [ class "toolbar-list" ]
+                        (List.map (\id -> div [ class "toolbar-entry", onClick (ToolbarAdd id), title id ] [ text ("+ " ++ itemLabel id) ]) available)
+                    ]
+                ]
+            , div [ class "toolbar-style" ]
+                [ span [] [ text Text.toolbarStyle ]
+                , styleChoice "icon" Text.toolbarStyleIcon
+                , styleChoice "iconText" Text.toolbarStyleIconText
+                , styleChoice "text" Text.toolbarStyleText
+                ]
+            , div [ class "dialog-actions" ]
+                [ button [ onClick ToolbarDefaults ] [ text Text.toolbarDefaults ]
+                , span [ class "grow" ] []
+                , button [ onClick DialogCancel ] [ text Text.cancel ]
+                , button [ class "primary", onClick ToolbarSave ] [ text Text.saveKey ]
+                ]
+            ]
+        ]
+
+
+viewToolbarPreview : Model -> String -> String -> Html Msg
+viewToolbarPreview model style item =
+    case item of
+        "|" ->
+            span [ class "sep" ] []
+
+        "->" ->
+            span [ class "grow" ] []
+
+        id ->
+            button [ tabindex -1, title (Commands.name id) ] (toolbarFace style (Commands.icon id) (Commands.name id))
 
 
 
@@ -1295,6 +1746,14 @@ viewColumnFilter s =
                 , quick "year" Text.thisYear
                 ]
             )
+        , viewIf (s.column == Columns.Size)
+            (div [ class "size-range" ]
+                [ span [] [ text Text.sizeBetween ]
+                , rangeInput s.rangeFrom True
+                , span [] [ text Text.sizeAnd ]
+                , rangeInput s.rangeTo False
+                ]
+            )
         , div [ class "check-list" ]
             (div [ class "check-row all", onClick ColumnFilterSelectAll ]
                 [ span [ class "box" ]
@@ -1319,6 +1778,36 @@ viewColumnFilter s =
         ]
 
 
+{-| One end of the Size column's "between" range (FR-CF-01).
+-}
+rangeInput : String -> Bool -> Html Msg
+rangeInput current isFrom =
+    input
+        [ value current
+        , onInput (ColumnFilterRange isFrom)
+        , placeholder
+            (if isFrom then
+                Text.sizeFromHint
+
+             else
+                Text.sizeToHint
+            )
+        , classList [ ( "invalid", String.trim current /= "" && Format.parseSize current == Nothing ) ]
+        , spellcheck False
+        , Html.Events.custom "keydown"
+            (inputKeys [ "Enter", "Escape" ]
+                (\key ->
+                    if key == "Enter" then
+                        ColumnFilterApply
+
+                    else
+                        ClosePopups
+                )
+            )
+        ]
+        []
+
+
 viewDialog : Model -> Html Msg
 viewDialog model =
     case model.dialog of
@@ -1327,6 +1816,12 @@ viewDialog model =
 
         Just (NewItemDialog form) ->
             viewNewItemDialog form
+
+        Just (ShortcutsDialog state) ->
+            viewShortcuts model state
+
+        Just (ToolbarDialog form) ->
+            viewToolbarDialog model form
 
         Just (ConfirmDialog confirm) ->
             div [ class "overlay" ]
@@ -1442,55 +1937,182 @@ mouseNavDecoder =
             )
 
 
-type alias KeyInfo =
-    { key : String
-    , code : String
-    , ctrl : Bool
-    , shift : Bool
-    , alt : Bool
-    , target : String
-    }
-
-
-{-| Key presses anywhere in the window. Text boxes keep their keys, and
-focused buttons keep plain keys such as Enter and Space.
+{-| Key presses anywhere in the window (spec 6.10). Bound keys run their
+command; a key that starts a chord waits for the second key (FR-KEY-02).
+Text boxes keep their typing keys, and focused buttons keep plain keys such
+as Enter and Space.
 -}
-keyDecoder : D.Decoder ( Msg, Bool )
-keyDecoder =
-    D.map6 KeyInfo
+keyDecoder : Model -> D.Decoder ( Msg, Bool )
+keyDecoder model =
+    D.map7 Keys.KeyInfo
         (D.field "key" D.string)
         (D.oneOf [ D.field "code" D.string, D.succeed "" ])
         (D.map2 (||) (D.field "ctrlKey" D.bool) (D.field "metaKey" D.bool))
         (D.field "shiftKey" D.bool)
         (D.field "altKey" D.bool)
         (D.at [ "target", "tagName" ] D.string)
-        |> D.andThen
-            (\info ->
-                let
-                    plain =
-                        not info.ctrl && not info.alt && not (String.startsWith "F" info.key && String.length info.key > 1)
-                in
-                if info.target == "INPUT" || (info.target == "BUTTON" && plain) then
-                    D.fail "the focused control handles this key"
+        (D.oneOf [ D.at [ "target", "id" ] D.string, D.succeed "" ])
+        |> D.andThen (decideKey model)
 
-                else if info.key == "Alt" then
-                    D.succeed ( AltDown, False )
+
+decideKey : Model -> Keys.KeyInfo -> D.Decoder ( Msg, Bool )
+decideKey model info =
+    let
+        stroke =
+            Keys.fromEvent info
+
+        inInput =
+            info.target == "INPUT" || info.target == "TEXTAREA"
+
+        plain =
+            not info.ctrl && not info.alt && not (String.startsWith "F" info.key && String.length info.key > 1)
+
+        context =
+            keyContext model info
+
+        full =
+            case ( model.chord, stroke ) of
+                ( Just first, Just s ) ->
+                    Just (first ++ " " ++ s)
+
+                ( Nothing, s ) ->
+                    s
+
+                _ ->
+                    Nothing
+
+        bound =
+            full
+                |> Maybe.andThen (\k -> Keys.lookup context k model.keymap)
+                |> Maybe.andThen (\b -> Commands.fromBinding b.command b.args |> Maybe.map (\c -> ( b, c )))
+
+        -- In a text box only keys made for it, or Ctrl/Alt/F-keys that don't edit text, run commands.
+        allowedHere b s =
+            if inInput then
+                b.when == context || (not plain && not (List.member s textEditingKeys))
+
+            else
+                not (info.target == "BUTTON" && plain)
+    in
+    case ( recording model, stroke ) of
+        ( True, Just s ) ->
+            D.succeed ( KeyRecorded s, True )
+
+        ( True, Nothing ) ->
+            D.fail "a modifier key on its own"
+
+        ( False, _ ) ->
+            if ownsKeys model then
+                if info.key == "Escape" then
+                    D.succeed ( DialogCancel, True )
 
                 else
-                    case keyCommand info of
-                        Just command ->
+                    D.fail "the dialog handles this key"
+
+            else if info.key == "Alt" then
+                D.succeed ( AltDown, False )
+
+            else if model.menuBar /= Nothing then
+                case builtinKey info of
+                    Just command ->
+                        D.succeed ( KeyCommand command, True )
+
+                    Nothing ->
+                        D.succeed ( KeyOther, False )
+
+            else
+                case ( bound, stroke ) of
+                    ( Just ( b, command ), Just s ) ->
+                        if allowedHere b s then
                             D.succeed ( KeyCommand command, True )
 
-                        Nothing ->
-                            D.succeed ( KeyOther, False )
-            )
+                        else
+                            D.fail "the focused control handles this key"
+
+                    _ ->
+                        case ( model.chord, stroke ) of
+                            ( Just _, Just "Esc" ) ->
+                                D.succeed ( KeyOther, True )
+
+                            ( Just _, Just _ ) ->
+                                D.succeed ( KeyChordMiss (Maybe.withDefault "" full), True )
+
+                            ( Nothing, Just s ) ->
+                                if Keys.isChordStart s model.keymap && not (inInput && plain) then
+                                    D.succeed ( KeyChord s, True )
+
+                                else if inInput || (info.target == "BUTTON" && plain) then
+                                    D.fail "the focused control handles this key"
+
+                                else
+                                    case builtinKey info of
+                                        Just command ->
+                                            D.succeed ( KeyCommand command, True )
+
+                                        Nothing ->
+                                            D.succeed ( KeyOther, False )
+
+                            _ ->
+                                D.fail "a modifier key on its own"
 
 
-{-| Default key bindings (spec Appendix A). Customisable bindings come with
-keybindings.toml in milestone M4.
+{-| Where the key was pressed, for bindings with a `when` (FR-KEY-03).
 -}
-keyCommand : KeyInfo -> Maybe Command
-keyCommand { key, code, ctrl, shift, alt } =
+keyContext : Model -> Keys.KeyInfo -> String
+keyContext model info =
+    if info.targetId == paletteInputId then
+        "palette"
+
+    else if info.targetId == filterInputId then
+        "filter"
+
+    else if info.targetId == addressInputId then
+        "addressBar"
+
+    else if model.region == RegionSidebar && sidebarModeFromString model.settings.sidebarMode == TreeMode then
+        "tree"
+
+    else
+        "list"
+
+
+{-| Keys that edit text, kept by text boxes even when a command uses them.
+-}
+textEditingKeys : List String
+textEditingKeys =
+    [ "Ctrl+A", "Ctrl+C", "Ctrl+V", "Ctrl+X", "Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+Left", "Ctrl+Right", "Ctrl+Shift+Left", "Ctrl+Shift+Right", "Ctrl+Backspace", "Ctrl+Del", "Ctrl+Home", "Ctrl+End", "Ctrl+Shift+Home", "Ctrl+Shift+End" ]
+
+
+recording : Model -> Bool
+recording model =
+    case model.dialog of
+        Just (ShortcutsDialog s) ->
+            s.recording /= Nothing
+
+        _ ->
+            False
+
+
+{-| Dialogs that keep keys from the window, so typing in them never runs a command.
+-}
+ownsKeys : Model -> Bool
+ownsKeys model =
+    case model.dialog of
+        Just (ShortcutsDialog _) ->
+            True
+
+        Just (ToolbarDialog _) ->
+            True
+
+        _ ->
+            False
+
+
+{-| Keys that move the cursor and selection, and the menu mnemonics. They
+are not bindable; every other key comes from the key map.
+-}
+builtinKey : Keys.KeyInfo -> Maybe Command
+builtinKey { key, ctrl, shift, alt } =
     let
         k =
             if String.length key == 1 then
@@ -1498,162 +2120,8 @@ keyCommand { key, code, ctrl, shift, alt } =
 
             else
                 key
-
-        digit =
-            if String.startsWith "Digit" code then
-                String.toInt (String.dropLeft 5 code)
-
-            else
-                String.toInt k
     in
     case ( k, ctrl, alt ) of
-        ( "ArrowLeft", False, True ) ->
-            Just CmdBack
-
-        ( "ArrowRight", False, True ) ->
-            Just CmdForward
-
-        ( "ArrowUp", False, True ) ->
-            Just CmdUp
-
-        ( "Home", False, True ) ->
-            Just CmdHome
-
-        ( "BrowserBack", _, _ ) ->
-            Just CmdBack
-
-        ( "BrowserForward", _, _ ) ->
-            Just CmdForward
-
-        ( "Backspace", False, False ) ->
-            Just CmdUp
-
-        ( "F5", _, _ ) ->
-            Just CmdRefresh
-
-        ( "F6", _, _ ) ->
-            Just (CmdFocusRegion (not shift))
-
-        ( "F10", _, _ ) ->
-            Just
-                (if shift then
-                    CmdItemMenu
-
-                 else
-                    CmdMenuBar
-                )
-
-        ( "ContextMenu", _, _ ) ->
-            Just CmdItemMenu
-
-        ( "F2", _, _ ) ->
-            Just CmdRename
-
-        ( "Delete", False, False ) ->
-            Just (CmdDelete shift)
-
-        ( "x", True, False ) ->
-            Just CmdCut
-
-        ( "c", True, False ) ->
-            Just
-                (if shift then
-                    CmdCopyPath
-
-                 else
-                    CmdCopy
-                )
-
-        ( "v", True, False ) ->
-            Just
-                (if shift then
-                    CmdPasteShortcut
-
-                 else
-                    CmdPaste
-                )
-
-        ( "z", True, False ) ->
-            Just CmdUndo
-
-        ( "n", True, True ) ->
-            Just CmdNewFromTemplate
-
-        ( "n", True, False ) ->
-            Just
-                (if shift then
-                    CmdNewFolder
-
-                 else
-                    CmdNewItem NewFile
-                )
-
-        ( "`", True, False ) ->
-            Just CmdOpenTerminal
-
-        ( "l", True, False ) ->
-            Just
-                (if shift then
-                    CmdClearFilters
-
-                 else
-                    CmdEditAddress
-                )
-
-        ( "d", False, True ) ->
-            Just CmdEditAddress
-
-        ( "t", True, False ) ->
-            Just
-                (if shift then
-                    CmdReopenTab
-
-                 else
-                    CmdNewTab
-                )
-
-        ( "w", True, False ) ->
-            Just CmdCloseTab
-
-        ( "Tab", True, False ) ->
-            Just
-                (if shift then
-                    CmdPrevTab
-
-                 else
-                    CmdNextTab
-                )
-
-        ( "h", True, False ) ->
-            Just CmdToggleHidden
-
-        ( "a", True, False ) ->
-            Just CmdSelectAll
-
-        ( "i", True, False ) ->
-            Just CmdInvertSelection
-
-        ( "s", True, False ) ->
-            Just (CmdSaveView False)
-
-        ( "f", True, False ) ->
-            Just CmdFocusFilter
-
-        ( "b", True, False ) ->
-            Just CmdToggleSidebar
-
-        ( "d", True, False ) ->
-            Just CmdBookmarkFolder
-
-        ( ",", True, False ) ->
-            Just CmdOpenSettingsFile
-
-        ( "/", False, False ) ->
-            Just CmdFocusFilter
-
-        ( "Enter", True, False ) ->
-            Just CmdOpenNewTab
-
         ( "Enter", False, False ) ->
             Just CmdOpen
 
@@ -1688,32 +2156,7 @@ keyCommand { key, code, ctrl, shift, alt } =
             Just CmdEscape
 
         _ ->
-            if ctrl && shift && not alt then
-                case digit of
-                    Just 1 ->
-                        Just (CmdSidebarMode TreeMode)
-
-                    Just 2 ->
-                        Just (CmdSidebarMode FavouritesMode)
-
-                    Just 3 ->
-                        Just (CmdSidebarMode BookmarksMode)
-
-                    _ ->
-                        Nothing
-
-            else if ctrl && not alt then
-                digit
-                    |> Maybe.andThen
-                        (\n ->
-                            if n >= 1 && n <= 9 then
-                                Just (CmdGotoTab n)
-
-                            else
-                                Nothing
-                        )
-
-            else if alt && not ctrl then
+            if alt && not ctrl then
                 List.indexedMap Tuple.pair [ "f", "e", "v", "g", "b", "t", "w", "h" ]
                     |> List.filter (\( _, letter ) -> letter == k)
                     |> List.head
@@ -1975,10 +2418,20 @@ viewJob model job =
                 (\e ->
                     div [ class "job-error" ]
                         [ span [] [ text e.message ]
+                        , viewIf (not active) (button [ onClick (JobRetry job.id [ e ]) ] [ text Text.retry ])
+                        , viewIf (not active) (button [ onClick (JobSkip job.id [ e ]) ] [ text Text.skip ])
                         , button [ onClick (RevealPath e.path) ] [ text Text.showInFolder ]
                         ]
                 )
                 (List.take 20 job.errors)
+                ++ [ viewIf (not active && List.length job.errors > 1)
+                        (div [ class "job-error" ]
+                            [ span [] []
+                            , button [ onClick (JobRetry job.id job.errors) ] [ text Text.retryAll ]
+                            , button [ onClick (JobSkip job.id job.errors) ] [ text Text.skipAll ]
+                            ]
+                        )
+                   ]
             )
         ]
 

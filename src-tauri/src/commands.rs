@@ -1,6 +1,7 @@
 //! The IPC commands the Elm UI calls (spec 4.4). Every command is async, so
 //! it runs on a Tokio worker; file system work goes to the I/O pools.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -12,8 +13,10 @@ use tauri::{AppHandle, State};
 
 use crate::bookmarks::{self, Bookmarks};
 use crate::fileops;
+use crate::find::{self, FindEvent};
 use crate::folder_view::{self, FolderView};
 use crate::jobs::{self, Action, JobManager, JobRequest, UndoStep};
+use crate::keybindings::{self, KeyBindings};
 use crate::listing::{diff, error_kind, read_dir_streaming, DirCache, DirEvent};
 use crate::paths::{self, AppPaths};
 use crate::platform;
@@ -21,6 +24,7 @@ use crate::pools::IoPools;
 use crate::session::{self, Session};
 use crate::settings::{self, Settings};
 use crate::templates;
+use crate::toolbar::{self, Toolbar};
 use crate::watcher::DirWatcher;
 
 pub struct AppState {
@@ -33,6 +37,8 @@ pub struct AppState {
     jobs: Mutex<Option<Arc<JobManager>>>,
     /// Kept open: on Linux, clipboard text lives only as long as its owner.
     clipboard: Mutex<Option<arboard::Clipboard>>,
+    /// Running Quick Find searches by id, with their cancel flags.
+    searches: Arc<Mutex<HashMap<u64, Arc<AtomicBool>>>>,
 }
 
 impl AppState {
@@ -46,6 +52,7 @@ impl AppState {
             watcher: Mutex::new(None),
             jobs: Mutex::new(None),
             clipboard: Mutex::new(None),
+            searches: Arc::default(),
         }
     }
 
@@ -75,6 +82,8 @@ pub struct InitData {
     roots: Vec<platform::Root>,
     settings_file: String,
     bookmarks_file: String,
+    keybindings: KeyBindings,
+    toolbar: Toolbar,
     version: &'static str,
 }
 
@@ -86,7 +95,7 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
     let paths = state.paths.clone();
     let cache = state.cache.clone();
     let config = paths.config.clone();
-    let (loaded, warnings, last_session) = state
+    let (loaded, warnings, last_session, key_bindings, tool_bar) = state
         .pools
         .run(&config, Duration::from_secs(10), move || {
             let (loaded, warnings) = settings::load(&paths);
@@ -94,7 +103,13 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
             for (folder, items) in session::load_snapshot(&paths) {
                 cache.put_if_absent(folder, Arc::new(items));
             }
-            (loaded, warnings, last_session)
+            (
+                loaded,
+                warnings,
+                last_session,
+                keybindings::load(&paths.keybindings_file()),
+                toolbar::load(&paths.toolbar_file()),
+            )
         })
         .await?;
     let roots_home = paths::home_dir();
@@ -132,6 +147,8 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
         roots,
         settings_file: state.paths.settings_file().to_string_lossy().into_owned(),
         bookmarks_file: state.paths.bookmarks_file().to_string_lossy().into_owned(),
+        keybindings: key_bindings,
+        toolbar: tool_bar,
         version: env!("CARGO_PKG_VERSION"),
     })
 }
@@ -611,4 +628,145 @@ pub async fn drag_out(window: tauri::WebviewWindow, paths: Vec<String>) -> Resul
             }
         })
         .map_err(|e| e.to_string())
+}
+
+/// Starts Quick Find in `root` (spec 6.6). Results stream to `on_event`;
+/// a query with a mistake is refused with a message.
+#[tauri::command]
+pub async fn find_start(
+    state: State<'_, AppState>,
+    search_id: u64,
+    root: String,
+    query: String,
+    clock: find::Clock,
+    on_event: Channel<FindEvent>,
+) -> Result<(), String> {
+    let parsed = find::Query::parse(&query, clock)?;
+    if parsed.is_empty() {
+        return Err("Type what to look for.".into());
+    }
+    let cancelled = Arc::new(AtomicBool::new(false));
+    state.searches.lock().unwrap().insert(search_id, cancelled.clone());
+    let search = find::Search {
+        root: PathBuf::from(paths::normalize(&root)),
+        query: parsed,
+        options: state.settings.read().unwrap().search.clone(),
+        cancelled,
+    };
+    let searches = state.searches.clone();
+    // The walk starts its own threads on all cores (FR-FIND-05); this thread only waits for it.
+    std::thread::Builder::new()
+        .name("find".into())
+        .spawn(move || {
+            find::run(search, move |event| {
+                let _ = on_event.send(event);
+            });
+            searches.lock().unwrap().remove(&search_id);
+        })
+        .map_err(|e| format!("Could not start the search: {e}"))?;
+    Ok(())
+}
+
+/// Stops a running search (`Esc`, FR-FIND-03). Results found so far stay.
+#[tauri::command]
+pub async fn find_cancel(state: State<'_, AppState>, search_id: u64) -> Result<(), String> {
+    if let Some(flag) = state.searches.lock().unwrap().get(&search_id) {
+        flag.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn keybindings_get(state: State<'_, AppState>) -> Result<KeyBindings, String> {
+    let file = state.paths.keybindings_file();
+    state.pools.run(&file.clone(), Duration::from_secs(10), move || keybindings::load(&file)).await
+}
+
+/// One command's new keys, from Help › Keyboard Shortcuts.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyChange {
+    command: String,
+    when: String,
+    keys: Vec<String>,
+    remove_defaults: bool,
+}
+
+/// Sets the keys of one or more commands in keybindings.toml, in order
+/// (FR-KEY-04). The watcher then reloads the file and tells the UI.
+#[tauri::command]
+pub async fn keybindings_set(state: State<'_, AppState>, changes: Vec<KeyChange>) -> Result<KeyBindings, String> {
+    let file = state.paths.keybindings_file();
+    state
+        .pools
+        .run(&file.clone(), Duration::from_secs(10), move || {
+            for c in &changes {
+                keybindings::set(&file, &c.command, &c.when, &c.keys, c.remove_defaults)?;
+            }
+            Ok(keybindings::load(&file))
+        })
+        .await?
+}
+
+/// The key bindings file, created with an explanatory header if needed.
+#[tauri::command]
+pub async fn keybindings_file(state: State<'_, AppState>) -> Result<String, String> {
+    let file = state.paths.keybindings_file();
+    state
+        .pools
+        .run(&file.clone(), Duration::from_secs(10), move || {
+            keybindings::ensure_file(&file).map_err(|e| e.to_string())?;
+            Ok(file.to_string_lossy().into_owned())
+        })
+        .await?
+}
+
+#[tauri::command]
+pub async fn toolbar_get(state: State<'_, AppState>) -> Result<Toolbar, String> {
+    let file = state.paths.toolbar_file();
+    state.pools.run(&file.clone(), Duration::from_secs(10), move || toolbar::load(&file)).await
+}
+
+/// Writes the toolbar chosen in *Customise Toolbar* (FR-TB-02).
+#[tauri::command]
+pub async fn toolbar_save(state: State<'_, AppState>, style: String, items: Vec<String>) -> Result<Toolbar, String> {
+    let file = state.paths.toolbar_file();
+    state
+        .pools
+        .run(&file.clone(), Duration::from_secs(10), move || {
+            toolbar::save(&file, &style, &items)?;
+            Ok(toolbar::load(&file))
+        })
+        .await?
+}
+
+/// The toolbar file, created with the current toolbar if needed.
+#[tauri::command]
+pub async fn toolbar_file(state: State<'_, AppState>) -> Result<String, String> {
+    let file = state.paths.toolbar_file();
+    state
+        .pools
+        .run(&file.clone(), Duration::from_secs(10), move || {
+            toolbar::ensure_file(&file)?;
+            Ok(file.to_string_lossy().into_owned())
+        })
+        .await?
+}
+
+/// The closest folder that still exists on the way up from `path`; where
+/// *Locate…* searches for a bookmark whose target was moved (FR-BM-03).
+#[tauri::command]
+pub async fn nearest_folder(state: State<'_, AppState>, path: String) -> Result<String, String> {
+    let start = PathBuf::from(&path);
+    state
+        .pools
+        .run(&start.clone(), state.timeout(), move || {
+            start
+                .ancestors()
+                .skip(1)
+                .find(|dir| dir.is_dir())
+                .map(|dir| paths::normalize(&dir.to_string_lossy()))
+                .ok_or_else(|| "None of the folders above it exist.".to_string())
+        })
+        .await?
 }

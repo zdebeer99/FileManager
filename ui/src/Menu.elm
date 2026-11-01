@@ -6,6 +6,7 @@ already show the whole application.
 -}
 
 import Columns exposing (Column)
+import Commands
 import Html exposing (Html, button, div, span, text)
 import Html.Attributes exposing (attribute, class, classList, disabled, tabindex)
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
@@ -21,8 +22,39 @@ type alias Menu =
     }
 
 
+{-| Each menu item shows its command's current key, from the defaults and
+keybindings.toml (FR-MENU-01, FR-KEY-01).
+-}
 menus : Model -> Tab -> List Menu
 menus model tab =
+    List.map (\m -> { m | entries = List.map (withKey model) m.entries }) (baseMenus model tab)
+
+
+withKey : Model -> MenuEntry -> MenuEntry
+withKey model entry =
+    case entry of
+        Action a ->
+            case a.msg of
+                Just (KeyCommand command) ->
+                    case Commands.idOf command of
+                        Just id ->
+                            Action { a | key = Commands.keyLabel model.keymap id }
+
+                        Nothing ->
+                            entry
+
+                _ ->
+                    entry
+
+        Submenu label children ->
+            Submenu label (List.map (withKey model) children)
+
+        Separator ->
+            entry
+
+
+baseMenus : Model -> Tab -> List Menu
+baseMenus model tab =
     let
         s =
             model.settings
@@ -67,6 +99,7 @@ menus model tab =
             , cmd "Paste as Shortcut" "Ctrl+Shift+V" CmdPasteShortcut
             , cmd "Duplicate" "" CmdDuplicate
             , cmd "Copy Path" "Ctrl+Shift+C" CmdCopyPath
+            , cmd "Copy Name" "" CmdCopyName
             , Separator
             , cmd "Rename" "F2" CmdRename
             , cmd "Delete" "Del" (CmdDelete False)
@@ -79,14 +112,15 @@ menus model tab =
       }
     , { title = "View"
       , entries =
-            [ toggle "Menu Bar" "" s.menuBar (CmdSetting "layout.menuBar" (not s.menuBar))
-            , toggle "Toolbar" "" s.toolbar (CmdSetting "layout.toolbar" (not s.toolbar))
-            , toggle "Bookmark Bar" "" s.bookmarkBar (CmdSetting "layout.bookmarkBar" (not s.bookmarkBar))
-            , toggle "Tab Bar" "" s.tabBar (CmdSetting "layout.tabBar" (not s.tabBar))
-            , toggle "Address Bar" "" s.addressBar (CmdSetting "layout.addressBar" (not s.addressBar))
+            [ toggle "Menu Bar" "" s.menuBar (CmdToggleSetting "layout.menuBar")
+            , toggle "Toolbar" "" s.toolbar (CmdToggleSetting "layout.toolbar")
+            , toggle "Bookmark Bar" "" s.bookmarkBar (CmdToggleSetting "layout.bookmarkBar")
+            , toggle "Tab Bar" "" s.tabBar (CmdToggleSetting "layout.tabBar")
+            , toggle "Address Bar" "" s.addressBar (CmdToggleSetting "layout.addressBar")
             , toggle "Sidebar" "Ctrl+B" s.sidebarVisible CmdToggleSidebar
             , later "Quick View" "Ctrl+Q"
-            , toggle "Status Bar" "" s.statusBar (CmdSetting "layout.statusBar" (not s.statusBar))
+            , toggle "Status Bar" "" s.statusBar (CmdToggleSetting "layout.statusBar")
+            , cmd "Customise Toolbar…" "" CmdCustomiseToolbar
             , Separator
             , Submenu "Sidebar"
                 [ toggle "Folder Tree" "Ctrl+Shift+1" (sidebarMode == TreeMode) (CmdSidebarMode TreeMode)
@@ -116,7 +150,7 @@ menus model tab =
                        ]
                 )
             , toggle "Show Hidden Files" "Ctrl+H" tab.view.showHidden CmdToggleHidden
-            , toggle "Show File Extensions" "" s.showExtensions (CmdSetting "view.default.showExtensions" (not s.showExtensions))
+            , toggle "Show File Extensions" "" s.showExtensions (CmdToggleSetting "view.default.showExtensions")
             , Separator
             , cmd "Quick Filter" "Ctrl+F" CmdFocusFilter
             , cmd "Clear All Filters" "Ctrl+Shift+L" CmdClearFilters
@@ -168,20 +202,22 @@ menus model tab =
       }
     , { title = "Tools"
       , entries =
-            [ later "Quick Find" "Ctrl+Shift+F"
+            [ cmd "Quick Find" "Ctrl+Shift+F" (CmdPalette "?")
             , cmd "Quick Filter" "Ctrl+F" CmdFocusFilter
-            , later "Command Palette" "Ctrl+P"
+            , cmd "Command Palette" "Ctrl+P" (CmdPalette "")
+            , cmd "Commands…" "Ctrl+Shift+P" (CmdPalette ">")
+            , Separator
             , cmd "Save Selection as Template" "" CmdSaveAsTemplate
             , cmd "Edit Templates Folder" "" CmdEditTemplates
             , Separator
             , cmd "Open Settings File" "Ctrl+," CmdOpenSettingsFile
-            , later "Open Key Bindings File" ""
-            , later "Open Toolbar File" ""
+            , cmd "Open Key Bindings File" "" CmdOpenKeybindingsFile
+            , cmd "Open Toolbar File" "" CmdOpenToolbarFile
             ]
       }
     , { title = "Window"
       , entries =
-            [ Action { label = "Jobs", key = "", msg = Just ToggleJobsPanel, checked = Just model.jobsPanel }
+            [ toggle "Jobs" "" model.jobsPanel CmdToggleJobs
             , Separator
             , cmd "Next Tab" "Ctrl+Tab" CmdNextTab
             , cmd "Previous Tab" "Ctrl+Shift+Tab" CmdPrevTab
@@ -206,7 +242,7 @@ menus model tab =
       }
     , { title = "Help"
       , entries =
-            [ later "Keyboard Shortcuts" "Ctrl+/"
+            [ cmd "Keyboard Shortcuts" "Ctrl+/" CmdShortcuts
             , later "Documentation" ""
             , cmd "Open Log Folder" "" CmdOpenLogFolder
             , cmd ("About " ++ "File Catalog") "" CmdAbout

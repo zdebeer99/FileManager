@@ -16,6 +16,7 @@ pub struct Settings {
     pub general: General,
     pub layout: Layout,
     pub view: ViewSection,
+    pub search: crate::find::SearchSettings,
     pub templates: TemplateSettings,
     pub network: Network,
 }
@@ -201,6 +202,7 @@ pub fn parse(text: &str) -> (Settings, Vec<String>) {
         general: section(&table, "general", "general", &mut warnings),
         layout: section(&table, "layout", "layout", &mut warnings),
         view: ViewSection { default: section(&view_table, "default", "view.default", &mut warnings) },
+        search: section(&table, "search", "search", &mut warnings),
         templates: section(&table, "templates", "templates", &mut warnings),
         network: section(&table, "network", "network", &mut warnings),
     };
@@ -251,6 +253,13 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 # showHidden   = false
 # showExtensions = true
 # dateFormat   = "yyyy-MM-dd HH:mm"
+
+# [search]                          # Quick Find (Ctrl+Shift+F)
+# includeHidden   = false
+# followLinks     = false           # follow symbolic links and junctions (loops are detected)
+# maxDepth        = 0               # 0 = no limit
+# maxResults      = 10000
+# skipOnlineOnlyFolders = true      # don't search cloud folders that are not downloaded
 
 # [templates]
 # folders    = ["templates"]        # relative to this settings folder, or full paths (e.g. a shared team folder)

@@ -51,6 +51,8 @@ pub struct JobRequest {
 #[serde(rename_all = "camelCase")]
 pub struct JobError {
     pub path: String,
+    /// The folder the item was going into, so *Retry* can try it again (FR-OP-04).
+    pub dest: Option<String>,
     pub message: String,
     /// "noTrash" when an item can't go to the Recycle Bin (FR-DEL-03).
     pub code: &'static str,
@@ -322,13 +324,14 @@ impl<'a> Runner<'a> {
                     self.status.current = name_of(source);
                     if self.request.permanent {
                         if let Err(e) = fileops::remove_permanently(source) {
-                            self.fail(source, fileops::describe(&e, source), "");
+                            self.fail(source, None, fileops::describe(&e, source), "");
                         }
                     } else {
                         match trash::delete(source) {
                             Ok(()) => trashed.push(source.clone()),
                             Err(e) => self.fail(
                                 source,
+                                None,
                                 format!("Can't move \"{}\" to the Recycle Bin: {e}", name_of(source)),
                                 "noTrash",
                             ),
@@ -357,12 +360,12 @@ impl<'a> Runner<'a> {
         let meta = match source.symlink_metadata() {
             Ok(meta) => meta,
             Err(e) => {
-                self.fail(source, fileops::describe(&e, source), "");
+                self.fail(source, Some(dest_dir), fileops::describe(&e, source), "");
                 return None;
             }
         };
         if meta.is_dir() && fileops::is_inside(dest_dir, source) && naming.is_none() {
-            self.fail(source, format!("Can't copy the folder \"{name}\" into itself."), "");
+            self.fail(source, Some(dest_dir), format!("Can't copy the folder \"{name}\" into itself."), "");
             return None;
         }
         let mut target = match naming {
@@ -386,7 +389,7 @@ impl<'a> Runner<'a> {
             }
             if !target.exists() {
                 if let Err(e) = fs::create_dir(&target) {
-                    self.fail(source, fileops::describe(&e, &target), "");
+                    self.fail(source, Some(dest_dir), fileops::describe(&e, &target), "");
                     return None;
                 }
             }
@@ -394,7 +397,7 @@ impl<'a> Runner<'a> {
             let mut children: Vec<PathBuf> = match fs::read_dir(source) {
                 Ok(entries) => entries.filter_map(Result::ok).map(|e| e.path()).collect(),
                 Err(e) => {
-                    self.fail(source, fileops::describe(&e, source), "");
+                    self.fail(source, Some(dest_dir), fileops::describe(&e, source), "");
                     return Some(target);
                 }
             };
@@ -423,14 +426,22 @@ impl<'a> Runner<'a> {
         }
         self.status.current = name;
         self.emit(false);
+        // Large files report progress as they copy and stop when the job is cancelled.
+        let mut reported = 0;
         let result = if meta.file_type().is_symlink() {
             copy_symlink(source, &target)
         } else {
-            fileops::copy_file(source, &target)
+            fileops::copy_file_with(source, &target, &mut |piece| {
+                reported += piece;
+                self.status.done_bytes += piece;
+                self.emit(false);
+                self.checkpoint()
+            })
         };
         match result {
-            Ok(bytes) => self.status.done_bytes += bytes,
-            Err(e) => self.fail(source, fileops::describe(&e, source), ""),
+            Ok(bytes) => self.status.done_bytes += bytes.saturating_sub(reported),
+            Err(_) if self.cancelled() => {}
+            Err(e) => self.fail(source, Some(dest_dir), fileops::describe(&e, source), ""),
         }
         self.status.done_items += 1;
         self.emit(false);
@@ -451,7 +462,7 @@ impl<'a> Runner<'a> {
             return None;
         }
         if source.is_dir() && fileops::is_inside(dest_dir, source) {
-            self.fail(source, format!("Can't move the folder \"{name}\" into itself."), "");
+            self.fail(source, Some(dest_dir), format!("Can't move the folder \"{name}\" into itself."), "");
             return None;
         }
         let mut target = dest_dir.join(&name);
@@ -471,7 +482,7 @@ impl<'a> Runner<'a> {
                 }
                 _ => {
                     if let Err(e) = fileops::remove_permanently(&target) {
-                        self.fail(source, fileops::describe(&e, &target), "");
+                        self.fail(source, Some(dest_dir), fileops::describe(&e, &target), "");
                         return None;
                     }
                 }
@@ -485,7 +496,7 @@ impl<'a> Runner<'a> {
             }
             Err(e) if fileops::is_cross_device(&e) => self.move_by_copy(source, dest_dir, &target),
             Err(e) => {
-                self.fail(source, fileops::describe(&e, source), "");
+                self.fail(source, Some(dest_dir), fileops::describe(&e, source), "");
                 None
             }
         }
@@ -499,11 +510,16 @@ impl<'a> Runner<'a> {
         let copied = self.copy_entry(source, dest_dir, naming)?;
         let (copied_bytes, _) = fileops::measure(std::slice::from_ref(&copied));
         if self.status.errors.len() != errors_before || self.cancelled() || copied_bytes < bytes {
-            self.fail(source, format!("\"{}\" was not fully copied, so the original was kept.", name_of(source)), "");
+            self.fail(
+                source,
+                Some(dest_dir),
+                format!("\"{}\" was not fully copied, so the original was kept.", name_of(source)),
+                "",
+            );
             return None;
         }
         if let Err(e) = fileops::remove_permanently(source) {
-            self.fail(source, fileops::describe(&e, source), "");
+            self.fail(source, Some(dest_dir), fileops::describe(&e, source), "");
         }
         Some((source.to_path_buf(), copied))
     }
@@ -564,9 +580,10 @@ impl<'a> Runner<'a> {
         self.status.done_items += items;
     }
 
-    fn fail(&mut self, path: &Path, message: String, code: &'static str) {
+    fn fail(&mut self, path: &Path, dest: Option<&Path>, message: String, code: &'static str) {
         tracing::warn!(path = %path.display(), "{message}");
-        self.status.errors.push(JobError { path: path.to_string_lossy().into_owned(), message, code });
+        let dest = dest.map(|d| d.to_string_lossy().into_owned());
+        self.status.errors.push(JobError { path: path.to_string_lossy().into_owned(), dest, message, code });
     }
 
     fn emit(&mut self, force: bool) {

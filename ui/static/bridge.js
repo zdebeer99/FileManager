@@ -45,9 +45,19 @@
     send({ id: -1, type: 'event', name: 'file-drop', data: Object.assign({}, drop, { target: target ? target.dataset.drop : null }) });
   });
 
-  for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed', 'job-progress', 'job-conflict']) {
+  for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed', 'keybindings-changed', 'toolbar-changed', 'job-progress', 'job-conflict']) {
     listen(name, (event) => send({ id: -1, type: 'event', name, data: event.payload }));
   }
+
+  // A clicked button that disappears leaves focus on the page itself, outside
+  // the app's key handler: hand such keys to the app.
+  document.addEventListener('keydown', (event) => {
+    const root = document.querySelector('.app');
+    if (root && (event.target === document.body || event.target === document.documentElement)) {
+      root.focus();
+      if (!root.dispatchEvent(new KeyboardEvent('keydown', event))) event.preventDefault();
+    }
+  });
 
   // Text boxes marked data-select-on-focus select their whole content when focused.
   document.addEventListener('focusin', (event) => {
@@ -58,7 +68,7 @@
 
   // Turn off web-view behaviour that makes no sense in a desktop app
   // (reload, print, find-in-page, the browser context menu).
-  const blocked = new Set(['F5', 'F7', 'Ctrl+r', 'Ctrl+p', 'Ctrl+f', 'Ctrl+g', 'Ctrl+u', 'Ctrl+s']);
+  const blocked = new Set(['F3', 'F5', 'F7', 'Ctrl+r', 'Ctrl+p', 'Ctrl+f', 'Ctrl+g', 'Ctrl+u', 'Ctrl+s']);
   window.addEventListener('keydown', (event) => {
     const key = (event.ctrlKey ? 'Ctrl+' : '') + (event.key.length === 1 ? event.key.toLowerCase() : event.key);
     if (blocked.has(key)) event.preventDefault();

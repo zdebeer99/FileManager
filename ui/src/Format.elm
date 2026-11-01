@@ -1,4 +1,4 @@
-module Format exposing (date, monthNumber, size)
+module Format exposing (date, monthNumber, parseSize, size)
 
 import Time
 
@@ -90,3 +90,60 @@ monthNumber month =
 
         Time.Dec ->
             12
+
+
+{-| Reads a size as people type it: `10 MB`, `1.5gb`, `512` (bytes), `20k`.
+Units are powers of 1024, as File Explorer uses.
+-}
+parseSize : String -> Maybe Int
+parseSize text =
+    let
+        clean =
+            String.toLower (String.replace " " "" text)
+
+        number =
+            String.filter (\c -> Char.isDigit c || c == '.') clean
+
+        unit =
+            String.dropLeft (String.length number) clean
+
+        factor =
+            case unit of
+                "" ->
+                    Just 1
+
+                "b" ->
+                    Just 1
+
+                "k" ->
+                    Just 1024
+
+                "kb" ->
+                    Just 1024
+
+                "m" ->
+                    Just (1024 ^ 2)
+
+                "mb" ->
+                    Just (1024 ^ 2)
+
+                "g" ->
+                    Just (1024 ^ 3)
+
+                "gb" ->
+                    Just (1024 ^ 3)
+
+                "t" ->
+                    Just (1024 ^ 4)
+
+                "tb" ->
+                    Just (1024 ^ 4)
+
+                _ ->
+                    Nothing
+    in
+    if String.startsWith number clean then
+        Maybe.map2 (\n f -> round (n * toFloat f)) (String.toFloat number) factor
+
+    else
+        Nothing

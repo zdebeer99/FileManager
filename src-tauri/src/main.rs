@@ -4,8 +4,10 @@
 mod bookmarks;
 mod commands;
 mod fileops;
+mod find;
 mod folder_view;
 mod jobs;
+mod keybindings;
 mod listing;
 mod model;
 mod paths;
@@ -14,6 +16,7 @@ mod pools;
 mod session;
 mod settings;
 mod templates;
+mod toolbar;
 mod watcher;
 
 use std::sync::OnceLock;
@@ -68,6 +71,15 @@ fn main() {
             commands::clipboard_set_files,
             commands::clipboard_get_files,
             commands::drag_out,
+            commands::find_start,
+            commands::find_cancel,
+            commands::keybindings_get,
+            commands::keybindings_set,
+            commands::keybindings_file,
+            commands::toolbar_get,
+            commands::toolbar_save,
+            commands::toolbar_file,
+            commands::nearest_folder,
         ])
         .on_window_event(forward_file_drops)
         .build(tauri::generate_context!())

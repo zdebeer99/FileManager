@@ -8,6 +8,7 @@ import Browser
 import Browser.Dom as Dom
 import Browser.Events
 import Columns exposing (Column)
+import Commands
 import Dict exposing (Dict)
 import FileName
 import Filter
@@ -15,7 +16,9 @@ import Format
 import Item exposing (Item)
 import Json.Decode as D
 import Json.Encode as E
+import Keys
 import Menu
+import Palette
 import Path
 import Ports
 import Process
@@ -91,6 +94,15 @@ init _ =
             , templates = []
             , templatesFolder = ""
             , now = Time.millisToPosix 0
+            , keymap = Tuple.first (Commands.buildKeymap [])
+            , userBindings = []
+            , keyWarnings = []
+            , chord = Nothing
+            , palette = Nothing
+            , paletteHistory = []
+            , findHistory = []
+            , toolbar = { style = "icon", items = [], defaults = [], file = "" }
+            , toolbarWarnings = []
             }
 
         ( withRequest, initCmd ) =
@@ -128,6 +140,7 @@ emptyTab model tabId path =
     , filter = ""
     , columnFilters = Dict.empty
     , pendingSelect = Nothing
+    , search = Nothing
     }
 
 
@@ -191,10 +204,178 @@ update msg model =
             ( { model | zone = zone }, Cmd.none )
 
         KeyCommand command ->
-            routeKey command { model | altAlone = False }
+            routeKey command { model | altAlone = False, chord = Nothing }
 
         KeyOther ->
-            ( { model | altAlone = False }, Cmd.none )
+            ( { model | altAlone = False, chord = Nothing }, Cmd.none )
+
+        KeyChord key ->
+            ( { model | chord = Just key, altAlone = False }, Cmd.none )
+
+        KeyChordMiss keys ->
+            flash (Text.chordUnknown keys) { model | chord = Nothing }
+
+        StartFind query now ->
+            startSearch query { model | now = now }
+
+        PaletteInput text ->
+            setPaletteText text model
+
+        PaletteKey key ctrl ->
+            paletteKey key ctrl model
+
+        PaletteRun index ctrl ->
+            case model.palette |> Maybe.andThen (\p -> List.head (List.drop index p.results)) of
+                Just picked ->
+                    runPaletteItem picked ctrl model
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        PaletteHover index ->
+            ( { model | palette = Maybe.map (\p -> { p | active = index }) model.palette }, Cmd.none )
+
+        ShortcutsSearch text ->
+            ( updateShortcuts (\s -> { s | search = text }) model, Cmd.none )
+
+        ShortcutsRecord id ->
+            ( updateShortcuts (\s -> { s | recording = Just { command = id, strokes = [], seq = model.messageSeq + 1 }, proposal = Nothing }) { model | messageSeq = model.messageSeq + 1 }
+            , Task.attempt (\_ -> NoOp) (Dom.focus shortcutsDialogId)
+            )
+
+        KeyRecorded stroke ->
+            keyRecorded stroke model
+
+        RecordDone seq ->
+            ( updateShortcuts
+                (\s ->
+                    case s.recording of
+                        Just r ->
+                            if r.seq == seq && not (List.isEmpty r.strokes) then
+                                { s | recording = Nothing, proposal = Just { command = r.command, key = String.join " " r.strokes } }
+
+                            else
+                                s
+
+                        Nothing ->
+                            s
+                )
+                model
+            , Cmd.none
+            )
+
+        ShortcutsSave ->
+            case model.dialog of
+                Just (ShortcutsDialog { proposal }) ->
+                    case proposal of
+                        Just p ->
+                            saveKeys (addKeyChanges p.command p.key model) (updateShortcuts (\s -> { s | proposal = Nothing }) model)
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        ShortcutsDiscard ->
+            ( updateShortcuts (\s -> { s | proposal = Nothing, recording = Nothing }) model, Cmd.none )
+
+        ShortcutsRemove id key ->
+            let
+                remaining =
+                    List.filter ((/=) key) (Keys.keysFor id model.keymap)
+            in
+            saveKeys [ keyChange id remaining (List.isEmpty remaining) ] model
+
+        ShortcutsReset id ->
+            saveKeys [ keyChange id [] False ] model
+
+        ToolbarContext x y ->
+            ( { model
+                | popup =
+                    Just
+                        (MenuPopup
+                            { x = x
+                            , y = y
+                            , entries =
+                                [ Action { label = Text.commandName "toolbar.customise", key = "", msg = Just (KeyCommand CmdCustomiseToolbar), checked = Nothing }
+                                , Action { label = Text.commandName "toolbar.open", key = "", msg = Just (KeyCommand CmdOpenToolbarFile), checked = Nothing }
+                                , Separator
+                                , Action { label = Text.commandName "view.toggleToolbar", key = "", msg = Just (KeyCommand (CmdToggleSetting "layout.toolbar")), checked = Nothing }
+                                ]
+                            }
+                        )
+                , menuBar = Nothing
+              }
+            , Cmd.none
+            )
+
+        ToolbarPick index ->
+            ( updateToolbarForm (\f -> { f | active = index }) model, Cmd.none )
+
+        ToolbarMove delta ->
+            ( updateToolbarForm
+                (\f ->
+                    let
+                        target =
+                            f.active + delta
+                    in
+                    if target < 0 || target >= List.length f.items then
+                        f
+
+                    else
+                        { f | items = swapAt f.active target f.items, active = target }
+                )
+                model
+            , Cmd.none
+            )
+
+        ToolbarRemove ->
+            ( updateToolbarForm
+                (\f ->
+                    { f
+                        | items = List.take f.active f.items ++ List.drop (f.active + 1) f.items
+                        , active = max 0 (min f.active (List.length f.items - 2))
+                    }
+                )
+                model
+            , Cmd.none
+            )
+
+        ToolbarAdd id ->
+            ( updateToolbarForm
+                (\f ->
+                    let
+                        at =
+                            if List.isEmpty f.items then
+                                0
+
+                            else
+                                f.active + 1
+                    in
+                    { f | items = List.take at f.items ++ [ id ] ++ List.drop at f.items, active = at }
+                )
+                model
+            , Cmd.none
+            )
+
+        ToolbarStyle style ->
+            ( updateToolbarForm (\f -> { f | style = style }) model, Cmd.none )
+
+        ToolbarSearch text ->
+            ( updateToolbarForm (\f -> { f | search = text }) model, Cmd.none )
+
+        ToolbarDefaults ->
+            ( updateToolbarForm (\f -> { f | items = model.toolbar.defaults, active = 0 }) model, Cmd.none )
+
+        ToolbarSave ->
+            case model.dialog of
+                Just (ToolbarDialog f) ->
+                    request "toolbar_save" (E.object [ ( "style", E.string f.style ), ( "items", E.list E.string f.items ) ]) False ReqToolbar { model | dialog = Nothing }
+                        |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
 
         AltDown ->
             ( { model | altAlone = True }, Cmd.none )
@@ -339,14 +520,7 @@ update msg model =
         MenuRun inner ->
             -- The clicked menu item disappears, so give the list focus back first;
             -- an action that opens a dialog then moves focus into the dialog.
-            update inner { model | menuBar = Nothing, popup = Nothing }
-                |> (\( m, cmd ) ->
-                        if m.dialog == Nothing && m.rename == Nothing then
-                            ( m, Cmd.batch [ focusList, cmd ] )
-
-                        else
-                            ( m, cmd )
-                   )
+            update inner { model | menuBar = Nothing, popup = Nothing } |> focusListFirst
 
         -- Quick Filter
         FilterInput text ->
@@ -410,7 +584,7 @@ update msg model =
                                     -- Dragging an unselected item drags just that item, like Explorer.
                                     -- The selection itself is left alone, so Ctrl+click still works.
                                     items =
-                                        if Set.member item.name tab.selected then
+                                        if Set.member item.id tab.selected then
                                             targetItems tab
 
                                         else
@@ -558,12 +732,24 @@ update msg model =
                         name =
                             Columns.toString s.column
 
-                        set tab =
-                            if s.search == "" && Set.isEmpty (Set.diff allValues allowed) then
-                                Dict.remove name tab.columnFilters
+                        setRange filters =
+                            if s.column /= Columns.Size then
+                                filters
+
+                            else if String.trim s.rangeFrom == "" && String.trim s.rangeTo == "" then
+                                Dict.remove sizeRangeKey filters
 
                             else
-                                Dict.insert name allowed tab.columnFilters
+                                Dict.insert sizeRangeKey (Set.singleton (String.trim s.rangeFrom ++ "|" ++ String.trim s.rangeTo)) filters
+
+                        set tab =
+                            setRange
+                                (if s.search == "" && Set.isEmpty (Set.diff allValues allowed) then
+                                    Dict.remove name tab.columnFilters
+
+                                 else
+                                    Dict.insert name allowed tab.columnFilters
+                                )
                     in
                     ( updateActive (\tab -> refilter model { tab | columnFilters = set tab, cursor = 0 }) { model | popup = Nothing }
                     , focusList
@@ -572,11 +758,36 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        ColumnFilterRange isFrom text ->
+            ( updateFilterPopup
+                (\s ->
+                    if isFrom then
+                        { s | rangeFrom = text }
+
+                    else
+                        { s | rangeTo = text }
+                )
+                model
+            , Cmd.none
+            )
+
         ColumnFilterClear ->
             case model.popup of
                 Just (ColumnFilterPopup s) ->
                     ( updateActive
-                        (\tab -> refilter model { tab | columnFilters = Dict.remove (Columns.toString s.column) tab.columnFilters })
+                        (\tab ->
+                            refilter model
+                                { tab
+                                    | columnFilters =
+                                        Dict.remove (Columns.toString s.column) tab.columnFilters
+                                            |> (if s.column == Columns.Size then
+                                                    Dict.remove sizeRangeKey
+
+                                                else
+                                                    identity
+                                               )
+                                }
+                        )
                         { model | popup = Nothing }
                     , focusList
                     )
@@ -628,6 +839,24 @@ update msg model =
         BookmarkEditOp fields ->
             request "bookmarks_edit" (E.object [ ( "edit", E.object fields ) ]) False ReqBookmarkEdit { model | popup = Nothing }
 
+        TabMouseDown tabId x ->
+            ( { model | drag = Just (MoveTab { tabId = tabId, startX = x, moved = False, over = Nothing }) }, Cmd.none )
+
+        TabHover tabId ->
+            case model.drag of
+                Just (MoveTab d) ->
+                    if d.over == Just tabId then
+                        ( model, Cmd.none )
+
+                    else
+                        ( { model | drag = Just (MoveTab { d | over = Just tabId }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        LocateBookmark bookmark ->
+            request "nearest_folder" (E.object [ ( "path", E.string bookmark.target ) ]) False (ReqLocate bookmark) { model | popup = Nothing }
+
         EditBookmark bookmark ->
             openDialog
                 { index = Just bookmark.index
@@ -666,11 +895,11 @@ update msg model =
                             (\item ->
                                 let
                                     selected =
-                                        if Set.member item.name tab.selected then
+                                        if Set.member item.id tab.selected then
                                             tab
 
                                         else
-                                            { tab | cursor = index, anchor = index, selected = Set.singleton item.name }
+                                            { tab | cursor = index, anchor = index, selected = Set.singleton item.id }
 
                                     withSelection =
                                         replaceTab selected model
@@ -750,6 +979,50 @@ update msg model =
 
         StartJob kind sources dest permanent ->
             startJob kind sources dest permanent { model | popup = Nothing, dialog = Nothing }
+
+        JobRetry jobId errors ->
+            -- Starts the failed items again, one job per destination folder (FR-OP-04).
+            case Dict.get jobId model.jobs of
+                Just job ->
+                    let
+                        kind =
+                            case job.kind of
+                                "delete" ->
+                                    "delete"
+
+                                "move" ->
+                                    "move"
+
+                                "transfer" ->
+                                    "move"
+
+                                _ ->
+                                    "copy"
+
+                        dests =
+                            List.foldl
+                                (\e acc ->
+                                    if List.member e.dest acc then
+                                        acc
+
+                                    else
+                                        acc ++ [ e.dest ]
+                                )
+                                []
+                                errors
+                    in
+                    List.foldl
+                        (\dest acc ->
+                            acc |> andThen (startJob kind (errors |> List.filter (\e -> e.dest == dest) |> List.map .path) dest job.permanent)
+                        )
+                        ( dropJobErrors jobId errors model, Cmd.none )
+                        dests
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        JobSkip jobId errors ->
+            ( dropJobErrors jobId errors model, Cmd.none )
 
         JobCancel jobId ->
             request "job_cancel" (E.object [ ( "jobId", E.int jobId ) ]) False ReqIgnore model
@@ -878,7 +1151,7 @@ runCommand command model =
             ( updateActive (\tab -> changeView (\v -> { v | showHidden = not v.showHidden }) model tab) model, Cmd.none )
 
         CmdSelectAll ->
-            ( updateActive (\tab -> { tab | selected = Array.foldl (\item -> Set.insert item.name) Set.empty tab.visible }) model
+            ( updateActive (\tab -> { tab | selected = Array.foldl (\item -> Set.insert item.id) Set.empty tab.visible }) model
             , Cmd.none
             )
 
@@ -887,7 +1160,7 @@ runCommand command model =
 
         CmdInvertSelection ->
             ( updateActive
-                (\tab -> { tab | selected = Array.foldl (\item -> toggle item.name) tab.selected tab.visible })
+                (\tab -> { tab | selected = Array.foldl (\item -> toggle item.id) tab.selected tab.visible })
                 model
             , Cmd.none
             )
@@ -950,7 +1223,7 @@ runCommand command model =
                 (\tab ->
                     case Array.get tab.cursor tab.visible of
                         Just item ->
-                            { tab | selected = toggle item.name tab.selected, anchor = tab.cursor }
+                            { tab | selected = toggle item.id tab.selected, anchor = tab.cursor }
 
                         Nothing ->
                             tab
@@ -960,7 +1233,16 @@ runCommand command model =
             )
 
         CmdEscape ->
-            ( updateActive (\tab -> { tab | selected = Set.empty }) model, Cmd.none )
+            case activeTab model |> Maybe.andThen .search of
+                Just search ->
+                    if search.running then
+                        request "find_cancel" (E.object [ ( "searchId", E.int search.id ) ]) False ReqIgnore model
+
+                    else
+                        ( updateActive (\tab -> { tab | selected = Set.empty }) model, Cmd.none )
+
+                Nothing ->
+                    ( updateActive (\tab -> { tab | selected = Set.empty }) model, Cmd.none )
 
         CmdTypeahead char ->
             typeahead char model
@@ -1287,6 +1569,87 @@ runCommand command model =
                         )
                 )
 
+        CmdPalette prefix ->
+            openPalette prefix model
+
+        CmdShortcuts ->
+            ( { model | dialog = Just (ShortcutsDialog { search = "", recording = Nothing, proposal = Nothing }), popup = Nothing, menuBar = Nothing, palette = Nothing }
+            , Task.attempt (\_ -> NoOp) (Dom.focus shortcutsSearchId)
+            )
+
+        CmdOpenKeybindingsFile ->
+            request "keybindings_file" (E.object []) False ReqOpenReturnedFile model
+
+        CmdOpenToolbarFile ->
+            request "toolbar_file" (E.object []) False ReqOpenReturnedFile model
+
+        CmdCustomiseToolbar ->
+            ( { model
+                | dialog = Just (ToolbarDialog { style = model.toolbar.style, items = model.toolbar.items, active = 0, search = "" })
+                , popup = Nothing
+                , menuBar = Nothing
+                , palette = Nothing
+              }
+            , Cmd.none
+            )
+
+        CmdToggleSetting key ->
+            runCommand (CmdSetting key (not (boolSetting key model.settings))) model
+
+        CmdOpenBookmarkNamed name ->
+            case List.filter (\b -> String.toLower b.name == String.toLower name) model.bookmarks of
+                b :: _ ->
+                    openBookmark b False model
+
+                [] ->
+                    flash (Text.noBookmarkNamed name) model
+
+        CmdGoto path ->
+            withActive model (\tab -> Just (request "resolve_path" (E.object [ ( "input", E.string path ), ( "base", E.string tab.path ) ]) False (ReqResolve tab.id) model))
+
+        CmdCopyName ->
+            withTargets model
+                (\items ->
+                    request "clipboard_write_text"
+                        (E.object [ ( "text", E.string (String.join "\n" (List.map .name items)) ) ])
+                        False
+                        (ReqCopied (Text.namesCopied (List.length items)))
+                        model
+                )
+
+        CmdToggleJobs ->
+            update ToggleJobsPanel model
+
+
+{-| The current value of an on/off setting that the View menu toggles.
+-}
+boolSetting : String -> Settings -> Bool
+boolSetting key s =
+    case key of
+        "layout.menuBar" ->
+            s.menuBar
+
+        "layout.toolbar" ->
+            s.toolbar
+
+        "layout.bookmarkBar" ->
+            s.bookmarkBar
+
+        "layout.tabBar" ->
+            s.tabBar
+
+        "layout.addressBar" ->
+            s.addressBar
+
+        "layout.statusBar" ->
+            s.statusBar
+
+        "view.default.showExtensions" ->
+            s.showExtensions
+
+        _ ->
+            False
+
 
 localBoolSetting : String -> Bool -> Settings -> Settings
 localBoolSetting key value s =
@@ -1608,7 +1971,7 @@ clickRow index mods tab =
     else if mods.ctrl then
         case Array.get index tab.visible of
             Just item ->
-                { tab | cursor = index, anchor = index, selected = toggle item.name tab.selected }
+                { tab | cursor = index, anchor = index, selected = toggle item.id tab.selected }
 
             Nothing ->
                 tab
@@ -1620,13 +1983,13 @@ clickRow index mods tab =
 rangeSelection : Int -> Int -> Tab -> Set String
 rangeSelection a b tab =
     Array.slice (min a b) (max a b + 1) tab.visible
-        |> Array.foldl (\item -> Set.insert item.name) Set.empty
+        |> Array.foldl (\item -> Set.insert item.id) Set.empty
 
 
 nameSet : Int -> Tab -> Set String
 nameSet index tab =
     Array.get index tab.visible
-        |> Maybe.map (\item -> Set.singleton item.name)
+        |> Maybe.map (\item -> Set.singleton item.id)
         |> Maybe.withDefault Set.empty
 
 
@@ -1641,7 +2004,7 @@ toggle value set =
 
 selectedItems : Tab -> List Item
 selectedItems tab =
-    Array.toList tab.visible |> List.filter (\item -> Set.member item.name tab.selected)
+    Array.toList tab.visible |> List.filter (\item -> Set.member item.id tab.selected)
 
 
 ensureCursorVisible : ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
@@ -1679,6 +2042,18 @@ ensureCursorVisible ( model, cmd ) =
 scrollListTo : Float -> Cmd Msg
 scrollListTo y =
     Task.attempt (\_ -> NoOp) (Dom.setViewportOf listId 0 y)
+
+
+{-| After a menu item or palette result disappears, gives the list focus
+back first; an action that opens a dialog then moves focus into the dialog.
+-}
+focusListFirst : ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+focusListFirst ( model, cmd ) =
+    if model.dialog == Nothing && model.rename == Nothing && model.palette == Nothing then
+        ( model, Cmd.batch [ focusList, cmd ] )
+
+    else
+        ( model, cmd )
 
 
 focusList : Cmd Msg
@@ -1731,6 +2106,7 @@ navigate mode path select model =
                     resetListing
                         { withHistory
                             | path = path
+                            , search = Nothing
                             , pendingSelect = select
                             , view = view
                             , savedView = view
@@ -1789,11 +2165,16 @@ loadTab tabId model =
             ( model, Cmd.none )
 
         Just tab ->
-            let
-                ( withRequest, cmd ) =
-                    request "dir_list" (E.object [ ( "path", E.string tab.path ) ]) True (ReqList tabId) model
-            in
-            ( replaceTab { tab | req = model.nextReq, status = Loading, chunks = 0 } withRequest, cmd )
+            case tab.search of
+                Just search ->
+                    rerunSearch tab search model
+
+                Nothing ->
+                    let
+                        ( withRequest, cmd ) =
+                            request "dir_list" (E.object [ ( "path", E.string tab.path ) ]) True (ReqList tabId) model
+                    in
+                    ( replaceTab { tab | req = model.nextReq, status = Loading, chunks = 0 } withRequest, cmd )
 
 
 loadView : Int -> Model -> ( Model, Cmd Msg )
@@ -1888,7 +2269,33 @@ tabIdAtOffset offset model =
 
 openItem : Item -> Model -> ( Model, Cmd Msg )
 openItem item model =
-    if item.isDir then
+    case activeTab model |> Maybe.andThen .search |> Maybe.andThen .relink of
+        Just bookmark ->
+            -- Locate…: the chosen item becomes the bookmark's target.
+            update
+                (BookmarkEditOp
+                    [ ( "op", E.string "update" )
+                    , ( "index", E.int bookmark.index )
+                    , ( "name", E.string bookmark.name )
+                    , ( "target", E.string item.path )
+                    , ( "group", E.list E.string bookmark.group )
+                    ]
+                )
+                model
+                |> andThen (closeTab model.active)
+                |> andThen (flash (Text.bookmarkRelinked bookmark.name))
+
+        Nothing ->
+            openOrNavigate item model
+
+
+openOrNavigate : Item -> Model -> ( Model, Cmd Msg )
+openOrNavigate item model =
+    if item.isDir && (activeTab model |> Maybe.map (\t -> t.search /= Nothing) |> Maybe.withDefault False) then
+        -- Keep the results: a folder found by Quick Find opens in a new tab.
+        addTab item.path True model
+
+    else if item.isDir then
         navigate Push item.path Nothing model
 
     else
@@ -1924,17 +2331,23 @@ openBookmark bookmark newTab model =
 persist : Model -> ( Model, Cmd Msg )
 persist model =
     let
+        -- Quick Find results tabs are not restored or watched.
+        folderTabs =
+            List.filter (\t -> t.search == Nothing) model.tabs
+
         paths =
-            List.map .path model.tabs
+            List.map .path folderTabs
 
         activeIndex =
-            List.length (List.filter (\t -> t.id < model.active) model.tabs)
+            List.length (List.filter (\t -> t.id < model.active) folderTabs)
 
         session =
             E.object
-                [ ( "activeTab", E.int activeIndex )
+                [ ( "activeTab", E.int (min activeIndex (List.length folderTabs - 1)) )
                 , ( "tabs", E.list E.string paths )
                 , ( "recent", E.list E.string model.recent )
+                , ( "paletteHistory", E.list E.string model.paletteHistory )
+                , ( "findHistory", E.list E.string model.findHistory )
                 ]
     in
     ( model, Cmd.none )
@@ -2123,6 +2536,9 @@ mouseMove x y model =
         Just (MoveColumn d) ->
             ( { model | drag = Just (MoveColumn { d | moved = d.moved || abs (x - d.startX) > 5 }) }, Cmd.none )
 
+        Just (MoveTab d) ->
+            ( { model | drag = Just (MoveTab { d | moved = d.moved || abs (x - d.startX) > 8 }) }, Cmd.none )
+
         Just (ResizeSidebar d) ->
             let
                 delta =
@@ -2181,11 +2597,53 @@ mouseUp mods model =
                     Nothing ->
                         ( done, Cmd.none )
 
+        Just (MoveTab d) ->
+            case ( d.moved, d.over ) of
+                ( True, Just over ) ->
+                    persist { done | tabs = moveTabTo d.tabId over model.tabs }
+
+                _ ->
+                    ( done, Cmd.none )
+
         Just (ResizeSidebar d) ->
             setSetting "layout.sidebar.width" (E.int (round d.width)) (\s -> { s | sidebarWidth = toFloat (round d.width) }) done
 
         _ ->
             ( done, measureList )
+
+
+{-| Puts a tab where another tab is, shifting the tabs in between.
+-}
+moveTabTo : Int -> Int -> List Tab -> List Tab
+moveTabTo tabId over tabs =
+    case List.filter (\t -> t.id == tabId) tabs of
+        moving :: _ ->
+            let
+                others =
+                    List.filter (\t -> t.id /= tabId) tabs
+
+                ids =
+                    List.map .id tabs
+
+                from =
+                    indexWhere ((==) tabId) ids
+
+                to =
+                    indexWhere ((==) over) ids
+            in
+            List.take to others
+                ++ [ moving ]
+                ++ List.drop to others
+                |> (\result ->
+                        if from == to then
+                            tabs
+
+                        else
+                            result
+                   )
+
+        [] ->
+            tabs
 
 
 moveColumn : Column -> Column -> FolderView -> FolderView
@@ -2229,18 +2687,22 @@ saveView : Bool -> Model -> ( Model, Cmd Msg )
 saveView subfolders model =
     withActive model
         (\tab ->
-            Just
-                (request "folder_view_save"
-                    (E.object
-                        [ ( "path", E.string tab.path )
-                        , ( "view", encodeView tab.view )
-                        , ( "applyToSubfolders", E.bool subfolders )
-                        ]
+            if tab.search /= Nothing then
+                Just (flash Text.notInSearch model)
+
+            else
+                Just
+                    (request "folder_view_save"
+                        (E.object
+                            [ ( "path", E.string tab.path )
+                            , ( "view", encodeView tab.view )
+                            , ( "applyToSubfolders", E.bool subfolders )
+                            ]
+                        )
+                        False
+                        (ReqViewSaved tab.id tab.path)
+                        model
                     )
-                    False
-                    (ReqViewSaved tab.id tab.path)
-                    model
-                )
         )
 
 
@@ -2329,7 +2791,7 @@ columnFilterState model tab column x y now =
             Columns.toString column
 
         candidates =
-            filtered model { tab | columnFilters = Dict.remove name tab.columnFilters }
+            filtered model { tab | columnFilters = Dict.remove name (Dict.remove sizeRangeKey tab.columnFilters) }
 
         counts =
             List.foldl
@@ -2356,7 +2818,39 @@ columnFilterState model tab column x y now =
     , values = values
     , checked = Dict.get name tab.columnFilters |> Maybe.withDefault (Set.fromList (List.map Tuple.first values))
     , now = now
+    , rangeFrom = sizeRange tab |> Maybe.map Tuple.first |> Maybe.withDefault ""
+    , rangeTo = sizeRange tab |> Maybe.map Tuple.second |> Maybe.withDefault ""
     }
+
+
+{-| The Size column's custom range, as typed: kept in the column filters
+under `sizeRange` as "from|to" (FR-CF-01).
+-}
+sizeRange : Tab -> Maybe ( String, String )
+sizeRange tab =
+    Dict.get sizeRangeKey tab.columnFilters
+        |> Maybe.andThen (Set.toList >> List.head)
+        |> Maybe.map
+            (\v ->
+                case String.split "|" v of
+                    [ from, to ] ->
+                        ( from, to )
+
+                    _ ->
+                        ( v, "" )
+            )
+
+
+sizeRangeKey : String
+sizeRangeKey =
+    "sizeRange"
+
+
+inSizeRange : ( String, String ) -> Item -> Bool
+inSizeRange ( from, to ) item =
+    not item.isDir
+        && (Format.parseSize from |> Maybe.map (\min -> item.size >= min) |> Maybe.withDefault True)
+        && (Format.parseSize to |> Maybe.map (\max -> item.size <= max) |> Maybe.withDefault True)
 
 
 quickDateChoice : Time.Zone -> Time.Posix -> String -> List ( String, Int ) -> Set String
@@ -2431,14 +2925,14 @@ updateFilterPopup f model =
 -- LISTING
 
 
-byName : List Item -> Dict String Item
-byName items =
+byId : List Item -> Dict String Item
+byId items =
     insertAll items Dict.empty
 
 
 insertAll : List Item -> Dict String Item -> Dict String Item
 insertAll items dict =
-    List.foldl (\item -> Dict.insert item.name item) dict items
+    List.foldl (\item -> Dict.insert item.id item) dict items
 
 
 applyPatch : Patch -> Tab -> Tab
@@ -2470,7 +2964,7 @@ refilter model tab =
 
         cursor =
             Array.get tab.cursor tab.visible
-                |> Maybe.andThen (\item -> indexOf item.name shown)
+                |> Maybe.andThen (\item -> indexOf item.id shown)
                 |> Maybe.withDefault (min tab.cursor lastIndex)
     in
     { tab
@@ -2513,11 +3007,15 @@ filtered model tab =
             Dict.toList tab.columnFilters
                 |> List.filterMap (\( name, allowed ) -> Columns.fromString name |> Maybe.map (\c -> ( c, allowed )))
 
+        range =
+            sizeRange tab
+
         passes item =
             Filter.matches query item
                 && List.all (\( c, allowed ) -> Set.member (Columns.filterValue model.zone c item) allowed) columnTests
+                && (range |> Maybe.map (\r -> inSizeRange r item) |> Maybe.withDefault True)
     in
-    if Filter.isEmpty query && List.isEmpty columnTests then
+    if Filter.isEmpty query && List.isEmpty columnTests && range == Nothing then
         withoutHidden tab
 
     else
@@ -2533,7 +3031,7 @@ indexOf name items =
                     ( i, found )
 
                 Nothing ->
-                    if item.name == name then
+                    if item.id == name then
                         ( i, Just i )
 
                     else
@@ -2722,6 +3220,9 @@ isTreeKey command =
         CmdOpen ->
             True
 
+        CmdTypeahead _ ->
+            True
+
         _ ->
             False
 
@@ -2791,6 +3292,45 @@ treeKey command model =
 
         ( CmdOpen, Just row ) ->
             navigate Push row.path Nothing model
+
+        ( CmdTypeahead char, _ ) ->
+            -- Type-ahead: jump to the next folder whose name starts with the typed letters (FR-SB-01).
+            if char == " " && model.typeahead == "" then
+                ( model, Cmd.none )
+
+            else
+                let
+                    buffer =
+                        model.typeahead ++ String.toLower char
+
+                    seq =
+                        model.typeaheadSeq + 1
+
+                    start =
+                        if String.length buffer == 1 then
+                            index + 1
+
+                        else
+                            index
+
+                    found =
+                        List.range start (start + count - 1)
+                            |> List.filter (\i -> at (modBy (max 1 count) i) |> Maybe.map (\r -> String.startsWith buffer (String.toLower r.label)) |> Maybe.withDefault False)
+                            |> List.head
+                            |> Maybe.map (modBy (max 1 count))
+
+                    withBuffer =
+                        { model | typeahead = buffer, typeaheadSeq = seq }
+
+                    clear =
+                        Process.sleep 1000 |> Task.perform (\_ -> ClearTypeahead seq)
+                in
+                case found of
+                    Just i ->
+                        ( { withBuffer | treeCursor = Maybe.map .path (at i) }, Cmd.batch [ revealTreeCursor, clear ] )
+
+                    Nothing ->
+                        ( withBuffer, clear )
 
         _ ->
             ( model, Cmd.none )
@@ -2986,6 +3526,11 @@ isActiveJob job =
 {-| Updates the job list; when a job ends, reports it and offers a
 permanent delete for items the Recycle Bin refused (FR-DEL-03).
 -}
+dropJobErrors : Int -> List JobError -> Model -> Model
+dropJobErrors jobId errors model =
+    { model | jobs = Dict.update jobId (Maybe.map (\job -> { job | errors = List.filter (\e -> not (List.member e errors)) job.errors })) model.jobs }
+
+
 jobProgress : JobStatus -> Model -> ( Model, Cmd Msg )
 jobProgress job model =
     let
@@ -3037,7 +3582,7 @@ jobDecoder =
         |> andMap (D.field "totalBytes" D.int)
         |> andMap (D.field "current" D.string)
         |> andMap (D.field "elapsedMs" D.int)
-        |> andMap (D.field "errors" (D.list (D.map3 JobError (D.field "path" D.string) (D.field "message" D.string) (D.field "code" D.string))))
+        |> andMap (D.field "errors" (D.list (D.map4 JobError (D.field "path" D.string) (D.oneOf [ D.field "dest" (D.nullable D.string), D.succeed Nothing ]) (D.field "message" D.string) (D.field "code" D.string))))
 
 
 conflictDecoder : D.Decoder Conflict
@@ -3327,7 +3872,7 @@ startRename : Tab -> Item -> Model -> ( Model, Cmd Msg )
 startRename tab item model =
     let
         state =
-            { tabId = tab.id, original = item.name, text = item.name, error = Nothing, step = 0 }
+            { tabId = tab.id, key = item.id, original = item.name, text = item.name, error = Nothing, step = 0 }
     in
     ( { model | rename = Just state, popup = Nothing, menuBar = Nothing }, selectRenameText model state )
 
@@ -3337,7 +3882,7 @@ selectRenameText model state =
     let
         isDir =
             activeTab model
-                |> Maybe.andThen (\tab -> Dict.get state.original tab.items)
+                |> Maybe.andThen (\tab -> Dict.get state.key tab.items)
                 |> Maybe.map .isDir
                 |> Maybe.withDefault False
 
@@ -3356,7 +3901,18 @@ validateRename : Model -> String -> String -> Maybe String
 validateRename model original text =
     let
         others =
-            activeTab model |> Maybe.map (.items >> Dict.keys) |> Maybe.withDefault [] |> List.filter ((/=) original)
+            -- Search results come from many folders; the backend checks those names.
+            activeTab model
+                |> Maybe.map
+                    (\tab ->
+                        if tab.search == Nothing then
+                            Dict.keys tab.items
+
+                        else
+                            []
+                    )
+                |> Maybe.withDefault []
+                |> List.filter ((/=) original)
     in
     FileName.validate (model.sep == "\\") others text
 
@@ -3381,7 +3937,7 @@ commitRename pressedEnter model =
                             ( { model | rename = Nothing }, Cmd.none )
 
                     Nothing ->
-                        if model.settings.confirmExtensionChange && String.toLower (FileName.extension r.text) /= String.toLower (FileName.extension r.original) && not (isFolderName model r.original) then
+                        if model.settings.confirmExtensionChange && String.toLower (FileName.extension r.text) /= String.toLower (FileName.extension r.original) && not (isFolderName model r.key) then
                             askConfirm
                                 { title = Text.changeExtensionTitle
                                 , lines = [ Text.changeExtension (FileName.extension r.original) (FileName.extension r.text) ]
@@ -3399,15 +3955,15 @@ commitRename pressedEnter model =
 
 
 isFolderName : Model -> String -> Bool
-isFolderName model name =
-    activeTab model |> Maybe.andThen (\tab -> Dict.get name tab.items) |> Maybe.map .isDir |> Maybe.withDefault False
+isFolderName model key =
+    activeTab model |> Maybe.andThen (\tab -> Dict.get key tab.items) |> Maybe.map .isDir |> Maybe.withDefault False
 
 
 applyRename : Model -> ( Model, Cmd Msg )
 applyRename model =
     case ( model.rename, activeTab model ) of
         ( Just r, Just tab ) ->
-            case Dict.get r.original tab.items of
+            case Dict.get r.key tab.items of
                 Just item ->
                     request "fs_rename"
                         (E.object [ ( "path", E.string item.path ), ( "newName", E.string r.text ) ])
@@ -3579,6 +4135,584 @@ submitDialog model =
 
 
 
+-- COMMAND PALETTE (spec 6.9)
+
+
+openPalette : String -> Model -> ( Model, Cmd Msg )
+openPalette prefix model =
+    setPaletteText prefix
+        { model
+            | palette = Just { text = prefix, active = 0, results = [], listed = "", subfolders = [] }
+            , menuBar = Nothing
+            , popup = Nothing
+            , chord = Nothing
+        }
+        |> addCmd (Task.attempt (\_ -> NoOp) (Dom.focus paletteInputId))
+
+
+setPaletteText : String -> Model -> ( Model, Cmd Msg )
+setPaletteText text model =
+    case model.palette of
+        Just p ->
+            let
+                typed =
+                    { model | palette = Just { p | text = text } }
+
+                updated =
+                    { typed | palette = Just { p | text = text, active = 0, results = Palette.results typed text } }
+
+                -- Path mode lists the sub-folders of the folder typed so far.
+                ( parent, _ ) =
+                    Palette.splitPath model (Palette.pathInput model text)
+            in
+            if String.startsWith "/" text && parent /= "" && parent /= p.listed then
+                request "list_subfolders" (E.object [ ( "path", E.string parent ), ( "showHidden", E.bool False ) ]) False (ReqSubfolders (ForPalette parent)) updated
+
+            else
+                ( updated, Cmd.none )
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+paletteKey : String -> Bool -> Model -> ( Model, Cmd Msg )
+paletteKey key ctrl model =
+    case model.palette of
+        Just p ->
+            let
+                count =
+                    List.length p.results
+
+                move delta =
+                    ( { model | palette = Just { p | active = clamp 0 (max 0 (count - 1)) (p.active + delta) } }, Cmd.none )
+            in
+            case key of
+                "ArrowDown" ->
+                    if p.active >= count - 1 then
+                        ( { model | palette = Just { p | active = 0 } }, Cmd.none )
+
+                    else
+                        move 1
+
+                "ArrowUp" ->
+                    if p.active == 0 then
+                        ( { model | palette = Just { p | active = max 0 (count - 1) } }, Cmd.none )
+
+                    else
+                        move -1
+
+                "PageDown" ->
+                    move 10
+
+                "PageUp" ->
+                    move -10
+
+                "Enter" ->
+                    update (PaletteRun p.active ctrl) model
+
+                "Tab" ->
+                    -- Path mode: complete the chosen folder (the first one below the typed path).
+                    case List.head (List.drop (max p.active (min 1 (count - 1))) p.results) of
+                        Just { action } ->
+                            case ( String.startsWith "/" p.text, action ) of
+                                ( True, PalFolder path ) ->
+                                    setPaletteText (pathPrefix model (path ++ model.sep)) model
+
+                                _ ->
+                                    ( model, Cmd.none )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( { model | palette = Nothing }, focusList )
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+{-| The palette text that shows a path in path mode.
+-}
+pathPrefix : Model -> String -> String
+pathPrefix model path =
+    if model.sep == "/" && String.startsWith "/" path then
+        path
+
+    else
+        "/" ++ path
+
+
+runPaletteItem : PaletteItem -> Bool -> Model -> ( Model, Cmd Msg )
+runPaletteItem picked ctrl model =
+    let
+        closed use =
+            { model
+                | palette = Nothing
+                , paletteHistory =
+                    if use == "" then
+                        model.paletteHistory
+
+                    else
+                        List.take 100 (use :: model.paletteHistory)
+            }
+    in
+    case picked.action of
+        PalCommand id command ->
+            routeKey command (closed ("cmd:" ++ id))
+                |> andThen persist
+                |> focusListFirst
+
+        PalFolder path ->
+            if ctrl then
+                addTab path False (closed ("dir:" ++ path)) |> addCmd focusList
+
+            else
+                runCommand (CmdGoto path) (closed ("dir:" ++ path))
+
+        PalFile path ->
+            request "open_item" (E.object [ ( "path", E.string path ) ]) False ReqOpen (closed ("file:" ++ path))
+                |> andThen persist
+                |> addCmd focusList
+
+        PalBookmark b ->
+            openBookmark b ctrl (closed ("dir:" ++ b.target))
+                |> andThen persist
+                |> addCmd focusList
+
+        PalTab tabId ->
+            activateTab tabId (closed "")
+
+        PalFind query ->
+            ( { model | palette = Nothing }, Task.perform (StartFind query) Time.now )
+
+
+
+-- QUICK FIND (spec 6.6)
+
+
+{-| Opens a results tab next to the current one and starts the search in
+the current folder (FR-FIND-01).
+-}
+startSearch : String -> Model -> ( Model, Cmd Msg )
+startSearch query model =
+    withActive model (\current -> Just (startSearchIn current.path query Nothing model))
+
+
+startSearchIn : String -> String -> Maybe Bookmark -> Model -> ( Model, Cmd Msg )
+startSearchIn root query relink model =
+    withActive model
+        (\current ->
+            let
+                searchId =
+                    model.nextReq
+
+                view =
+                    searchView model
+
+                tab =
+                    emptyTab model model.nextTabId root
+
+                searchTab =
+                    { tab
+                        | search = Just { query = query, id = searchId, running = True, scanned = 0, found = 0, truncated = False, cancelled = False, millis = 0, relink = relink }
+                        , status = Loading
+                        , req = searchId
+                        , view = view
+                        , savedView = view
+                    }
+
+                index =
+                    List.length (List.filter (\t -> t.id <= current.id) model.tabs)
+
+                withTab =
+                    { model
+                        | tabs = List.take index model.tabs ++ [ searchTab ] ++ List.drop index model.tabs
+                        , nextTabId = model.nextTabId + 1
+                        , active = searchTab.id
+                        , findHistory =
+                            if relink == Nothing then
+                                List.take 20 (query :: List.filter ((/=) query) model.findHistory)
+
+                            else
+                                model.findHistory
+                        , address = ShowCrumbs
+                    }
+            in
+            Just
+                (request "find_start"
+                    (E.object
+                        [ ( "searchId", E.int searchId )
+                        , ( "root", E.string root )
+                        , ( "query", E.string query )
+                        , ( "clock", E.object [ ( "nowMs", E.int (Time.posixToMillis model.now) ), ( "utcOffsetMinutes", E.int (utcOffset model.zone model.now) ) ] )
+                        ]
+                    )
+                    True
+                    (ReqFind searchTab.id)
+                    withTab
+                    |> andThen persist
+                    |> addCmd (Cmd.batch [ focusList, scrollListTo 0 ])
+                )
+        )
+
+
+{-| Runs a results tab's search again (Refresh).
+-}
+rerunSearch : Tab -> Search -> Model -> ( Model, Cmd Msg )
+rerunSearch tab search model =
+    let
+        searchId =
+            model.nextReq
+
+        fresh =
+            resetListing { tab | search = Just { search | id = searchId, running = True, scanned = 0, found = 0, truncated = False, cancelled = False }, req = searchId }
+    in
+    request "find_start"
+        (E.object
+            [ ( "searchId", E.int searchId )
+            , ( "root", E.string tab.path )
+            , ( "query", E.string search.query )
+            , ( "clock", E.object [ ( "nowMs", E.int (Time.posixToMillis model.now) ), ( "utcOffsetMinutes", E.int (utcOffset model.zone model.now) ) ] )
+            ]
+        )
+        True
+        (ReqFind tab.id)
+        (replaceTab fresh model)
+
+
+{-| The default view with the Folder column after Name (FR-FIND-01).
+-}
+searchView : Model -> FolderView
+searchView model =
+    let
+        view =
+            defaultView model
+
+        folder =
+            ( Columns.Folder, Columns.defaultWidth Columns.Folder )
+    in
+    { view
+        | columns =
+            List.concatMap
+                (\( c, w ) ->
+                    if c == Columns.Name then
+                        [ ( c, w ), folder ]
+
+                    else
+                        [ ( c, w ) ]
+                )
+                view.columns
+    }
+
+
+type FindEvent
+    = FindBatch (List Item) Int Int
+    | FindDone Int Int Bool Bool Int
+
+
+findEventDecoder : D.Decoder FindEvent
+findEventDecoder =
+    D.field "type" D.string
+        |> D.andThen
+            (\kind ->
+                case kind of
+                    "batch" ->
+                        D.map3 FindBatch (D.field "items" (D.list Item.decoder)) (D.field "scanned" D.int) (D.field "found" D.int)
+
+                    "done" ->
+                        D.map5 FindDone (D.field "scanned" D.int) (D.field "found" D.int) (D.field "truncated" D.bool) (D.field "cancelled" D.bool) (D.field "millis" D.int)
+
+                    _ ->
+                        D.fail kind
+            )
+
+
+handleFindEvent : Int -> Int -> FindEvent -> Model -> ( Model, Cmd Msg )
+handleFindEvent reqId tabId event model =
+    case findTab tabId model of
+        Just tab ->
+            case ( tab.search, tab.req == reqId ) of
+                ( Just search, True ) ->
+                    case event of
+                        FindBatch items scanned found ->
+                            let
+                                grown =
+                                    { tab | items = insertAll items tab.items, chunks = tab.chunks + 1, search = Just { search | scanned = scanned, found = found } }
+
+                                -- Re-sorting large result sets on every batch would be slow.
+                                -- The cursor keeps its row while results come in.
+                                shown =
+                                    if found < 2000 || modBy 4 grown.chunks == 0 then
+                                        recompute model grown |> (\t -> { t | cursor = min tab.cursor (max 0 (Array.length t.visible - 1)) })
+
+                                    else
+                                        grown
+                            in
+                            ( replaceTab shown model, Cmd.none )
+
+                        FindDone scanned found truncated cancelled millis ->
+                            ( { model | requests = Dict.remove reqId model.requests }
+                                |> replaceTab
+                                    (recompute model
+                                        { tab
+                                            | status = Loaded
+                                            , search = Just { search | running = False, scanned = scanned, found = found, truncated = truncated, cancelled = cancelled, millis = millis }
+                                        }
+                                    )
+                            , Cmd.none
+                            )
+
+                _ ->
+                    ( { model | requests = Dict.remove reqId model.requests }, Cmd.none )
+
+        Nothing ->
+            ( { model | requests = Dict.remove reqId model.requests }, Cmd.none )
+
+
+{-| Local time minus UTC, in minutes, for `modified:` searches.
+-}
+utcOffset : Time.Zone -> Time.Posix -> Int
+utcOffset zone now =
+    let
+        days =
+            daysFromCivil (Time.toYear zone now) (Format.monthNumber (Time.toMonth zone now)) (Time.toDay zone now)
+
+        local =
+            days * 1440 + Time.toHour zone now * 60 + Time.toMinute zone now
+    in
+    local - Time.posixToMillis now // 60000
+
+
+daysFromCivil : Int -> Int -> Int -> Int
+daysFromCivil year month day =
+    let
+        y =
+            if month <= 2 then
+                year - 1
+
+            else
+                year
+
+        era =
+            floor (toFloat y / 400)
+
+        yoe =
+            y - era * 400
+
+        mp =
+            if month > 2 then
+                month - 3
+
+            else
+                month + 9
+
+        doy =
+            (153 * mp + 2) // 5 + day - 1
+
+        doe =
+            yoe * 365 + yoe // 4 - yoe // 100 + doy
+    in
+    era * 146097 + doe - 719468
+
+
+
+-- KEY BINDINGS AND TOOLBAR (spec 6.10, 5.3)
+
+
+type alias KeyBindingsData =
+    { bindings : List Keys.UserBinding
+    , warnings : List String
+    }
+
+
+keyBindingsDecoder : D.Decoder KeyBindingsData
+keyBindingsDecoder =
+    D.map2 KeyBindingsData
+        (D.field "bindings"
+            (D.list
+                (D.map5 Keys.UserBinding
+                    (D.field "key" D.string)
+                    (D.field "command" D.string)
+                    (D.field "when" D.string)
+                    (D.field "args" (D.dict D.string))
+                    (D.field "line" D.int)
+                )
+            )
+        )
+        (D.field "warnings" (D.list D.string))
+
+
+applyKeyBindings : KeyBindingsData -> Model -> Model
+applyKeyBindings data model =
+    let
+        ( keymap, problems ) =
+            Commands.buildKeymap data.bindings
+    in
+    { model | keymap = keymap, userBindings = data.bindings, keyWarnings = data.warnings ++ problems }
+
+
+toolbarDecoder : D.Decoder ( ToolbarConfig, List String )
+toolbarDecoder =
+    D.map2 Tuple.pair
+        (D.map4 ToolbarConfig
+            (D.field "style" D.string)
+            (D.field "items" (D.list D.string))
+            (D.field "defaults" (D.list D.string))
+            (D.field "file" D.string)
+        )
+        (D.field "warnings" (D.list D.string))
+
+
+applyToolbar : ( ToolbarConfig, List String ) -> Model -> Model
+applyToolbar ( config, warnings ) model =
+    let
+        unknown =
+            List.filter (\i -> i /= "|" && i /= "->" && Commands.find i == Nothing) config.items
+    in
+    { model
+        | toolbar = { config | items = List.filter (\i -> not (List.member i unknown)) config.items }
+        , toolbarWarnings = warnings ++ List.map Text.toolbarUnknown unknown
+    }
+
+
+updateToolbarForm : (ToolbarForm -> ToolbarForm) -> Model -> Model
+updateToolbarForm f model =
+    case model.dialog of
+        Just (ToolbarDialog form) ->
+            { model | dialog = Just (ToolbarDialog (f form)) }
+
+        _ ->
+            model
+
+
+swapAt : Int -> Int -> List a -> List a
+swapAt i j list =
+    let
+        array =
+            Array.fromList list
+    in
+    case ( Array.get i array, Array.get j array ) of
+        ( Just a, Just b ) ->
+            Array.toList (Array.set i b (Array.set j a array))
+
+        _ ->
+            list
+
+
+updateShortcuts : (ShortcutsState -> ShortcutsState) -> Model -> Model
+updateShortcuts f model =
+    case model.dialog of
+        Just (ShortcutsDialog s) ->
+            { model | dialog = Just (ShortcutsDialog (f s)) }
+
+        _ ->
+            model
+
+
+{-| A key pressed while recording a new binding. A second key pressed
+within a moment makes a chord (FR-KEY-02); Esc alone cancels.
+-}
+keyRecorded : String -> Model -> ( Model, Cmd Msg )
+keyRecorded stroke model =
+    case model.dialog of
+        Just (ShortcutsDialog s) ->
+            case s.recording of
+                Just r ->
+                    if stroke == "Esc" && List.isEmpty r.strokes then
+                        ( updateShortcuts (\d -> { d | recording = Nothing }) model, Cmd.none )
+
+                    else
+                        let
+                            strokes =
+                                r.strokes ++ [ stroke ]
+
+                            seq =
+                                r.seq + 1
+                        in
+                        if List.length strokes >= 2 then
+                            ( updateShortcuts (\d -> { d | recording = Nothing, proposal = Just { command = r.command, key = String.join " " strokes } }) model, Cmd.none )
+
+                        else
+                            ( updateShortcuts (\d -> { d | recording = Just { r | strokes = strokes, seq = seq } }) model
+                            , Process.sleep 900 |> Task.perform (\_ -> RecordDone seq)
+                            )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        _ ->
+            ( model, Cmd.none )
+
+
+{-| The context a command's bindings are saved under: that of its default keys.
+-}
+keyContextOf : String -> Model -> String
+keyContextOf id model =
+    Keys.keysFor id model.keymap
+        |> List.head
+        |> Maybe.andThen (\key -> Dict.get key model.keymap.byKey)
+        |> Maybe.andThen (List.filter (\b -> b.command == id) >> List.head)
+        |> Maybe.map .when
+        |> Maybe.withDefault "global"
+
+
+keyChange : String -> List String -> Bool -> ( String, List String, Bool )
+keyChange id keys removeDefaults =
+    ( id, keys, removeDefaults )
+
+
+{-| Adds `key` to a command and takes it from the command that had it.
+-}
+addKeyChanges : String -> String -> Model -> List ( String, List String, Bool )
+addKeyChanges id key model =
+    let
+        owners =
+            Dict.get key model.keymap.byKey
+                |> Maybe.withDefault []
+                |> List.map .command
+                |> List.filter ((/=) id)
+
+        taken =
+            List.map
+                (\other ->
+                    let
+                        remaining =
+                            List.filter ((/=) key) (Keys.keysFor other model.keymap)
+                    in
+                    keyChange other remaining (List.isEmpty remaining)
+                )
+                owners
+
+        current =
+            Keys.keysFor id model.keymap
+    in
+    taken ++ [ keyChange id (current ++ List.filter (\k -> not (List.member k current)) [ key ]) False ]
+
+
+saveKeys : List ( String, List String, Bool ) -> Model -> ( Model, Cmd Msg )
+saveKeys changes model =
+    request "keybindings_set"
+        (E.object
+            [ ( "changes"
+              , E.list
+                    (\( id, keys, removeDefaults ) ->
+                        E.object
+                            [ ( "command", E.string id )
+                            , ( "when", E.string (keyContextOf id model) )
+                            , ( "keys", E.list E.string keys )
+                            , ( "removeDefaults", E.bool removeDefaults )
+                            ]
+                    )
+                    changes
+              )
+            ]
+        )
+        False
+        ReqKeybindings
+        model
+
+
+
 -- BACKEND MESSAGES
 
 
@@ -3615,6 +4749,9 @@ handleEnvelope envelope model =
                     finished =
                         case ( req, envelope.kind ) of
                             ( ReqList _, "ok" ) ->
+                                False
+
+                            ( ReqFind _, "ok" ) ->
                                 False
 
                             ( _, "stream" ) ->
@@ -3748,6 +4885,18 @@ handleResponse reqId req envelope model =
                     ok subfoldersDecoder |> Maybe.withDefault []
             in
             case use of
+                ForPalette parent ->
+                    case model.palette of
+                        Just p ->
+                            let
+                                listed =
+                                    { model | palette = Just { p | listed = parent, subfolders = folders } }
+                            in
+                            ( { listed | palette = Just { p | listed = parent, subfolders = folders, results = Palette.results listed p.text } }, Cmd.none )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
                 ForCrumb path ->
                     case model.popup of
                         Just (MenuPopup p) ->
@@ -3881,6 +5030,62 @@ handleResponse reqId req envelope model =
                     -- The system clipboard is not available: use File Catalog's own.
                     pasteFiles asShortcut [] Nothing model
 
+        ReqFind tabId ->
+            if envelope.kind == "stream" then
+                case D.decodeValue findEventDecoder envelope.data of
+                    Ok event ->
+                        handleFindEvent reqId tabId event model
+
+                    Err _ ->
+                        ( model, Cmd.none )
+
+            else
+                case errorMessage of
+                    Just message ->
+                        -- The search could not start (a mistake in the query): close its tab.
+                        let
+                            failed =
+                                findTab tabId model |> Maybe.andThen .search |> Maybe.map .query
+                        in
+                        closeTab tabId { model | findHistory = List.filter (\q -> Just q /= failed) model.findHistory }
+                            |> andThen persist
+                            |> andThen (flash message)
+
+                    Nothing ->
+                        ( model, Cmd.none )
+
+        ReqKeybindings ->
+            case ok keyBindingsDecoder of
+                Just data ->
+                    ( applyKeyBindings data model, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
+        ReqToolbar ->
+            case ok toolbarDecoder of
+                Just data ->
+                    ( applyToolbar data model, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
+        ReqLocate bookmark ->
+            case ok D.string of
+                Just folder ->
+                    startSearchIn folder (Path.name model.sep bookmark.target) (Just bookmark) model
+
+                Nothing ->
+                    flashError model
+
+        ReqOpenReturnedFile ->
+            case ok D.string of
+                Just path ->
+                    update (OpenPath path) model
+
+                Nothing ->
+                    flashError model
+
         ReqShortcuts tabId ->
             case ok (D.list D.string) of
                 Just (first :: _) ->
@@ -3906,6 +5111,10 @@ type alias InitData =
     , settingsFile : String
     , bookmarksFile : String
     , version : String
+    , keybindings : KeyBindingsData
+    , toolbar : ( ToolbarConfig, List String )
+    , paletteHistory : List String
+    , findHistory : List String
     }
 
 
@@ -3924,6 +5133,10 @@ initDecoder =
         |> andMap (D.field "settingsFile" D.string)
         |> andMap (D.field "bookmarksFile" D.string)
         |> andMap (D.field "version" D.string)
+        |> andMap (D.field "keybindings" keyBindingsDecoder)
+        |> andMap (D.field "toolbar" toolbarDecoder)
+        |> andMap (D.oneOf [ D.at [ "session", "paletteHistory" ] (D.list D.string), D.succeed [] ])
+        |> andMap (D.oneOf [ D.at [ "session", "findHistory" ] (D.list D.string), D.succeed [] ])
 
 
 andMap : D.Decoder a -> D.Decoder (a -> b) -> D.Decoder b
@@ -3994,7 +5207,11 @@ boot data model =
                 , settingsFile = data.settingsFile
                 , bookmarksFile = data.bookmarksFile
                 , version = data.version
+                , paletteHistory = data.paletteHistory
+                , findHistory = data.findHistory
             }
+                |> applyKeyBindings data.keybindings
+                |> applyToolbar data.toolbar
 
         tabs =
             List.indexedMap (\i path -> emptyTab withSettings (i + 1) path) paths
@@ -4071,7 +5288,7 @@ handleDirEvent reqId tabId event model =
             else
                 case event of
                     EvCached items ->
-                        ( replaceTab (recompute model { tab | items = byName items }) model, Cmd.none )
+                        ( replaceTab (recompute model { tab | items = byId items }) model, Cmd.none )
 
                     EvChunk items ->
                         let
@@ -4175,7 +5392,7 @@ handleEvent name data model =
                 Ok ( path, patch, gone ) ->
                     let
                         apply tab =
-                            if tab.path /= path || tab.status /= Loaded then
+                            if tab.path /= path || tab.status /= Loaded || tab.search /= Nothing then
                                 tab
 
                             else if gone then
@@ -4214,6 +5431,22 @@ handleEvent name data model =
 
         "bookmarks-changed" ->
             request "bookmarks_get" (E.object []) False ReqBookmarks model
+
+        "keybindings-changed" ->
+            case D.decodeValue keyBindingsDecoder data of
+                Ok bindings ->
+                    ( applyKeyBindings bindings model, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        "toolbar-changed" ->
+            case D.decodeValue toolbarDecoder data of
+                Ok toolbar ->
+                    ( applyToolbar toolbar model, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
 
         "job-progress" ->
             case D.decodeValue jobDecoder data of
