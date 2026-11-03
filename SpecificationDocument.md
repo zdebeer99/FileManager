@@ -871,10 +871,9 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 
 | Feature request | Built as |
 |---|---|
-| REQ-010 System file icons | FR-ICON-02, `view.default.icons` (8.3), icon cache (4.5) |
+| REQ-010 System file icons | FR-ICON-02, `view.default.icons` (8.3), icon cache (4.5). Tested in the app on Windows (2026-11-03). |
 
 **Known limits in c2:**
-- The Windows icon code is type-checked for Windows and was not run there before release; it needs a test on Windows.
 - On Linux, a changed icon theme is picked up after a restart and after deleting `<cache folder>/icons`.
 - On Linux, shortcuts (symbolic links) show the built-in shortcut icon.
 
