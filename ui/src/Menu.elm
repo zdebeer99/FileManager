@@ -1,4 +1,4 @@
-module Menu exposing (Menu, columnEntries, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
+module Menu exposing (Menu, colourEntries, columnEntries, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
 
 {-| The Menu Bar (FR-MENU-01): every command grouped in standard menus.
 Commands that later milestones add are shown disabled, so the menus
@@ -7,6 +7,7 @@ already show the whole application.
 
 import Columns exposing (Column)
 import Commands
+import Dict
 import Html exposing (Html, button, div, span, text)
 import Html.Attributes exposing (attribute, class, classList, disabled, tabindex)
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
@@ -126,7 +127,6 @@ baseMenus model tab =
                 [ toggle "Folder Tree" "Ctrl+Shift+1" (sidebarMode == TreeMode) (CmdSidebarMode TreeMode)
                 , toggle "Favourites" "Ctrl+Shift+2" (sidebarMode == FavouritesMode) (CmdSidebarMode FavouritesMode)
                 , toggle "Bookmarks" "Ctrl+Shift+3" (sidebarMode == BookmarksMode) (CmdSidebarMode BookmarksMode)
-                , later "Context" "Ctrl+Shift+4"
                 , Separator
                 , toggle "On the Left" "" (s.sidebarSide /= "right") (CmdSidebarSide "left")
                 , toggle "On the Right" "" (s.sidebarSide == "right") (CmdSidebarSide "right")
@@ -185,7 +185,6 @@ baseMenus model tab =
       , entries =
             [ cmd "Bookmark This Folder" "Ctrl+D" CmdBookmarkFolder
             , cmd "Bookmark Selected Item" "" CmdBookmarkItem
-            , later "Add Context Bookmark" "Ctrl+Shift+D"
             , cmd "Manage Bookmarks" "" (CmdSidebarMode BookmarksMode)
             , cmd "Open Bookmarks File" "" CmdOpenBookmarksFile
             , Separator
@@ -249,6 +248,40 @@ baseMenus model tab =
             ]
       }
     ]
+
+
+{-| The Folder Colour submenu (spec 6.4.5) for one or more folders. The tick
+shows the colour they share, if any.
+-}
+colourEntries : Model -> List String -> MenuEntry
+colourEntries model paths =
+    let
+        current =
+            case List.map (\p -> Dict.get p model.folderColours) paths of
+                first :: rest ->
+                    if List.all ((==) first) rest then
+                        first
+
+                    else
+                        Just "mixed"
+
+                [] ->
+                    Nothing
+
+        choice colour =
+            Action
+                { label = Text.colourName colour
+                , key = ""
+                , msg = Just (SetFolderColour paths (Just colour))
+                , checked = Just (current == Just colour)
+                }
+    in
+    Submenu Text.folderColour
+        (List.map choice folderColours
+            ++ [ Separator
+               , Action { label = Text.noColour, key = "", msg = Just (SetFolderColour paths Nothing), checked = Just (current == Nothing) }
+               ]
+        )
 
 
 {-| The column chooser, used by View › Columns and the header right-click menu.

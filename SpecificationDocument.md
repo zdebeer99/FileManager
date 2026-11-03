@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | Released. This document describes File Catalog **0.1.0** as built. |
-| Changes | 0.1.0: First stable release. M5 cancelled (decision log 13.1, 2026-11-03). The document now describes only what 0.1.0 does; everything planned but not built is listed in Section 12. Document versions restart at the application version. |
+| Status | 0.1.0 released. Update cycle **c1** is built on top of it and not yet released (Section 11.2). |
+| Changes | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
+| | 0.1.0: First stable release. M5 cancelled (decision log 13.1, 2026-11-03). The document now describes only what 0.1.0 does; everything planned but not built is listed in Section 12. Document versions restart at the application version. |
 | | Earlier drafts 0.2 to 0.5 (2026-10-31 to 2026-11-01): platforms decided, review decisions merged, scope reduced, M1 to M4 built. See the decision log (13.1). |
 
 ---
@@ -177,6 +178,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `session_save` | session state | — |
 | `folder_view_get` / `folder_view_save` / `folder_view_reset` / `folder_view_file` | `{ path, view?, applyToSubfolders? }` | resolved view / file path |
 | `bookmarks_get` / `bookmarks_edit` | `{ edit: { op, … } }` | favourites, bookmarks, warnings |
+| `colours_get` / `colours_set` | — / `{ path, colour }` (`null` clears it) | folder → colour map, warnings |
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `undo_last` | — | `{ ok } \| { error }` |
 | `fs_rename` / `fs_create` | `{ path, newName }` / `{ parent, item: { kind, … } }` | new path |
@@ -189,7 +191,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `toolbar_get` / `toolbar_save` / `toolbar_file` | — / `{ style, items }` / — | style, items, defaults, warnings / file path |
 | `perf_mark` / `app_exit` | — | — |
 
-**Events (Rust → Elm):** `dir-changed`, `settings-changed`, `bookmarks-changed`, `keybindings-changed`, `toolbar-changed`, `job-progress`, `job-conflict`, `file-drop`. Every event must also be in the `listen` list in `bridge.js`.
+**Events (Rust → Elm):** `dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `keybindings-changed`, `toolbar-changed`, `job-progress`, `job-conflict`, `file-drop`. Every event must also be in the `listen` list in `bridge.js`.
 
 **Item record (shared shape):**
 
@@ -309,10 +311,11 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 | Mode | Content |
 |---|---|
 | **Tree** | Folder tree, starting from Favourites, Home, drives/volumes, network locations and cloud roots. It loads lazily, expands to follow the current folder, and supports keyboard navigation (arrows, `→` expand, `←` collapse, type-ahead). |
-| **Favourites** | A user-ordered list of pinned folders, reordered with *Move Up* / *Move Down*. *Pin to Favourites* is available from the right-click menu, the Go menu and the palette. |
-| **Bookmarks** | All bookmarks in their groups, as a tree, with edit and delete. |
+| **Favourites** | A user-ordered list of pinned folders, reordered with *Move Up* / *Move Down*. *Pin to Favourites* is available from the right-click menu, the Go menu and the palette. Clicking a favourite shows its contents (FR-FAV-03). |
+| **Bookmarks** | All bookmarks in their groups, as a tree that can be folded (FR-BM-06), with search, edit and delete. |
 
 - **FR-SB-02** Dropping items onto a folder in the Tree or Favourites copies or moves them there (FR-COPY-06).
+- The Context view of the drafts is not part of the sidebar (decision log 13.1, 2026-11-03).
 
 ### 5.8 Content container
 
@@ -323,6 +326,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-CC-06** `Enter` / double-click opens the item. Folders open in the current tab; `Ctrl+Enter` opens a folder in a new tab. `Backspace` / `Alt+Up` goes to the parent folder.
 - **FR-CC-07** Right-click menus (also `Shift+F10` and the Menu key) on items and on empty space, with the commands that apply.
 - **FR-CC-08** Drag and drop: inside the app, out of the window to other apps, and files dropped in from other apps.
+- **FR-ICON-01** Every item shows an icon for its kind: folder, shortcut, web link, or for files a category picked from the extension: text, document, PDF, spreadsheet, presentation, code, archive, program, image, audio, video, e-mail, or other. Each category has its own colour in both themes. Folders show their folder colour (6.4.5). The icons are built into the app; nothing is read from the files.
 - **FR-CC-10** Empty and error states: *"This folder is empty"*, *"Access denied"*, *"Location not available"* (with a *Retry* button).
 
 #### 5.8.1 Sync status column
@@ -419,15 +423,23 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 
 #### 6.4.2 Functions
 
-- **FR-BM-01** *Bookmark This Folder* (`Ctrl+D`) and *Bookmark Selected Item* open a small dialog (name, group) that can be confirmed with `Enter`.
+- **FR-BM-01** *Bookmark This Folder* (`Ctrl+D`) and *Bookmark Selected Item* open a small dialog (name, target, group) that can be confirmed with `Enter`. The group field has a drop-down of the existing groups (written as `bar/Legal`): typing filters it, `Up`/`Down` and `Enter` or a click pick a group, and a name that is not a group yet is offered as *Create new group*.
 - **FR-BM-02** Bookmarks are stored in `bookmarks.toml` (Section 8.6) and can be edited by hand. Outside edits are picked up live.
 - **FR-BM-03** A bookmark whose target no longer exists is shown greyed out with a warning icon, and offers *Locate…* and *Delete*.
+- **FR-BM-06** In the sidebar Bookmarks view, groups are shown as a tree (`bar/Legal` sits inside the Bookmark Bar group). Clicking a group heading folds or unfolds it, hiding its bookmarks and sub-groups. Folded groups are remembered in `session.toml`. While the search box has text, every group is shown open.
 - **FR-BM-04** A bookmark can be opened with its own key binding: the `bookmark.open` command with `args = { name = "…" }` in `keybindings.toml`.
 
 #### 6.4.3 Favourites
 
 - **FR-FAV-01** Pin or unpin a folder to Favourites from the right-click menu, the Go menu, the palette, or by dragging it into the Favourites view.
 - **FR-FAV-02** Stored as an ordered list in `bookmarks.toml` under `[favourites]`.
+- **FR-FAV-03** Clicking a favourite in the Favourites view shows the files and folders inside it, folders first. Clicking a folder goes into it; the header shows where you are (for example *Downloads › Invoices*), *Back* (‹) goes up one level and, at the favourite itself, back to the list of favourites; ↗ shows the folder in the file list. Double-click opens a file, or shows a folder in the file list. Items can be dragged onto the file list (into the active tab's folder), onto a folder, a tab or the Bookmark Bar, like items in the list (FR-COPY-06). The folder shown is watched, so it stays up to date. This makes it quick to move, for example, files saved from e-mail in Downloads into the folder you are working in.
+
+#### 6.4.5 Folder colours
+
+- **FR-FCOL-01** Right-click a folder in the list, the folder tree or the Favourites view and choose **Folder Colour ▸**: Red, Orange, Yellow, Green, Teal, Blue, Purple, Pink, Grey, or *No Colour*. With several folders selected, the choice applies to all of them.
+- **FR-FCOL-02** The folder's icon is shown in that colour everywhere File Catalog shows the folder (list, tree, Favourites).
+- **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour stays with the folder's path: a folder that is renamed or moved loses its colour (like FR-FS-02).
 
 ### 6.5 Per-folder view persistence ("Quick persist")
 
@@ -633,7 +645,8 @@ FileCatalog/
 ├── keybindings.toml     # Key binding overrides (8.3)
 ├── toolbar.toml         # Toolbar layout (8.5)
 ├── bookmarks.toml       # Bookmarks and favourites (8.6)
-├── session.toml         # Open tabs, recent folders, palette and search history (written by the app)
+├── colours.toml         # Folder colours (8.7)
+├── session.toml         # Open tabs, recent folders, palette and search history, folded bookmark groups (written by the app)
 ├── folders/             # Per-folder view settings (8.4)
 │   └── <name>-<hash>.toml
 ├── templates/           # Templates (6.8)
@@ -768,6 +781,20 @@ target = 'S:\Legal\Contracts register.xlsx'
 group  = ["bar", "Legal"]
 ```
 
+### 8.7 `colours.toml`
+
+```toml
+# File Catalog folder colours. Safe to edit by hand; changes apply when you save.
+# One line per folder. Colours: red, orange, yellow, green, teal, blue, purple, pink, grey.
+
+[folders]
+'C:\Vendors' = "blue"
+'C:\Vendors\Acme' = "green"
+'~\Documents\Archive' = "grey"
+```
+
+An unknown colour is skipped and reported; a file with errors is never overwritten (NFR-REL-03).
+
 ---
 
 ## 9. Error handling and messages
@@ -813,6 +840,24 @@ Messages say what happened, why (if known), and what the user can do next.
 - Start-up time (NFR-PERF-01) is still to be measured on Windows.
 - Search results are not updated by the folder watcher; *Refresh* runs the search again.
 
+### 11.2 Update cycle c1 (unreleased)
+
+Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequest.md):
+
+| Feature request | Built as |
+|---|---|
+| File Icons | FR-ICON-01 |
+| Folder Colors | 6.4.5 (FR-FCOL-01 to 03), `colours.toml` (8.7) |
+| Folded Bookmarks in sidebar | FR-BM-06 |
+| Favorite Sidebar view update | FR-FAV-03 |
+| Sidebar view update (remove the Context view) | 5.7; decision log 13.1 |
+| Bookmark Groups | FR-BM-01 |
+| Catchy name | Not a code change: name ideas are in FeatureRequest.md, waiting for a choice. |
+
+**Known limits in c1:**
+- File icons are built-in type icons, not the icons the operating system shows (for example a program's own icon).
+- A folder colour does not follow a folder that is renamed or moved.
+
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -823,7 +868,6 @@ These were specified in the drafts but are not built. Each keeps its ID so it ca
 
 | Item | IDs |
 |---|---|
-| Context view and context bookmarks (bookmarks linked to a folder tree, shown in a fourth sidebar mode; *Add Context Bookmark* `Ctrl+Shift+D`; automatic suggestions) | FR-CTX-01 to 05, FR-SB-01 (Context mode) |
 | Quick View panel (`Space` / `Ctrl+Q`): previews of text, Markdown, images, PDF, links, folders; Windows Preview Handlers; dockable left or right; collapse below 900 px | FR-QV-01 to 04, FR-UI-02, FR-UI-03 |
 | Lazy metadata columns: Owner, Windows document properties (Title, Authors, Tags, Categories, Comments), image Dimensions, registered type names (Windows) / MIME descriptions (Linux), *More columns…* | FR-COL-01, FR-COL-02 |
 | Accessibility: WCAG 2.1 AA contrast checked in both themes, full ARIA roles for screen readers, display scaling 100–300% and per-monitor DPI checked | NFR-UX-02, NFR-UX-03 |
@@ -870,6 +914,7 @@ These were specified in the drafts but are not built. Each keeps its ID so it ca
 
 **Not planned:**
 
+- Context view and context bookmarks (FR-CTX-01 to 05): removed from the sidebar (decision 2026-11-03).
 - Searching inside file contents, and a background search index (FR-FIND-07).
 - Built-in cloud storage clients (the app uses the OS sync clients' folders).
 - E-mail client integration (e-mails are handled as saved files).
@@ -900,6 +945,8 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-01 | Project folders, cloud sync status (beyond the basic Windows column) and pinned tabs moved out of v1.0; this replaces the 2026-10-31 *File Project* decision | 12 |
 | 2026-11-01 | Compress/Extract ZIP moved to a later version; Compare dropped | 12 |
 | 2026-11-03 | M5 cancelled. M1 to M4 released as **0.1.0**, the first stable release. The specification now describes only what 0.1.0 does; all M5 work, the M5 deferrals and the parts found not built are listed in Section 12 for a later version. | 1, 11, 12 |
+| 2026-11-03 | Context view removed from the sidebar (feature request c1); context bookmarks are no longer planned | 5.7, 12 |
+| 2026-11-03 | Folder colours stored in `colours.toml` in the app settings folder, never in the folders | 6.4.5, 8.7 |
 
 ---
 
@@ -918,7 +965,7 @@ None at the moment. New questions are added here as they come up.
 | Tab Bar | 5.5 |
 | Address Bar — breadcrumb mode | 5.6 |
 | Dockable sidebar, content container, right quick view | 5.1 (FR-UI-02), 5.7, 5.8; Quick View: 12 |
-| Sidebar: tree, favourites, full bookmarks, content-aware bookmarks | 5.7, 6.4.3; content-aware view: 12 |
+| Sidebar: tree, favourites, full bookmarks, content-aware bookmarks | 5.7, 6.4.3; content-aware view removed (13.1) |
 | Content: name, created, modified, sync status | 5.8, 5.8.1, 5.8.2 |
 | Status bar: file/folder count, selection count, progress | 5.10 |
 | Sorting and filtering by name, size, date | 6.2, 6.3 |

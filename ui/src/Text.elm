@@ -304,11 +304,6 @@ bookmarksMode =
     "Bookmarks (Ctrl+Shift+3)"
 
 
-contextModeLater : String
-contextModeLater =
-    "Context view: coming in a later version"
-
-
 noFavourites : String
 noFavourites =
     "No favourites yet."
@@ -417,6 +412,80 @@ target =
 group : String
 group =
     "Group"
+
+
+newGroup : String -> String
+newGroup typed =
+    "Create new group \"" ++ typed ++ "\""
+
+
+favUp : String
+favUp =
+    "Back"
+
+
+showInList : String
+showInList =
+    "Show this folder in the file list"
+
+
+folderGone : String
+folderGone =
+    "This folder is no longer there."
+
+
+foldGroup : String
+foldGroup =
+    "Fold this group"
+
+
+unfoldGroup : String
+unfoldGroup =
+    "Unfold this group"
+
+
+folderColour : String
+folderColour =
+    "Folder Colour"
+
+
+noColour : String
+noColour =
+    "No Colour"
+
+
+colourName : String -> String
+colourName colour =
+    case colour of
+        "red" ->
+            "Red"
+
+        "orange" ->
+            "Orange"
+
+        "yellow" ->
+            "Yellow"
+
+        "green" ->
+            "Green"
+
+        "teal" ->
+            "Teal"
+
+        "blue" ->
+            "Blue"
+
+        "purple" ->
+            "Purple"
+
+        "pink" ->
+            "Pink"
+
+        "grey" ->
+            "Grey"
+
+        _ ->
+            colour
 
 
 groupHint : String

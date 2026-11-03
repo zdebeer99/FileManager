@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bookmarks;
+mod colours;
 mod commands;
 mod fileops;
 mod find;
@@ -53,6 +54,8 @@ fn main() {
             commands::folder_view_file,
             commands::bookmarks_get,
             commands::bookmarks_edit,
+            commands::colours_get,
+            commands::colours_set,
             commands::app_exit,
             commands::job_start,
             commands::job_cancel,

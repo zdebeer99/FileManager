@@ -82,9 +82,13 @@ init _ =
             , treeExpanded = Set.empty
             , treeCursor = Nothing
             , favourites = []
+            , favBrowse = Nothing
             , bookmarks = []
             , bookmarkWarnings = []
+            , folderColours = Dict.empty
+            , colourWarnings = []
             , bookmarkSearch = ""
+            , foldedGroups = Set.empty
             , clipboard = Nothing
             , jobs = Dict.empty
             , jobsPanel = False
@@ -854,6 +858,88 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        FavBrowseTo root path ->
+            let
+                ( withRequest, cmd ) =
+                    request "dir_list" (E.object [ ( "path", E.string path ) ]) True ReqFavList model
+
+                browse =
+                    { root = root
+                    , path = path
+                    , items = Dict.empty
+                    , req = model.nextReq
+                    , loading = True
+                    , error = Nothing
+                    , selected = Nothing
+                    }
+            in
+            persist { withRequest | favBrowse = Just browse, popup = Nothing }
+                |> addCmd cmd
+
+        FavUp ->
+            case model.favBrowse of
+                Just browse ->
+                    case ( browse.path == browse.root, Path.parent model.sep browse.path ) of
+                        ( False, Just up ) ->
+                            update (FavBrowseTo browse.root up) model
+
+                        _ ->
+                            update FavHome model
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        FavHome ->
+            persist { model | favBrowse = Nothing }
+
+        FavSelect path ->
+            ( { model | favBrowse = Maybe.map (\b -> { b | selected = Just path }) model.favBrowse }, Cmd.none )
+
+        FavMouseDown path name x y ->
+            ( { model
+                | favBrowse = Maybe.map (\b -> { b | selected = Just path }) model.favBrowse
+                , drag =
+                    Just
+                        (DragItems
+                            { paths = [ path ]
+                            , names = [ name ]
+                            , startX = x
+                            , startY = y
+                            , x = x
+                            , y = y
+                            , moved = False
+                            , target = Nothing
+                            }
+                        )
+              }
+            , Cmd.none
+            )
+
+        ToggleBookmarkGroup key ->
+            persist
+                { model
+                    | foldedGroups =
+                        if Set.member key model.foldedGroups then
+                            Set.remove key model.foldedGroups
+
+                        else
+                            Set.insert key model.foldedGroups
+                }
+
+        SetFolderColour paths colour ->
+            List.foldl
+                (\path acc ->
+                    acc
+                        |> andThen
+                            (request "colours_set"
+                                (E.object [ ( "path", E.string path ), ( "colour", Maybe.map E.string colour |> Maybe.withDefault E.null ) ])
+                                False
+                                ReqColourSet
+                            )
+                )
+                ( { model | popup = Nothing, menuBar = Nothing }, Cmd.none )
+                paths
+
         LocateBookmark bookmark ->
             request "nearest_folder" (E.object [ ( "path", E.string bookmark.target ) ]) False (ReqLocate bookmark) { model | popup = Nothing }
 
@@ -864,6 +950,8 @@ update msg model =
                 , target = bookmark.target
                 , group = String.join "/" bookmark.group
                 , error = Nothing
+                , groupOpen = False
+                , groupActive = 0
                 }
                 { model | popup = Nothing }
 
@@ -878,7 +966,62 @@ update msg model =
             ( updateDialog (\f -> { f | target = text, error = Nothing }) model, Cmd.none )
 
         DialogGroup text ->
-            ( updateDialog (\f -> { f | group = text, error = Nothing }) model, Cmd.none )
+            ( updateDialog (\f -> { f | group = text, error = Nothing, groupOpen = True, groupActive = 0 }) model, Cmd.none )
+
+        DialogGroupOpen open ->
+            ( updateDialog (\f -> { f | groupOpen = open, groupActive = 0 }) model, Cmd.none )
+
+        DialogGroupPick group ->
+            ( updateDialog (\f -> { f | group = group, groupOpen = False, error = Nothing }) model, Cmd.none )
+
+        DialogGroupKey key ->
+            case model.dialog of
+                Just (BookmarkDialog form) ->
+                    let
+                        choices =
+                            groupChoices model form.group
+
+                        count =
+                            List.length choices
+
+                        move delta =
+                            ( updateDialog (\f -> { f | groupOpen = True, groupActive = modBy (max 1 count) (f.groupActive + delta) }) model, Cmd.none )
+                    in
+                    case key of
+                        "ArrowDown" ->
+                            if form.groupOpen then
+                                move 1
+
+                            else
+                                ( updateDialog (\f -> { f | groupOpen = True, groupActive = 0 }) model, Cmd.none )
+
+                        "ArrowUp" ->
+                            move -1
+
+                        "Enter" ->
+                            case List.drop form.groupActive choices |> List.head of
+                                Just choice ->
+                                    if form.groupOpen then
+                                        update (DialogGroupPick choice) model
+
+                                    else
+                                        submitDialog model
+
+                                Nothing ->
+                                    submitDialog model
+
+                        "Escape" ->
+                            if form.groupOpen then
+                                update (DialogGroupOpen False) model
+
+                            else
+                                update DialogCancel model
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
 
         DialogSubmit ->
             submitDialog model
@@ -1356,7 +1499,7 @@ runCommand command model =
                 (\tab ->
                     Just
                         (openDialog
-                            { index = Nothing, name = Path.name model.sep tab.path, target = tab.path, group = "bar", error = Nothing }
+                            { index = Nothing, name = Path.name model.sep tab.path, target = tab.path, group = "bar", error = Nothing, groupOpen = False, groupActive = 0 }
                             model
                         )
                 )
@@ -1366,7 +1509,7 @@ runCommand command model =
                 (\tab ->
                     case Array.get tab.cursor tab.visible of
                         Just item ->
-                            Just (openDialog { index = Nothing, name = item.name, target = item.path, group = "bar", error = Nothing } model)
+                            Just (openDialog { index = Nothing, name = item.name, target = item.path, group = "bar", error = Nothing, groupOpen = False, groupActive = 0 } model)
 
                         Nothing ->
                             Just (flash Text.nothingSelected model)
@@ -2348,11 +2491,17 @@ persist model =
                 , ( "recent", E.list E.string model.recent )
                 , ( "paletteHistory", E.list E.string model.paletteHistory )
                 , ( "findHistory", E.list E.string model.findHistory )
+                , ( "foldedGroups", E.list E.string (Set.toList model.foldedGroups) )
                 ]
     in
     ( model, Cmd.none )
         |> andThen (request "session_save" (E.object [ ( "session", session ) ]) False ReqIgnore)
-        |> andThen (request "watch_set" (E.object [ ( "paths", E.list E.string (dedupe paths) ) ]) False ReqIgnore)
+        |> andThen
+            (request "watch_set"
+                (E.object [ ( "paths", E.list E.string (dedupe (paths ++ (Maybe.map (.path >> List.singleton) model.favBrowse |> Maybe.withDefault []))) ) ])
+                False
+                ReqIgnore
+            )
 
 
 requestFreeSpace : String -> Model -> ( Model, Cmd Msg )
@@ -3659,6 +3808,7 @@ itemEntries model tab item =
            ]
         ++ (if item.isDir then
                 [ act Text.pin "" (BookmarkEditOp [ ( "op", E.string "addFavourite" ), ( "path", E.string item.path ) ])
+                , Menu.colourEntries model (selectedFolders tab item)
                 , act Text.openTerminalHere "" (KeyCommand CmdOpenTerminal)
                 ]
 
@@ -3668,6 +3818,22 @@ itemEntries model tab item =
         ++ [ act Text.bookmarkItem "" (KeyCommand CmdBookmarkItem)
            , act Text.reveal "" (RevealPath item.path)
            ]
+
+
+{-| The folders a Folder Colour choice applies to: the selected folders when
+the clicked folder is part of the selection, otherwise just that folder.
+-}
+selectedFolders : Tab -> Item -> List String
+selectedFolders tab item =
+    let
+        folders =
+            List.filter .isDir (targetItems tab) |> List.map .path
+    in
+    if List.member item.path folders then
+        folders
+
+    else
+        [ item.path ]
 
 
 {-| The right-click menu for empty space in the list.
@@ -4751,6 +4917,9 @@ handleEnvelope envelope model =
                             ( ReqList _, "ok" ) ->
                                 False
 
+                            ( ReqFavList, "ok" ) ->
+                                False
+
                             ( ReqFind _, "ok" ) ->
                                 False
 
@@ -4948,6 +5117,63 @@ handleResponse reqId req envelope model =
             else
                 flashError model
 
+        ReqFavList ->
+            let
+                event =
+                    if envelope.kind == "stream" then
+                        D.decodeValue dirEventDecoder envelope.data |> Result.toMaybe
+
+                    else
+                        Maybe.map (EvError "other") errorMessage
+            in
+            case ( event, model.favBrowse ) of
+                ( Just ev, Just browse ) ->
+                    if browse.req /= reqId then
+                        ( { model | requests = Dict.remove reqId model.requests }, Cmd.none )
+
+                    else
+                        let
+                            done =
+                                case ev of
+                                    EvDone ->
+                                        True
+
+                                    EvError _ _ ->
+                                        True
+
+                                    _ ->
+                                        False
+                        in
+                        ( { model
+                            | favBrowse = Just (applyFavEvent ev browse)
+                            , requests =
+                                if done then
+                                    Dict.remove reqId model.requests
+
+                                else
+                                    model.requests
+                          }
+                        , Cmd.none
+                        )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        ReqColours ->
+            case ok coloursDecoder of
+                Just ( colours, warnings ) ->
+                    ( { model | folderColours = colours, colourWarnings = warnings }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ReqColourSet ->
+            if envelope.kind == "ok" then
+                request "colours_get" (E.object []) False ReqColours model
+
+            else
+                flashError model
+
         ReqOpen ->
             flashError model
 
@@ -5115,6 +5341,7 @@ type alias InitData =
     , toolbar : ( ToolbarConfig, List String )
     , paletteHistory : List String
     , findHistory : List String
+    , foldedGroups : List String
     }
 
 
@@ -5137,6 +5364,7 @@ initDecoder =
         |> andMap (D.field "toolbar" toolbarDecoder)
         |> andMap (D.oneOf [ D.at [ "session", "paletteHistory" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.at [ "session", "findHistory" ] (D.list D.string), D.succeed [] ])
+        |> andMap (D.oneOf [ D.at [ "session", "foldedGroups" ] (D.list D.string), D.succeed [] ])
 
 
 andMap : D.Decoder a -> D.Decoder (a -> b) -> D.Decoder b
@@ -5209,6 +5437,7 @@ boot data model =
                 , version = data.version
                 , paletteHistory = data.paletteHistory
                 , findHistory = data.findHistory
+                , foldedGroups = Set.fromList data.foldedGroups
             }
                 |> applyKeyBindings data.keybindings
                 |> applyToolbar data.toolbar
@@ -5223,6 +5452,7 @@ boot data model =
         |> andThen (loadView booted.active)
         |> andThen persist
         |> andThen (request "bookmarks_get" (E.object []) False ReqBookmarks)
+        |> andThen (request "colours_get" (E.object []) False ReqColours)
         |> andThen (request "templates_list" (E.object []) False ReqTemplates)
         |> andThen (request "perf_mark" (E.object [ ( "label", E.string "ui-booted" ) ]) False ReqIgnore)
         |> addCmd (Cmd.batch [ focusList, measureList ])
@@ -5241,6 +5471,40 @@ type alias Patch =
     , removed : List String
     , changed : List Item
     }
+
+
+{-| Applies one listing event to the folder shown in the Favourites view.
+-}
+applyFavEvent : DirEvent -> FavBrowse -> FavBrowse
+applyFavEvent event browse =
+    let
+        add items dict =
+            List.foldl (\i acc -> Dict.insert i.name i acc) dict items
+    in
+    case event of
+        EvCached items ->
+            { browse | items = add items Dict.empty }
+
+        EvChunk items ->
+            { browse | items = add items browse.items }
+
+        EvPatch patch ->
+            { browse | items = add (patch.added ++ patch.changed) (List.foldl Dict.remove browse.items patch.removed) }
+
+        EvDone ->
+            { browse | loading = False }
+
+        EvError _ message ->
+            { browse | loading = False, error = Just message }
+
+
+{-| colours.toml as sent by `colours_get` and the `colours-changed` event (spec 6.4.5).
+-}
+coloursDecoder : D.Decoder ( Dict String String, List String )
+coloursDecoder =
+    D.map2 Tuple.pair
+        (D.field "folders" (D.dict D.string))
+        (D.field "warnings" (D.list D.string))
 
 
 patchDecoder : D.Decoder Patch
@@ -5401,7 +5665,24 @@ handleEvent name data model =
                             else
                                 recompute model (applyPatch patch tab)
                     in
-                    ( { model | tabs = List.map apply model.tabs }, Cmd.none )
+                    ( { model
+                        | tabs = List.map apply model.tabs
+                        , favBrowse =
+                            Maybe.map
+                                (\b ->
+                                    if b.path /= path then
+                                        b
+
+                                    else if gone then
+                                        { b | items = Dict.empty, error = Just Text.folderGone }
+
+                                    else
+                                        applyFavEvent (EvPatch patch) b
+                                )
+                                model.favBrowse
+                      }
+                    , Cmd.none
+                    )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -5431,6 +5712,14 @@ handleEvent name data model =
 
         "bookmarks-changed" ->
             request "bookmarks_get" (E.object []) False ReqBookmarks model
+
+        "colours-changed" ->
+            case D.decodeValue coloursDecoder data of
+                Ok ( colours, warnings ) ->
+                    ( { model | folderColours = colours, colourWarnings = warnings }, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
 
         "keybindings-changed" ->
             case D.decodeValue keyBindingsDecoder data of

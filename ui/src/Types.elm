@@ -136,6 +136,9 @@ type Request
     | ReqToolbar
     | ReqOpenReturnedFile
     | ReqLocate Bookmark
+    | ReqColours
+    | ReqFavList
+    | ReqColourSet
 
 
 type SubfolderUse
@@ -415,11 +418,74 @@ type alias BookmarkForm =
     , target : String
     , group : String
     , error : Maybe String
+
+    -- The group drop-down (spec 6.4.2): open or not, and the highlighted choice.
+    , groupOpen : Bool
+    , groupActive : Int
     }
 
 
 
 -- SIDEBAR AND BOOKMARKS
+
+
+{-| The colours a folder can have (spec 6.4.5); the same names as colours.toml.
+-}
+folderColours : List String
+folderColours =
+    [ "red", "orange", "yellow", "green", "teal", "blue", "purple", "pink", "grey" ]
+
+
+{-| The choices in the bookmark dialog's group drop-down (spec 6.4.2): the
+existing groups that contain the typed text, then the typed text itself when
+it would be a new group. Groups are written as in the dialog: "bar/Legal".
+-}
+groupChoices : Model -> String -> List String
+groupChoices model typed =
+    let
+        wanted =
+            String.split "/" typed |> List.map String.trim |> List.filter ((/=) "")
+
+        key =
+            String.join "/" wanted
+
+        existing =
+            model.bookmarks
+                |> List.concatMap (\b -> List.map (\n -> String.join "/" (List.take n b.group)) (List.range 1 (List.length b.group)))
+                |> (::) "bar"
+                |> List.foldl
+                    (\g acc ->
+                        if List.member g acc then
+                            acc
+
+                        else
+                            acc ++ [ g ]
+                    )
+                    []
+                |> List.sort
+
+        matches =
+            List.filter (\g -> String.contains (String.toLower key) (String.toLower g)) existing
+    in
+    if key == "" || List.member key existing then
+        matches
+
+    else
+        matches ++ [ key ]
+
+
+{-| The Favourites view showing the contents of a favourite or a folder below
+it (spec 5.7). `root` is the favourite it started from, so Up stops there.
+-}
+type alias FavBrowse =
+    { root : String
+    , path : String
+    , items : Dict String Item
+    , req : Int
+    , loading : Bool
+    , error : Maybe String
+    , selected : Maybe String
+    }
 
 
 type SidebarMode
@@ -513,9 +579,19 @@ type alias Model =
     , treeExpanded : Set String
     , treeCursor : Maybe String
     , favourites : List Favourite
+
+    -- The Favourites view browsing inside a favourite (spec 5.7); Nothing shows the list.
+    , favBrowse : Maybe FavBrowse
     , bookmarks : List Bookmark
     , bookmarkWarnings : List String
+
+    -- Folder colours (spec 6.4.5): folder path -> colour name, from colours.toml.
+    , folderColours : Dict String String
+    , colourWarnings : List String
     , bookmarkSearch : String
+
+    -- Bookmark groups folded in the sidebar (spec 5.7), as "bar/Legal".
+    , foldedGroups : Set String
     , clipboard : Maybe Clipboard
     , jobs : Dict Int JobStatus
     , jobsPanel : Bool
@@ -613,10 +689,17 @@ type Msg
     | SidebarResizeStart Float
     | ItemContextMenu (List MenuEntry) Float Float
     | BookmarkSearch String
+    | ToggleBookmarkGroup String
+    | FavBrowseTo String String
+    | FavUp
+    | FavHome
+    | FavSelect String
+    | FavMouseDown String String Float Float
     | OpenBookmark Bookmark Bool
     | BookmarkEditOp (List ( String, D.Value ))
     | EditBookmark Bookmark
     | LocateBookmark Bookmark
+    | SetFolderColour (List String) (Maybe String)
     | TabMouseDown Int Float
     | TabHover Int
     | RegionFocused Region
@@ -624,6 +707,9 @@ type Msg
     | DialogName String
     | DialogTarget String
     | DialogGroup String
+    | DialogGroupOpen Bool
+    | DialogGroupKey String
+    | DialogGroupPick String
     | DialogSubmit
     | DialogCancel
       -- File operations

@@ -23,6 +23,8 @@ pub struct Session {
     pub palette_history: Vec<String>,
     /// The last Quick Find searches (FR-FIND-06).
     pub find_history: Vec<String>,
+    /// Bookmark groups folded in the sidebar, as `bar/Legal` (spec 5.7).
+    pub folded_groups: Vec<String>,
 }
 
 pub fn load(paths: &AppPaths) -> Session {

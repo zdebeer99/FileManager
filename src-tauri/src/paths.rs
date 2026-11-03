@@ -48,6 +48,10 @@ impl AppPaths {
         self.config.join("bookmarks.toml")
     }
 
+    pub fn colours_file(&self) -> PathBuf {
+        self.config.join("colours.toml")
+    }
+
     pub fn keybindings_file(&self) -> PathBuf {
         self.config.join("keybindings.toml")
     }
