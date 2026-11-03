@@ -3,4 +3,5 @@ ui/dist/
 ui/elm-stuff/
 src-tauri/target/
 src-tauri/gen/
-test/HumansOnly/
+test/
+HumansOnly/
