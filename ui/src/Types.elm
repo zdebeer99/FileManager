@@ -137,6 +137,7 @@ type Request
     | ReqOpenReturnedFile
     | ReqLocate Bookmark
     | ReqColours
+    | ReqIcons
     | ReqFavList
     | ReqColourSet
 
@@ -488,6 +489,54 @@ type alias FavBrowse =
     }
 
 
+{-| The key the backend knows an item's system icon by: folders share one,
+files share one per extension, and (where the platform has them) programs
+and shortcuts each have their own. Online-only files never get their own,
+so reading the icon can't download them.
+-}
+iconKey : Model -> Item -> String
+iconKey model item =
+    let
+        own =
+            model.perFileIcons
+                && item.sync
+                /= Item.SyncOnlineOnly
+                && (item.kind == Item.Shortcut || List.member item.ext [ "exe", "ico", "lnk" ])
+    in
+    if item.isDir then
+        "folder"
+
+    else if own then
+        "file:" ++ item.path
+
+    else
+        "ext:" ++ item.ext
+
+
+{-| The system icon key for a bookmark: a folder, a web link, or a file's type.
+-}
+bookmarkIconKey : Bookmark -> Maybe String
+bookmarkIconKey b =
+    case b.kind of
+        "folder" ->
+            Just "folder"
+
+        "url" ->
+            Just "ext:url"
+
+        _ ->
+            let
+                name =
+                    b.target |> String.replace "\\" "/" |> String.split "/" |> List.reverse |> List.head |> Maybe.withDefault ""
+            in
+            case List.reverse (String.split "." name) of
+                ext :: _ :: _ ->
+                    Just ("ext:" ++ String.toLower ext)
+
+                _ ->
+                    Just "ext:"
+
+
 type SidebarMode
     = TreeMode
     | FavouritesMode
@@ -584,6 +633,12 @@ type alias Model =
     , favBrowse : Maybe FavBrowse
     , bookmarks : List Bookmark
     , bookmarkWarnings : List String
+
+    -- System icons (FR-ICON-02): icon key -> data: URL, the keys already asked
+    -- for, and whether programs and shortcuts can have their own icon.
+    , systemIcons : Dict String String
+    , iconsAsked : Set String
+    , perFileIcons : Bool
 
     -- Folder colours (spec 6.4.5): folder path -> colour name, from colours.toml.
     , folderColours : Dict String String
@@ -802,6 +857,7 @@ type Command
     | CmdToggleFoldersFirst
     | CmdSetting String Bool
     | CmdSetTheme String
+    | CmdSetIcons String
     | CmdToggleSidebar
     | CmdSidebarMode SidebarMode
     | CmdSidebarSide String

@@ -35,7 +35,7 @@ main : Program () Model Msg
 main =
     Browser.element
         { init = init
-        , update = update
+        , update = \msg model -> update msg model |> andThen ensureIcons
         , view = View.view
         , subscriptions = subscriptions
         }
@@ -86,6 +86,9 @@ init _ =
             , bookmarks = []
             , bookmarkWarnings = []
             , folderColours = Dict.empty
+            , systemIcons = Dict.empty
+            , iconsAsked = Set.empty
+            , perFileIcons = False
             , colourWarnings = []
             , bookmarkSearch = ""
             , foldedGroups = Set.empty
@@ -1467,6 +1470,9 @@ runCommand command model =
 
         CmdSetTheme theme ->
             setSetting "general.theme" (E.string theme) (\s -> { s | theme = theme }) model
+
+        CmdSetIcons icons ->
+            setSetting "view.default.icons" (E.string icons) (\s -> { s | icons = icons }) model
 
         CmdToggleSidebar ->
             let
@@ -5159,6 +5165,30 @@ handleResponse reqId req envelope model =
                 _ ->
                     ( model, Cmd.none )
 
+        ReqIcons ->
+            case ok (D.dict (D.nullable D.string)) of
+                Just found ->
+                    ( { model
+                        | systemIcons =
+                            Dict.foldl
+                                (\key url acc ->
+                                    case url of
+                                        Just u ->
+                                            Dict.insert key u acc
+
+                                        Nothing ->
+                                            acc
+                                )
+                                model.systemIcons
+                                found
+                      }
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    -- Nothing came back: let these keys be asked for again later.
+                    ( model, Cmd.none )
+
         ReqColours ->
             case ok coloursDecoder of
                 Just ( colours, warnings ) ->
@@ -5342,6 +5372,7 @@ type alias InitData =
     , paletteHistory : List String
     , findHistory : List String
     , foldedGroups : List String
+    , perFileIcons : Bool
     }
 
 
@@ -5365,6 +5396,7 @@ initDecoder =
         |> andMap (D.oneOf [ D.at [ "session", "paletteHistory" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.at [ "session", "findHistory" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.at [ "session", "foldedGroups" ] (D.list D.string), D.succeed [] ])
+        |> andMap (D.oneOf [ D.field "perFileIcons" D.bool, D.succeed False ])
 
 
 andMap : D.Decoder a -> D.Decoder (a -> b) -> D.Decoder b
@@ -5438,6 +5470,7 @@ boot data model =
                 , paletteHistory = data.paletteHistory
                 , findHistory = data.findHistory
                 , foldedGroups = Set.fromList data.foldedGroups
+                , perFileIcons = data.perFileIcons
             }
                 |> applyKeyBindings data.keybindings
                 |> applyToolbar data.toolbar
@@ -5471,6 +5504,63 @@ type alias Patch =
     , removed : List String
     , changed : List Item
     }
+
+
+
+-- SYSTEM ICONS (FR-ICON-02)
+
+
+{-| Asks for the system icons that the rows on screen, the Favourites view,
+the bookmarks and the favourites need and that haven't been asked for yet.
+Runs after every update; when nothing is missing it costs a few lookups.
+-}
+ensureIcons : Model -> ( Model, Cmd Msg )
+ensureIcons model =
+    if model.settings.icons /= "system" || not model.booted then
+        ( model, Cmd.none )
+
+    else
+        let
+            onScreen =
+                case activeTab model of
+                    Just tab ->
+                        let
+                            first =
+                                max 0 (floor (tab.scrollTop / rowHeight) - 5)
+
+                            count =
+                                ceiling (model.viewportHeight / rowHeight) + 10
+                        in
+                        Array.slice first (first + count) tab.visible |> Array.toList |> List.map (iconKey model)
+
+                    Nothing ->
+                        []
+
+            browsing =
+                case model.favBrowse of
+                    Just browse ->
+                        Dict.values browse.items |> List.map (iconKey model)
+
+                    Nothing ->
+                        []
+
+            bookmarkKeys =
+                List.map bookmarkIconKey model.bookmarks
+
+            wanted =
+                ("folder" :: onScreen ++ browsing ++ List.filterMap identity bookmarkKeys)
+                    |> List.filter (\key -> not (Set.member key model.iconsAsked))
+                    |> Set.fromList
+        in
+        if Set.isEmpty wanted then
+            ( model, Cmd.none )
+
+        else
+            request "icons_get"
+                (E.object [ ( "keys", E.list E.string (Set.toList wanted) ) ])
+                False
+                ReqIcons
+                { model | iconsAsked = Set.union wanted model.iconsAsked }
 
 
 {-| Applies one listing event to the folder shown in the Favourites view.

@@ -267,7 +267,7 @@ viewBookmarkBar model =
                 (\entry ->
                     case entry of
                         BarBookmark b ->
-                            bookmarkButton b
+                            bookmarkButton model b
 
                         BarGroup group members ->
                             button
@@ -296,8 +296,8 @@ viewBookmarkBar model =
         )
 
 
-bookmarkButton : Bookmark -> Html Msg
-bookmarkButton b =
+bookmarkButton : Model -> Bookmark -> Html Msg
+bookmarkButton model b =
     button
         [ class "bm"
         , classList [ ( "missing", not b.exists ) ]
@@ -307,7 +307,7 @@ bookmarkButton b =
         , title b.target
         , tabindex -1
         ]
-        [ span [ class ("icon " ++ bookmarkIcon b) ] [], text b.name ]
+        [ viewBookmarkIcon model b, text b.name ]
 
 
 bookmarkIcon : Bookmark -> String
@@ -657,18 +657,11 @@ viewTree model tab =
                     ++ dropTarget model (DropFolder row.path) row.path
                 )
                 [ span [ class "twisty", stopPropagationOn "click" (D.succeed ( TreeToggle row.path, True )) ] [ text twisty ]
-                , span
-                    [ class
-                        ("icon "
-                            ++ (if row.kind == "folder" then
-                                    folderIcon model row.path
+                , if row.kind == "folder" then
+                    viewFolderIcon model row.path
 
-                                else
-                                    rootIcon row.kind
-                               )
-                        )
-                    ]
-                    []
+                  else
+                    span [ class ("icon " ++ rootIcon row.kind) ] []
                 , span [ class "label" ] [ text row.label ]
                 ]
         )
@@ -814,7 +807,7 @@ viewFavBrowse model tab browse =
                             []
                        )
                 )
-                [ span [ class ("icon " ++ iconClass model item) ] []
+                [ viewIcon model item
                 , span [ class "label" ] [ text (Item.displayName model.settings.showExtensions item) ]
                 ]
 
@@ -877,7 +870,7 @@ viewFavouriteList model tab =
                      ]
                         ++ dropTarget model (DropFolder f.path) f.path
                     )
-                    [ span [ class ("icon " ++ folderIcon model f.path) ] [], span [ class "label" ] [ text (Path.name model.sep f.path) ] ]
+                    [ viewFolderIcon model f.path, span [ class "label" ] [ text (Path.name model.sep f.path) ] ]
             )
             model.favourites
     )
@@ -947,7 +940,7 @@ viewBookmarksPanel model =
                 , contextMenu (bookmarkEntries b)
                 , title b.target
                 ]
-                [ span [ class "twisty" ] [], span [ class ("icon " ++ bookmarkIcon b) ] [], span [ class "label" ] [ text b.name ] ]
+                [ span [ class "twisty" ] [], viewBookmarkIcon model b, span [ class "label" ] [ text b.name ] ]
 
         -- A group heading that folds its bookmarks and sub-groups away (spec 5.7).
         -- While searching, every group is shown open so no match is hidden.
@@ -1324,7 +1317,7 @@ viewCell model tab query item column =
 viewNameCell : Model -> Filter.Query -> Item -> Html Msg
 viewNameCell model query item =
     div [ class "cell name", title (Maybe.withDefault item.name item.target) ]
-        [ span [ class ("icon " ++ iconClass model item) ] []
+        [ viewIcon model item
         , span []
             (List.map
                 (\( part, marked ) ->
@@ -1344,7 +1337,7 @@ viewNameCell model query item =
 viewRenameCell : Model -> Item -> RenameState -> Html Msg
 viewRenameCell model item r =
     div [ class "cell name renaming" ]
-        [ span [ class ("icon " ++ iconClass model item) ] []
+        [ viewIcon model item
         , input
             [ id renameInputId
             , stopPropagationOn "mousedown" (D.succeed ( NoOp, True ))
@@ -1385,6 +1378,48 @@ iconClass model item =
 
     else
         Item.iconName item
+
+
+{-| An item's icon: the system icon when that setting is on and the icon has
+arrived (FR-ICON-02), otherwise the built-in one (FR-ICON-01). A folder with a
+colour keeps the built-in icon, so the colour shows (spec 6.4.5).
+-}
+viewIcon : Model -> Item -> Html msg
+viewIcon model item =
+    if item.isDir then
+        viewFolderIcon model item.path
+
+    else
+        iconOrBuiltin model (iconKey model item) (iconClass model item)
+
+
+viewFolderIcon : Model -> String -> Html msg
+viewFolderIcon model path =
+    if Dict.member path model.folderColours then
+        span [ class ("icon " ++ folderIcon model path) ] []
+
+    else
+        iconOrBuiltin model "folder" "folder"
+
+
+viewBookmarkIcon : Model -> Bookmark -> Html msg
+viewBookmarkIcon model b =
+    case bookmarkIconKey b of
+        Just key ->
+            iconOrBuiltin model key (bookmarkIcon b)
+
+        Nothing ->
+            span [ class ("icon " ++ bookmarkIcon b) ] []
+
+
+iconOrBuiltin : Model -> String -> String -> Html msg
+iconOrBuiltin model key builtin =
+    case ( model.settings.icons, Dict.get key model.systemIcons ) of
+        ( "system", Just url ) ->
+            Html.img [ class "sysicon", Html.Attributes.src url, Html.Attributes.alt "", attribute "draggable" "false" ] []
+
+        _ ->
+            span [ class ("icon " ++ builtin) ] []
 
 
 {-| The folder icon, in the folder's colour when it has one (spec 6.4.5).

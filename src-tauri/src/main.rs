@@ -7,6 +7,7 @@ mod commands;
 mod fileops;
 mod find;
 mod folder_view;
+mod icons;
 mod jobs;
 mod keybindings;
 mod listing;
@@ -56,6 +57,7 @@ fn main() {
             commands::bookmarks_edit,
             commands::colours_get,
             commands::colours_set,
+            commands::icons_get,
             commands::app_exit,
             commands::job_start,
             commands::job_cancel,

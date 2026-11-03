@@ -903,6 +903,7 @@ dependencies = [
  "mslnk",
  "notify",
  "open",
+ "png",
  "rayon",
  "serde",
  "serde_json",

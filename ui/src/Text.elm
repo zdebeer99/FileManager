@@ -444,6 +444,21 @@ unfoldGroup =
     "Unfold this group"
 
 
+icons : String
+icons =
+    "Icons"
+
+
+systemIcons : String
+systemIcons =
+    "System Icons"
+
+
+builtinIcons : String
+builtinIcons =
+    "Built-in Icons"
+
+
 folderColour : String
 folderColour =
     "Folder Colour"
@@ -1209,6 +1224,12 @@ commandName id =
 
         "view.theme.dark" ->
             "Theme: Dark"
+
+        "view.icons.system" ->
+            "Icons: System"
+
+        "view.icons.builtin" ->
+            "Icons: Built-in"
 
         "focus.nextRegion" ->
             "Next Region"

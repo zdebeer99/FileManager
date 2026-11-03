@@ -32,6 +32,7 @@ type alias Settings =
     , showHidden : Bool
     , showExtensions : Bool
     , dateFormat : String
+    , icons : String
     }
 
 
@@ -59,6 +60,7 @@ default =
     , showHidden = False
     , showExtensions = True
     , dateFormat = "yyyy-MM-dd HH:mm"
+    , icons = "system"
     }
 
 
@@ -100,6 +102,7 @@ decoder =
         |> andMap (view "showHidden" D.bool)
         |> andMap (view "showExtensions" D.bool)
         |> andMap (view "dateFormat" D.string)
+        |> andMap (D.oneOf [ view "icons" D.string, D.succeed "system" ])
 
 
 sortKeyDecoder : D.Decoder ( String, Bool )

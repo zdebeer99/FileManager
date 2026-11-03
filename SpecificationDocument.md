@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycle **c1** is built on top of it and not yet released (Section 11.2). |
-| Changes | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
+| Status | 0.1.0 released. Update cycles **c1** and **c2** are built on top of it and not yet released (Sections 11.2, 11.3). |
+| Changes | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5). |
+| | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
 | | 0.1.0: First stable release. M5 cancelled (decision log 13.1, 2026-11-03). The document now describes only what 0.1.0 does; everything planned but not built is listed in Section 12. Document versions restart at the application version. |
 | | Earlier drafts 0.2 to 0.5 (2026-10-31 to 2026-11-01): platforms decided, review decisions merged, scope reduced, M1 to M4 built. See the decision log (13.1). |
 
@@ -179,6 +180,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `folder_view_get` / `folder_view_save` / `folder_view_reset` / `folder_view_file` | `{ path, view?, applyToSubfolders? }` | resolved view / file path |
 | `bookmarks_get` / `bookmarks_edit` | `{ edit: { op, … } }` | favourites, bookmarks, warnings |
 | `colours_get` / `colours_set` | — / `{ path, colour }` (`null` clears it) | folder → colour map, warnings |
+| `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>` | key → `data:` URL, or `null` where there is no system icon |
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `undo_last` | — | `{ ok } \| { error }` |
 | `fs_rename` / `fs_create` | `{ path, newName }` / `{ parent, item: { kind, … } }` | new path |
@@ -217,6 +219,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 |---|---|---|---|
 | Directory cache | Memory, LRU | Item records per folder | Watcher events; Refresh (`F5`) |
 | Start-up snapshot | Disk, in the cache folder | Listings of the folders open in tabs when the app last closed | Shown immediately at start-up, then refreshed in the background |
+| Icon cache | Memory, and disk: `<cache folder>/icons/<app version>/` | System icons (FR-ICON-02): the folder icon and one per file type on disk; programs' and shortcuts' own icons in memory only | A new app version uses a new folder; delete the folder to pick up a changed icon theme |
 
 The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on Windows, `$XDG_CACHE_HOME/filecatalog` (default `~/.cache/filecatalog`) on Linux). Cache files are **not** settings: they may be binary and can be deleted at any time without losing anything.
 
@@ -326,7 +329,13 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-CC-06** `Enter` / double-click opens the item. Folders open in the current tab; `Ctrl+Enter` opens a folder in a new tab. `Backspace` / `Alt+Up` goes to the parent folder.
 - **FR-CC-07** Right-click menus (also `Shift+F10` and the Menu key) on items and on empty space, with the commands that apply.
 - **FR-CC-08** Drag and drop: inside the app, out of the window to other apps, and files dropped in from other apps.
-- **FR-ICON-01** Every item shows an icon for its kind: folder, shortcut, web link, or for files a category picked from the extension: text, document, PDF, spreadsheet, presentation, code, archive, program, image, audio, video, e-mail, or other. Each category has its own colour in both themes. Folders show their folder colour (6.4.5). The icons are built into the app; nothing is read from the files.
+- **FR-ICON-01** Every item shows an icon for its kind: folder, shortcut, web link, or for files a category picked from the extension: text, document, PDF, spreadsheet, presentation, code, archive, program, image, audio, video, e-mail, or other. Each category has its own colour in both themes. Folders show their folder colour (6.4.5). The icons are built into the app; nothing is read from the files. They are used when `view.default.icons = "builtin"`, and in system mode until a system icon has arrived or where there is none.
+- **FR-ICON-02** With `view.default.icons = "system"` (the default; **View › Icons ▸ System Icons / Built-in Icons**), items show the icons the operating system shows:
+  - **Windows:** the shell's icon for each file type and for folders, found from the extension without touching any file. Programs (`.exe`), icon files (`.ico`) and shortcuts (`.lnk`) show their own icon, read from the file.
+  - **Linux:** the icon for the file's MIME type (from the shared-mime-info database) in the desktop's icon theme (GTK, GNOME or KDE setting; else Adwaita), following the freedesktop.org Icon Theme Specification, then hicolor. Files have no icon of their own.
+  - Icons are loaded in the background for the rows on screen, the Favourites view and bookmarks, so the list never waits for them; built-in icons show until they arrive. They are cached (Section 4.5).
+  - A file's own icon is never read from a network or removable drive or from an online-only cloud file, so reading it can't hang or download the file (spec 4.3, FR-SYNC-03); those files show their type's icon.
+  - A folder with a colour keeps the built-in folder icon, so its colour shows (6.4.5).
 - **FR-CC-10** Empty and error states: *"This folder is empty"*, *"Access denied"*, *"Location not available"* (with a *Retry* button).
 
 #### 5.8.1 Sync status column
@@ -686,6 +695,7 @@ foldersFirst = true
 showHidden  = false
 showExtensions = true
 dateFormat  = "yyyy-MM-dd HH:mm"
+icons       = "system"            # "system" | "builtin" (FR-ICON-02)
 
 [search]
 includeHidden   = false
@@ -855,8 +865,18 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | Catchy name | Not a code change: name ideas are in FeatureRequest.md, waiting for a choice. |
 
 **Known limits in c1:**
-- File icons are built-in type icons, not the icons the operating system shows (for example a program's own icon).
 - A folder colour does not follow a folder that is renamed or moved.
+
+### 11.3 Update cycle c2 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-010 System file icons | FR-ICON-02, `view.default.icons` (8.3), icon cache (4.5) |
+
+**Known limits in c2:**
+- The Windows icon code is type-checked for Windows and was not run there before release; it needs a test on Windows.
+- On Linux, a changed icon theme is picked up after a restart and after deleting `<cache folder>/icons`.
+- On Linux, shortcuts (symbolic links) show the built-in shortcut icon.
 
 ---
 
@@ -899,7 +919,6 @@ These were specified in the drafts but are not built. Each keeps its ID so it ca
 | Bookmark import from Explorer *Quick access* | FR-BM-05 |
 | A folder's saved view following it when File Catalog renames or moves it; *Tools › Clean Up Folder Settings* | FR-FS-02 |
 | OS fast-copy functions (`CopyFileEx`, `copy_file_range`, reflink) and keeping attributes; verifying size before a cross-volume move deletes the source | FR-COPY-01, FR-COPY-02 |
-| Icon cache with per-file icons for `.exe` and `.lnk` | 4.5 |
 | Showing which app holds a file in use (Windows Restart Manager); pausing a job when the disk is full; long-path (`\\?\`) handling | 9 |
 | Help › Documentation | 5.2 |
 | `elm-test` and `elm-review`, end-to-end tests with `tauri-driver`, and performance tests in CI | NFR-MNT-01, NFR-MNT-02, 10 |
@@ -1032,6 +1051,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `view.sidebarMode.tree/favourites/bookmarks` | Sidebar Mode | `Ctrl+Shift+1…3` |
 | `view.toggleHidden` | Show Hidden Files | `Ctrl+H` |
 | `view.theme.system/light/dark` | Theme | — |
+| `view.icons.system` / `view.icons.builtin` | System Icons / Built-in Icons | — |
 | `focus.nextRegion` / `focus.prevRegion` | Next / Previous Region | `F6` / `Shift+F6` |
 | `menu.open` | Menu Bar | `F10` |
 | `bookmark.addFolder` / `bookmark.addItem` | Bookmark This Folder / Selected Item | `Ctrl+D` / — |

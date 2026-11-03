@@ -16,6 +16,7 @@ use crate::colours::{self, Colours};
 use crate::fileops;
 use crate::find::{self, FindEvent};
 use crate::folder_view::{self, FolderView};
+use crate::icons;
 use crate::jobs::{self, Action, JobManager, JobRequest, UndoStep};
 use crate::keybindings::{self, KeyBindings};
 use crate::listing::{diff, error_kind, read_dir_streaming, DirCache, DirEvent};
@@ -40,6 +41,8 @@ pub struct AppState {
     clipboard: Mutex<Option<arboard::Clipboard>>,
     /// Running Quick Find searches by id, with their cancel flags.
     searches: Arc<Mutex<HashMap<u64, Arc<AtomicBool>>>>,
+    /// System icons already looked up (FR-ICON-02).
+    icons: Arc<icons::IconCache>,
 }
 
 impl AppState {
@@ -54,6 +57,7 @@ impl AppState {
             jobs: Mutex::new(None),
             clipboard: Mutex::new(None),
             searches: Arc::default(),
+            icons: Arc::default(),
         }
     }
 
@@ -80,6 +84,8 @@ pub struct InitData {
     home: String,
     sep: &'static str,
     sync_status: bool,
+    /// Whether programs and shortcuts can show their own icon (FR-ICON-02).
+    per_file_icons: bool,
     roots: Vec<platform::Root>,
     settings_file: String,
     bookmarks_file: String,
@@ -145,6 +151,7 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
         home: paths::normalize(&home.to_string_lossy()),
         sep: platform::PATH_SEPARATOR,
         sync_status: platform::SYNC_STATUS_SUPPORTED,
+        per_file_icons: platform::PER_FILE_ICONS,
         roots,
         settings_file: state.paths.settings_file().to_string_lossy().into_owned(),
         bookmarks_file: state.paths.bookmarks_file().to_string_lossy().into_owned(),
@@ -390,6 +397,18 @@ pub async fn bookmarks_get(state: State<'_, AppState>) -> Result<Bookmarks, Stri
 pub async fn bookmarks_edit(state: State<'_, AppState>, edit: bookmarks::Edit) -> Result<(), String> {
     let paths = state.paths.clone();
     state.pools.run(&paths.config.clone(), Duration::from_secs(10), move || bookmarks::apply(&paths, edit)).await?
+}
+
+/// System icons for folders, file types and single files, as `data:` URLs;
+/// `null` where there is none (FR-ICON-02).
+#[tauri::command]
+pub async fn icons_get(
+    state: State<'_, AppState>,
+    keys: Vec<String>,
+) -> Result<HashMap<String, Option<String>>, String> {
+    let paths = state.paths.clone();
+    let cache = state.icons.clone();
+    state.pools.run(&paths.cache.clone(), Duration::from_secs(30), move || icons::get(&cache, &paths, keys)).await
 }
 
 /// Folder colours (spec 6.4.5).

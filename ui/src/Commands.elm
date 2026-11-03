@@ -102,6 +102,8 @@ all =
     , Def "view.theme.system" (CmdSetTheme "system") "◐"
     , Def "view.theme.light" (CmdSetTheme "light") "☀"
     , Def "view.theme.dark" (CmdSetTheme "dark") "☾"
+    , Def "view.icons.system" (CmdSetIcons "system") "▣"
+    , Def "view.icons.builtin" (CmdSetIcons "builtin") "□"
     , Def "focus.nextRegion" (CmdFocusRegion True) "⇥"
     , Def "focus.prevRegion" (CmdFocusRegion False) "⇤"
     , Def "menu.open" CmdMenuBar "☰"
