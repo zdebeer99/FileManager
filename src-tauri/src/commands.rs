@@ -12,6 +12,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
 use crate::bookmarks::{self, Bookmarks};
+use crate::colours::{self, Colours};
 use crate::fileops;
 use crate::find::{self, FindEvent};
 use crate::folder_view::{self, FolderView};
@@ -389,6 +390,23 @@ pub async fn bookmarks_get(state: State<'_, AppState>) -> Result<Bookmarks, Stri
 pub async fn bookmarks_edit(state: State<'_, AppState>, edit: bookmarks::Edit) -> Result<(), String> {
     let paths = state.paths.clone();
     state.pools.run(&paths.config.clone(), Duration::from_secs(10), move || bookmarks::apply(&paths, edit)).await?
+}
+
+/// Folder colours (spec 6.4.5).
+#[tauri::command]
+pub async fn colours_get(state: State<'_, AppState>) -> Result<Colours, String> {
+    let paths = state.paths.clone();
+    state.pools.run(&paths.config.clone(), state.timeout(), move || colours::load(&paths)).await
+}
+
+/// Sets a folder's colour, or clears it when `colour` is null (spec 6.4.5).
+#[tauri::command]
+pub async fn colours_set(state: State<'_, AppState>, path: String, colour: Option<String>) -> Result<(), String> {
+    let paths = state.paths.clone();
+    state
+        .pools
+        .run(&paths.config.clone(), Duration::from_secs(10), move || colours::set(&paths, &path, colour.as_deref()))
+        .await?
 }
 
 #[tauri::command]

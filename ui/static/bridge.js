@@ -45,7 +45,7 @@
     send({ id: -1, type: 'event', name: 'file-drop', data: Object.assign({}, drop, { target: target ? target.dataset.drop : null }) });
   });
 
-  for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed', 'keybindings-changed', 'toolbar-changed', 'job-progress', 'job-conflict']) {
+  for (const name of ['dir-changed', 'settings-changed', 'bookmarks-changed', 'colours-changed', 'keybindings-changed', 'toolbar-changed', 'job-progress', 'job-conflict']) {
     listen(name, (event) => send({ id: -1, type: 'event', name, data: event.payload }));
   }
 

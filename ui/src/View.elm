@@ -320,7 +320,23 @@ bookmarkIcon b =
             "weblink"
 
         _ ->
-            "file"
+            Item.fileCategory (extensionOf b.target)
+
+
+{-| The lower-case extension of a path, or "" when it has none.
+-}
+extensionOf : String -> String
+extensionOf path =
+    let
+        name =
+            path |> String.replace "\\" "/" |> String.split "/" |> List.reverse |> List.head |> Maybe.withDefault ""
+    in
+    case List.reverse (String.split "." name) of
+        ext :: _ :: _ ->
+            String.toLower ext
+
+        _ ->
+            ""
 
 
 bookmarkEntries : Bookmark -> List MenuEntry
@@ -560,7 +576,6 @@ viewSidebar model tab =
             [ modeButton TreeMode "tree" Text.treeMode
             , modeButton FavouritesMode "star" Text.favouritesMode
             , modeButton BookmarksMode "bookmark" Text.bookmarksMode
-            , button [ disabled True, title Text.contextModeLater, tabindex -1 ] [ span [ class "icon context" ] [] ]
             ]
         , div [ id sidebarBodyId, class "sidebar-body" ]
             (case mode of
@@ -642,7 +657,18 @@ viewTree model tab =
                     ++ dropTarget model (DropFolder row.path) row.path
                 )
                 [ span [ class "twisty", stopPropagationOn "click" (D.succeed ( TreeToggle row.path, True )) ] [ text twisty ]
-                , span [ class ("icon " ++ rootIcon row.kind) ] []
+                , span
+                    [ class
+                        ("icon "
+                            ++ (if row.kind == "folder" then
+                                    folderIcon model row.path
+
+                                else
+                                    rootIcon row.kind
+                               )
+                        )
+                    ]
+                    []
                 , span [ class "label" ] [ text row.label ]
                 ]
         )
@@ -688,11 +714,140 @@ folderEntries model path =
 
       else
         action Text.pin (fav "addFavourite")
+    , Menu.colourEntries model [ path ]
     ]
 
 
 viewFavourites : Model -> Tab -> List (Html Msg)
 viewFavourites model tab =
+    case model.favBrowse of
+        Just browse ->
+            viewFavBrowse model tab browse
+
+        Nothing ->
+            viewFavouriteList model tab
+
+
+{-| Inside a favourite (spec 5.7): its files and folders, to open, browse
+into, or drag onto the list, a tab or another folder. Up goes back towards
+the favourite and then to the list of favourites.
+-}
+viewFavBrowse : Model -> Tab -> FavBrowse -> List (Html Msg)
+viewFavBrowse model tab browse =
+    let
+        items =
+            Dict.values browse.items
+                |> List.filter (\i -> not i.hidden || model.settings.showHidden)
+                |> List.sortWith
+                    (\a b ->
+                        case ( a.isDir, b.isDir ) of
+                            ( True, False ) ->
+                                LT
+
+                            ( False, True ) ->
+                                GT
+
+                            _ ->
+                                compare a.key b.key
+                    )
+
+        location =
+            if browse.path == browse.root then
+                Path.name model.sep browse.root
+
+            else
+                Path.crumbs model.sep browse.path
+                    |> List.drop (List.length (Path.crumbs model.sep browse.root))
+                    |> List.map .label
+                    |> (::) (Path.name model.sep browse.root)
+                    |> String.join " › "
+
+        fileEntries item =
+            [ Action { label = Text.open, key = "", msg = Just (OpenPath item.path), checked = Nothing }
+            , Action { label = Text.reveal, key = "", msg = Just (RevealPath item.path), checked = Nothing }
+            ]
+
+        row item =
+            button
+                ([ class "side-item"
+                 , classList [ ( "current", item.path == tab.path ), ( "selected", browse.selected == Just item.path ), ( "hidden-item", item.hidden ) ]
+                 , onClick
+                    (if item.isDir then
+                        FavBrowseTo browse.root item.path
+
+                     else
+                        FavSelect item.path
+                    )
+                 , on "dblclick"
+                    (D.succeed
+                        (if item.isDir then
+                            NavigateTo item.path
+
+                         else
+                            OpenPath item.path
+                        )
+                    )
+                 , on "mousedown"
+                    (D.field "button" D.int
+                        |> D.andThen
+                            (\b ->
+                                if b == 0 then
+                                    D.map2 (FavMouseDown item.path item.name) (D.field "clientX" D.float) (D.field "clientY" D.float)
+
+                                else
+                                    D.fail "not the left button"
+                            )
+                    )
+                 , contextMenu
+                    (if item.isDir then
+                        folderEntries model item.path
+
+                     else
+                        fileEntries item
+                    )
+                 , title item.path
+                 ]
+                    ++ (if item.isDir then
+                            on "auxclick" (middleClick (NavigateNewTab item.path)) :: dropTarget model (DropFolder item.path) item.path
+
+                        else
+                            []
+                       )
+                )
+                [ span [ class ("icon " ++ iconClass model item) ] []
+                , span [ class "label" ] [ text (Item.displayName model.settings.showExtensions item) ]
+                ]
+
+        body =
+            case ( browse.error, items ) of
+                ( Just error, _ ) ->
+                    [ div [ class "sidebar-empty" ] [ text error ] ]
+
+                ( Nothing, [] ) ->
+                    [ div [ class "sidebar-empty" ]
+                        [ text
+                            (if browse.loading then
+                                Text.loading
+
+                             else
+                                Text.emptyFolder
+                            )
+                        ]
+                    ]
+
+                _ ->
+                    List.map row items
+    in
+    div ([ class "fav-header" ] ++ dropTarget model (DropFolder browse.path) browse.path)
+        [ button [ class "fav-up", onClick FavUp, title Text.favUp, attribute "aria-label" Text.favUp ] [ text "‹" ]
+        , span [ class "fav-location", title browse.path ] [ text location ]
+        , button [ class "fav-open", onClick (NavigateTo browse.path), title Text.showInList, attribute "aria-label" Text.showInList ] [ text "↗" ]
+        ]
+        :: body
+
+
+viewFavouriteList : Model -> Tab -> List (Html Msg)
+viewFavouriteList model tab =
     let
         pinned =
             List.any (\f -> f.path == tab.path) model.favourites
@@ -715,14 +870,14 @@ viewFavourites model tab =
                 button
                     ([ class "side-item"
                      , classList [ ( "current", f.path == tab.path ), ( "missing", not f.exists ) ]
-                     , onClick (NavigateTo f.path)
+                     , onClick (FavBrowseTo f.path f.path)
                      , on "auxclick" (middleClick (NavigateNewTab f.path))
                      , contextMenu (entries f)
                      , title f.path
                      ]
                         ++ dropTarget model (DropFolder f.path) f.path
                     )
-                    [ span [ class "icon folder" ] [], span [ class "label" ] [ text (Path.name model.sep f.path) ] ]
+                    [ span [ class ("icon " ++ folderIcon model f.path) ] [], span [ class "label" ] [ text (Path.name model.sep f.path) ] ]
             )
             model.favourites
     )
@@ -749,28 +904,108 @@ viewBookmarksPanel model =
                 (\b -> search == "" || String.contains search (String.toLower b.name) || String.contains search (String.toLower b.target))
                 model.bookmarks
 
-        groupName group =
-            case group of
-                [] ->
-                    Text.otherBookmarks
-
-                "bar" :: rest ->
-                    String.join " › " (Text.bookmarkBar :: rest)
-
-                _ ->
-                    String.join " › " group
-
-        groups =
+        -- Every group and every group above it, in the order they first appear.
+        allGroups =
             List.foldl
                 (\b acc ->
-                    if List.member b.group acc then
-                        acc
+                    List.foldl
+                        (\n acc2 ->
+                            let
+                                prefix =
+                                    List.take n b.group
+                            in
+                            if List.member prefix acc2 then
+                                acc2
 
-                    else
-                        acc ++ [ b.group ]
+                            else
+                                acc2 ++ [ prefix ]
+                        )
+                        acc
+                        (List.range 1 (List.length b.group))
                 )
                 []
                 matching
+
+        childGroups parent =
+            List.filter
+                (\g -> List.length g == List.length parent + 1 && List.take (List.length parent) g == parent)
+                allGroups
+
+        ungrouped =
+            List.filter (\b -> List.isEmpty b.group) matching
+
+        indent depth =
+            style "padding-left" (px (toFloat depth * 14 + 4))
+
+        viewBookmark depth b =
+            button
+                [ class "side-item"
+                , classList [ ( "missing", not b.exists ) ]
+                , indent depth
+                , on "click" (D.map (\ctrl -> OpenBookmark b (ctrl && b.kind == "folder")) (D.field "ctrlKey" D.bool))
+                , on "auxclick" (middleClick (OpenBookmark b (b.kind == "folder")))
+                , contextMenu (bookmarkEntries b)
+                , title b.target
+                ]
+                [ span [ class "twisty" ] [], span [ class ("icon " ++ bookmarkIcon b) ] [], span [ class "label" ] [ text b.name ] ]
+
+        -- A group heading that folds its bookmarks and sub-groups away (spec 5.7).
+        -- While searching, every group is shown open so no match is hidden.
+        viewGroup depth key label contents =
+            let
+                folded =
+                    search == "" && Set.member key model.foldedGroups
+            in
+            button
+                [ class "side-group"
+                , indent depth
+                , onClick (ToggleBookmarkGroup key)
+                , attribute "aria-expanded"
+                    (if folded then
+                        "false"
+
+                     else
+                        "true"
+                    )
+                , title
+                    (if folded then
+                        Text.unfoldGroup
+
+                     else
+                        Text.foldGroup
+                    )
+                ]
+                [ span [ class "twisty" ]
+                    [ text
+                        (if folded then
+                            "▸"
+
+                         else
+                            "▾"
+                        )
+                    ]
+                , span [ class "label" ] [ text label ]
+                ]
+                :: (if folded then
+                        []
+
+                    else
+                        contents
+                   )
+
+        viewGroupTree depth group =
+            viewGroup depth
+                (String.join "/" group)
+                (case group of
+                    [ "bar" ] ->
+                        Text.bookmarkBar
+
+                    _ ->
+                        List.reverse group |> List.head |> Maybe.withDefault ""
+                )
+                (List.map (viewBookmark (depth + 1)) (List.filter (\b -> b.group == group) matching)
+                    ++ List.concatMap (viewGroupTree (depth + 1)) (childGroups group)
+                )
     in
     [ input
         [ class "side-search"
@@ -786,24 +1021,13 @@ viewBookmarksPanel model =
                 [ div [ class "sidebar-empty" ] [ text Text.noBookmarks ] ]
 
             else
-                List.concatMap
-                    (\group ->
-                        div [ class "side-group" ] [ text (groupName group) ]
-                            :: List.map
-                                (\b ->
-                                    button
-                                        [ class "side-item"
-                                        , classList [ ( "missing", not b.exists ) ]
-                                        , on "click" (D.map (\ctrl -> OpenBookmark b (ctrl && b.kind == "folder")) (D.field "ctrlKey" D.bool))
-                                        , on "auxclick" (middleClick (OpenBookmark b (b.kind == "folder")))
-                                        , contextMenu (bookmarkEntries b)
-                                        , title b.target
-                                        ]
-                                        [ span [ class ("icon " ++ bookmarkIcon b) ] [], span [ class "label" ] [ text b.name ] ]
-                                )
-                                (List.filter (\b -> b.group == group) matching)
-                    )
-                    groups
+                List.concatMap (viewGroupTree 0) (childGroups [])
+                    ++ (if List.isEmpty ungrouped then
+                            []
+
+                        else
+                            viewGroup 0 "" Text.otherBookmarks (List.map (viewBookmark 1) ungrouped)
+                       )
            )
 
 
@@ -1052,7 +1276,7 @@ viewCell model tab query item column =
             case model.rename of
                 Just r ->
                     if r.tabId == tab.id && r.key == item.id then
-                        viewRenameCell item r
+                        viewRenameCell model item r
 
                     else
                         viewNameCell model query item
@@ -1100,7 +1324,7 @@ viewCell model tab query item column =
 viewNameCell : Model -> Filter.Query -> Item -> Html Msg
 viewNameCell model query item =
     div [ class "cell name", title (Maybe.withDefault item.name item.target) ]
-        [ span [ class ("icon " ++ iconClass item) ] []
+        [ span [ class ("icon " ++ iconClass model item) ] []
         , span []
             (List.map
                 (\( part, marked ) ->
@@ -1117,10 +1341,10 @@ viewNameCell model query item =
 
 {-| The in-place rename box (FR-REN-01, FR-REN-02).
 -}
-viewRenameCell : Item -> RenameState -> Html Msg
-viewRenameCell item r =
+viewRenameCell : Model -> Item -> RenameState -> Html Msg
+viewRenameCell model item r =
     div [ class "cell name renaming" ]
-        [ span [ class ("icon " ++ iconClass item) ] []
+        [ span [ class ("icon " ++ iconClass model item) ] []
         , input
             [ id renameInputId
             , stopPropagationOn "mousedown" (D.succeed ( NoOp, True ))
@@ -1154,20 +1378,25 @@ isCut model item =
             False
 
 
-iconClass : Item -> String
-iconClass item =
-    case item.kind of
-        Item.Folder ->
+iconClass : Model -> Item -> String
+iconClass model item =
+    if item.isDir then
+        folderIcon model item.path
+
+    else
+        Item.iconName item
+
+
+{-| The folder icon, in the folder's colour when it has one (spec 6.4.5).
+-}
+folderIcon : Model -> String -> String
+folderIcon model path =
+    case Dict.get path model.folderColours of
+        Just colour ->
+            "folder fc-" ++ colour
+
+        Nothing ->
             "folder"
-
-        Item.File ->
-            "file"
-
-        Item.Shortcut ->
-            "shortcut"
-
-        Item.WebLink ->
-            "weblink"
 
 
 syncGlyph : Item.Sync -> String
@@ -1210,7 +1439,7 @@ viewStatusBar model tab =
                 |> List.sum
 
         warnings =
-            model.warnings ++ model.bookmarkWarnings ++ model.keyWarnings ++ model.toolbarWarnings
+            model.warnings ++ model.bookmarkWarnings ++ model.colourWarnings ++ model.keyWarnings ++ model.toolbarWarnings
     in
     div [ class "statusbar" ]
         [ span []
@@ -1873,7 +2102,7 @@ viewDialog model =
                         ]
                     , field Text.name dialogFirstInputId form.name DialogName
                     , field Text.target "dialog-target" form.target DialogTarget
-                    , field Text.group "dialog-group" form.group DialogGroup
+                    , viewGroupField model form
                     , div [ class "hint" ] [ text Text.groupHint ]
                     , case form.error of
                         Just error ->
@@ -1887,6 +2116,85 @@ viewDialog model =
                         ]
                     ]
                 ]
+
+
+{-| The bookmark group: a text box with a drop-down of the existing groups.
+Typing filters them; a name that is not a group yet is offered as a new one
+(spec 6.4.2).
+-}
+viewGroupField : Model -> BookmarkForm -> Html Msg
+viewGroupField model form =
+    let
+        choices =
+            groupChoices model form.group
+
+        isNew choice =
+            choice
+                /= "bar"
+                && not
+                    (List.any
+                        (\b -> List.any (\n -> String.join "/" (List.take n b.group) == choice) (List.range 1 (List.length b.group)))
+                        model.bookmarks
+                    )
+
+        friendly choice =
+            case String.split "/" choice of
+                "bar" :: rest ->
+                    String.join " › " (Text.bookmarkBar :: rest)
+
+                parts ->
+                    String.join " › " parts
+
+        viewChoice index choice =
+            div
+                [ class "combo-option"
+                , classList [ ( "active", index == form.groupActive ) ]
+                , attribute "role" "option"
+                , attribute "aria-selected"
+                    (if index == form.groupActive then
+                        "true"
+
+                     else
+                        "false"
+                    )
+
+                -- mousedown, so the pick happens before the text box loses focus.
+                , preventDefaultOn "mousedown" (D.succeed ( DialogGroupPick choice, True ))
+                ]
+                (if isNew choice then
+                    [ span [ class "combo-new" ] [ text (Text.newGroup choice) ] ]
+
+                 else
+                    [ span [] [ text choice ], span [ class "muted" ] [ text (friendly choice) ] ]
+                )
+    in
+    label [ class "field" ]
+        [ span [] [ text Text.group ]
+        , div [ class "combo" ]
+            [ input
+                [ id "dialog-group"
+                , value form.group
+                , onInput DialogGroup
+                , onFocus (DialogGroupOpen True)
+                , onBlur (DialogGroupOpen False)
+                , spellcheck False
+                , attribute "autocomplete" "off"
+                , attribute "role" "combobox"
+                , attribute "aria-expanded"
+                    (if form.groupOpen then
+                        "true"
+
+                     else
+                        "false"
+                    )
+                , attribute "data-select-on-focus" ""
+                , Html.Events.custom "keydown" (inputKeys [ "ArrowDown", "ArrowUp", "Enter", "Escape" ] DialogGroupKey)
+                ]
+                []
+            , viewIf (form.groupOpen && not (List.isEmpty choices))
+                (div [ class "combo-list", attribute "role" "listbox" ] (List.indexedMap viewChoice choices))
+            ]
+        ]
 
 
 field : String -> String -> String -> (String -> Msg) -> Html Msg

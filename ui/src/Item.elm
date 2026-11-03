@@ -1,4 +1,4 @@
-module Item exposing (Item, Kind(..), Sync(..), decoder, displayName, naturalKey, syncLabel, syncRank, typeLabel)
+module Item exposing (Item, Kind(..), Sync(..), decoder, displayName, fileCategory, iconName, naturalKey, syncLabel, syncRank, typeLabel)
 
 {-| A file, folder, shortcut or web link, as sent by the backend (spec 4.4).
 -}
@@ -202,6 +202,109 @@ typeLabel item =
 
             else
                 String.toUpper item.ext ++ " File"
+
+
+{-| The icon for an item: its kind, and for files a category picked from the
+extension (feature request c1, "File Icons"). The names are CSS classes.
+-}
+iconName : Item -> String
+iconName item =
+    case item.kind of
+        Folder ->
+            "folder"
+
+        Shortcut ->
+            "shortcut"
+
+        WebLink ->
+            "weblink"
+
+        File ->
+            fileCategory item.ext
+
+
+fileCategory : String -> String
+fileCategory ext =
+    let
+        is list =
+            List.member ext list
+    in
+    if is [ "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "tif", "tiff", "heic", "heif", "avif", "raw", "psd" ] then
+        "file-image"
+
+    else if ext == "pdf" then
+        "file-pdf"
+
+    else if is [ "doc", "docx", "docm", "dot", "dotx", "odt", "rtf", "pages", "wpd" ] then
+        "file-doc"
+
+    else if is [ "xls", "xlsx", "xlsm", "xlsb", "xlt", "xltx", "ods", "csv", "tsv", "numbers" ] then
+        "file-sheet"
+
+    else if is [ "ppt", "pptx", "pptm", "pps", "ppsx", "pot", "potx", "odp", "key" ] then
+        "file-slides"
+
+    else if is [ "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz", "zst", "cab", "iso", "jar" ] then
+        "file-archive"
+
+    else if is [ "mp3", "wav", "flac", "aac", "ogg", "oga", "m4a", "wma", "opus", "aiff", "mid", "midi" ] then
+        "file-audio"
+
+    else if is [ "mp4", "mkv", "mov", "avi", "wmv", "webm", "m4v", "mpg", "mpeg", "flv", "3gp" ] then
+        "file-video"
+
+    else if is [ "exe", "msi", "bat", "cmd", "com", "ps1", "sh", "appimage", "deb", "rpm", "app", "apk", "dll", "so" ] then
+        "file-app"
+
+    else if
+        is
+            [ "js"
+            , "mjs"
+            , "ts"
+            , "tsx"
+            , "jsx"
+            , "elm"
+            , "rs"
+            , "py"
+            , "rb"
+            , "go"
+            , "java"
+            , "kt"
+            , "c"
+            , "h"
+            , "cpp"
+            , "hpp"
+            , "cs"
+            , "php"
+            , "swift"
+            , "html"
+            , "htm"
+            , "css"
+            , "scss"
+            , "json"
+            , "toml"
+            , "yaml"
+            , "yml"
+            , "xml"
+            , "sql"
+            , "lua"
+            , "r"
+            , "vb"
+            , "vbs"
+            , "ini"
+            , "cfg"
+            ]
+    then
+        "file-code"
+
+    else if is [ "txt", "md", "markdown", "log", "text", "rst", "nfo" ] then
+        "file-text"
+
+    else if is [ "eml", "msg", "mbox" ] then
+        "file-mail"
+
+    else
+        "file"
 
 
 syncRank : Sync -> Int

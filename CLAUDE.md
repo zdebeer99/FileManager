@@ -41,7 +41,7 @@ cargo fmt --check           # rustfmt.toml: max_width 120
 1. Elm calls `request cmd args stream kind model` ([Main.elm](ui/src/Main.elm), HELPERS section). It stores `kind` (a `Request` variant) in `model.requests` under a new id.
 2. The message goes out through `Ports.toBackend`. [bridge.js](ui/static/bridge.js) turns it into Tauri `invoke(cmd, args)`. When `stream` is true, the bridge also passes a `Channel` as `onEvent`.
 3. Replies come back through `Ports.fromBackend` as `{ id, type: ok|err|stream|event, data, name? }`. `handleEnvelope` and `handleResponse` match each reply to its stored request. Stale replies are dropped by id.
-4. Push events from Rust are emitted by [watcher.rs](src-tauri/src/watcher.rs) (`dir-changed`, `settings-changed`, `bookmarks-changed`, `keybindings-changed`, `toolbar-changed`) and [jobs.rs](src-tauri/src/jobs.rs) (`job-progress`, `job-conflict`), plus `file-drop` from [main.rs](src-tauri/src/main.rs) for files dropped in from other apps (bridge.js adds the `data-drop` target under the pointer). They reach `handleEvent`. **If you add a new event, also add it to the `listen` list in bridge.js.**
+4. Push events from Rust are emitted by [watcher.rs](src-tauri/src/watcher.rs) (`dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `keybindings-changed`, `toolbar-changed`) and [jobs.rs](src-tauri/src/jobs.rs) (`job-progress`, `job-conflict`), plus `file-drop` from [main.rs](src-tauri/src/main.rs) for files dropped in from other apps (bridge.js adds the `data-drop` target under the pointer). They reach `handleEvent`. **If you add a new event, also add it to the `listen` list in bridge.js.**
 
 **To add a backend command:**
 1. Write a `#[tauri::command] pub async fn` in [commands.rs](src-tauri/src/commands.rs).
@@ -62,11 +62,12 @@ Command names are snake_case (`dir_list`, `folder_view_save`), even where spec 4
 | `toolbar.rs` | `toolbar.toml`: style and items, with the defaults. |
 | `templates.rs` | Templates folders (`[templates]` in settings), the `_Group` menu tree, and creating items with placeholders filled in. `today` comes from the UI, so dates use the user's time zone. |
 | `listing.rs` | `read_dir_streaming` (sends items in chunks), `DirEvent` (`Cached` → `Chunk`s or `Patch` → `Done`/`Error`), `diff`, LRU `DirCache` |
-| `watcher.rs` | `notify` watcher for the folders open in tabs (set with `watch_set`) and for the settings folder. Debounce is 100 ms. Sends patches, not full reloads. Reloads settings, bookmarks, key bindings and the toolbar when their files change. |
+| `watcher.rs` | `notify` watcher for the folders open in tabs (set with `watch_set`) and for the settings folder. Debounce is 100 ms. Sends patches, not full reloads. Reloads settings, bookmarks, folder colours, key bindings and the toolbar when their files change. |
 | `settings.rs` | `settings.toml`. Each section is read on its own, so an error in one section resets only that section and adds a warning. `set_value` edits a dotted key with `toml_edit`, keeps the user's comments, keeps a `.bak` copy, and never overwrites a file that has syntax errors. |
 | `folder_view.rs` | Saved per-folder views in `<config>/folders/<name>-<hash>.toml`, with *apply to subfolders* |
 | `bookmarks.rs` | `bookmarks.toml`: bookmarks with groups, and favourites. Changes are made through `Edit` ops. |
-| `session.rs` | `session.toml` (open tabs, recent folders, palette and search history) and the start-up listing snapshot in the cache folder |
+| `colours.rs` | `colours.toml`: folder colours (spec 6.4.5), a `[folders]` table of path → colour name. `set` keeps the user's comments. |
+| `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded bookmark groups) and the start-up listing snapshot in the cache folder |
 | `paths.rs` | `AppPaths` (config, cache and log folders; portable mode), `write_atomic`, path normalising and `~` expansion, and `split_header`/`join_header` to keep a TOML file's top comments when `toml_edit` rewrites it |
 | `model.rs` | The `Item` record that is shared with Elm (spec 4.4), and `read_item` |
 | `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection. `windows.rs` uses `windows-sys`. `unix.rs` covers everything that is not Windows. |
@@ -87,7 +88,7 @@ Notes:
   - `Commands.elm`: every command with its id (spec Appendix A), its `Command` value and toolbar icon, the default key bindings, and `buildKeymap`, which applies `keybindings.toml`. **To add a command:** add a `Command` variant, handle it in `runCommand`, add a `Def` here, and its name to `Text.commandName`.
   - `Keys.elm`: key names (`Ctrl+Shift+N`, chords), parsing what users write, and key-map lookups. View's `keyDecoder` uses it; cursor keys and typing are built in and not bindable.
   - `Palette.elm`: the command palette's results and fuzzy matching.
-  - `Item.elm`: the item decoder and natural sort.
+  - `Item.elm`: the item decoder, natural sort, and the file type icon for an item (`iconName`).
   - `FileName.elm`: name checks while renaming or creating, and the F2 selection cycle.
   - `Path.elm`, `Format.elm` and `Settings.elm`: path helpers, size and date formatting, and the settings decoder.
 - **All user-facing text lives in `Text.elm`** (NFR-UX-04). Don't put text in other modules.

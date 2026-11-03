@@ -14,7 +14,7 @@ File Catalog is designed as an ultra-fast, keyboard-driven, desktop file manager
 
 ## User Requirements
 
-> The first version, **0.1.0**, was released on 2026-11-03. Project folders (linking documents into a project folder and filing it afterwards), the quick view area and the content aware view are planned for a later version, not the first version. The specification (Section 12) lists everything planned for later.
+> The first version, **0.1.0**, was released on 2026-11-03. Project folders (linking documents into a project folder and filing it afterwards), and the quick view area are planned for a later version, not the first version. The specification (Section 12) lists everything planned for later.
 
 - Application Layout
 
@@ -25,7 +25,7 @@ File Catalog is designed as an ultra-fast, keyboard-driven, desktop file manager
   - Address Bar - breadcomb mode
   - Dockable side bar, content container, and possible rigt quick view area.
   - Sidebar is used for switching between a tree view, standard favorites view, full bookmark view, or content aware bookmark view.
-    - Content aware view: a side view of links to folders, documents and web sites that could be related to the folder you are looking at. Not in the first version (0.1.0); start minimal in a later version so the idea can take shape and evolve with the project.
+    - Content aware view: a side view of links to folders, documents and web sites that could be related to the folder you are looking at. Removed on 2026-11-03 (feature request c1); not planned.
   - Content container typical list files, name, created modified date, sync status
     - The standard file explorer columns are available and can be shown or hidden per view. Name, created and modified date, size and sync status are visible by default.
     - Cloud sync status beyond a basic status column is not in the first version.

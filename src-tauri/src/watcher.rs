@@ -12,6 +12,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::colours;
 use crate::keybindings;
 use crate::listing::{diff, read_dir_streaming, DirCache, Patch};
 use crate::paths::AppPaths;
@@ -102,12 +103,14 @@ fn event_loop(
 ) {
     let settings_file = paths.settings_file();
     let bookmarks_file = paths.bookmarks_file();
+    let colours_file = paths.colours_file();
     let keybindings_file = paths.keybindings_file();
     let toolbar_file = paths.toolbar_file();
     while let Ok(first) = rx.recv() {
         let mut dirty: HashSet<PathBuf> = HashSet::new();
         let mut settings_dirty = false;
         let mut bookmarks_dirty = false;
+        let mut colours_dirty = false;
         let mut keybindings_dirty = false;
         let mut toolbar_dirty = false;
         let mut collect = |event: notify::Result<notify::Event>| {
@@ -123,6 +126,7 @@ fn event_loop(
                 if path == bookmarks_file {
                     bookmarks_dirty = true;
                 }
+                colours_dirty |= path == colours_file;
                 keybindings_dirty |= path == keybindings_file;
                 toolbar_dirty |= path == toolbar_file;
                 if watched.contains_key(&path) {
@@ -147,6 +151,10 @@ fn event_loop(
 
         if bookmarks_dirty {
             let _ = app.emit("bookmarks-changed", ());
+        }
+
+        if colours_dirty {
+            let _ = app.emit("colours-changed", colours::load(&paths));
         }
 
         if keybindings_dirty {
