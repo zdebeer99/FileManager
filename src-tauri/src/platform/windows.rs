@@ -193,3 +193,140 @@ pub fn clipboard_cut() -> Option<bool> {
         result
     }
 }
+
+/// The system icon for a folder, a file type or one file, as a 32×32 PNG
+/// (FR-ICON-02). File types are asked for with SHGFI_USEFILEATTRIBUTES, so no
+/// file is touched. The caller makes sure a single file is local and not
+/// online-only, so reading its icon never downloads it (FR-SYNC-03).
+pub fn icon(target: &super::IconTarget) -> Option<super::Icon> {
+    use windows_sys::Win32::Storage::FileSystem::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL};
+    use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+    use windows_sys::Win32::UI::Shell::{
+        SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::DestroyIcon;
+
+    let (path, attributes, flags) = match target {
+        super::IconTarget::Folder => ("folder".to_string(), FILE_ATTRIBUTE_DIRECTORY, SHGFI_USEFILEATTRIBUTES),
+        super::IconTarget::Extension(ext) if ext.is_empty() => {
+            ("file".to_string(), FILE_ATTRIBUTE_NORMAL, SHGFI_USEFILEATTRIBUTES)
+        }
+        super::IconTarget::Extension(ext) => (format!("file.{ext}"), FILE_ATTRIBUTE_NORMAL, SHGFI_USEFILEATTRIBUTES),
+        super::IconTarget::File(path) => (path.to_string_lossy().into_owned(), 0, 0),
+    };
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut info = SHFILEINFOW::default();
+    // SAFETY: COM is set up for this thread (a repeat call only returns S_FALSE),
+    // `wide` is NUL-terminated and `info` is a properly sized, writable struct.
+    let found = unsafe {
+        CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        SHGetFileInfoW(
+            wide.as_ptr(),
+            attributes,
+            &mut info,
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON | flags,
+        )
+    };
+    if found == 0 || info.hIcon.is_null() {
+        return None;
+    }
+    let png = icon_to_png(info.hIcon);
+    // SAFETY: the icon came from SHGetFileInfoW with SHGFI_ICON, so it is ours to destroy.
+    unsafe { DestroyIcon(info.hIcon) };
+    png.map(|bytes| super::Icon { bytes, mime: "image/png" })
+}
+
+/// Reads an icon's pixels and encodes them as PNG.
+fn icon_to_png(icon: windows_sys::Win32::UI::WindowsAndMessaging::HICON) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
+        BI_RGB, DIB_RGB_COLORS, HBITMAP,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
+
+    let mut info = ICONINFO::default();
+    // SAFETY: `icon` is a valid icon handle and `info` is writable.
+    if unsafe { GetIconInfo(icon, &mut info) } == 0 {
+        return None;
+    }
+    let (colour, mask) = (info.hbmColor, info.hbmMask);
+
+    // 32-bit, top-down pixels of a bitmap.
+    let read = |bitmap: HBITMAP, width: i32, height: i32| -> Option<Vec<u8>> {
+        let mut header = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        // SAFETY: a memory DC is created and deleted here; `pixels` holds exactly
+        // `height` rows of `width` 32-bit pixels, as `header` describes.
+        let lines = unsafe {
+            let dc = CreateCompatibleDC(std::ptr::null_mut());
+            let lines =
+                GetDIBits(dc, bitmap, 0, height as u32, pixels.as_mut_ptr().cast(), &mut header, DIB_RGB_COLORS);
+            DeleteDC(dc);
+            lines
+        };
+        (lines == height).then_some(pixels)
+    };
+
+    let result = (|| {
+        if colour.is_null() {
+            return None; // A black-and-white icon: rare, and the built-in icon is better.
+        }
+        let mut bitmap: BITMAP = unsafe { std::mem::zeroed() };
+        // SAFETY: `colour` is a bitmap handle and `bitmap` has the size passed.
+        if unsafe { GetObjectW(colour, std::mem::size_of::<BITMAP>() as i32, (&mut bitmap as *mut BITMAP).cast()) } == 0
+        {
+            return None;
+        }
+        let (width, height) = (bitmap.bmWidth, bitmap.bmHeight);
+        if width <= 0 || height <= 0 || width > 256 || height > 256 {
+            return None;
+        }
+        let mut pixels = read(colour, width, height)?;
+        // Old icons have no alpha channel: take transparency from the mask.
+        if pixels.chunks_exact(4).all(|p| p[3] == 0) {
+            let mask_pixels = read(mask, width, height)?;
+            for (pixel, m) in pixels.chunks_exact_mut(4).zip(mask_pixels.chunks_exact(4)) {
+                pixel[3] = if m[0] == 0 { 255 } else { 0 };
+            }
+        }
+        // BGRA -> RGBA
+        for pixel in pixels.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
+        }
+        encode_png(&pixels, width as u32, height as u32)
+    })();
+
+    // SAFETY: GetIconInfo created these bitmaps for us to delete.
+    unsafe {
+        if !colour.is_null() {
+            DeleteObject(colour);
+        }
+        if !mask.is_null() {
+            DeleteObject(mask);
+        }
+    }
+    result
+}
+
+fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().ok()?;
+    writer.write_image_data(rgba).ok()?;
+    writer.finish().ok()?;
+    Some(out)
+}

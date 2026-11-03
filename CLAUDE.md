@@ -67,11 +67,12 @@ Command names are snake_case (`dir_list`, `folder_view_save`), even where spec 4
 | `settings.rs` | `settings.toml`. Each section is read on its own, so an error in one section resets only that section and adds a warning. `set_value` edits a dotted key with `toml_edit`, keeps the user's comments, keeps a `.bak` copy, and never overwrites a file that has syntax errors. |
 | `folder_view.rs` | Saved per-folder views in `<config>/folders/<name>-<hash>.toml`, with *apply to subfolders* |
 | `bookmarks.rs` | `bookmarks.toml`: bookmarks with groups, and favourites. Changes are made through `Edit` ops. |
+| `icons.rs` | System icons (FR-ICON-02) by key (`folder`, `ext:<ext>`, `file:<path>`), as `data:` URLs; memory cache plus a disk cache in `<cache>/icons/<version>/`. Never reads a file's own icon from slow or online-only files. |
 | `colours.rs` | `colours.toml`: folder colours (spec 6.4.5), a `[folders]` table of path → colour name. `set` keeps the user's comments. |
 | `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded bookmark groups) and the start-up listing snapshot in the cache folder |
 | `paths.rs` | `AppPaths` (config, cache and log folders; portable mode), `write_atomic`, path normalising and `~` expansion, and `split_header`/`join_header` to keep a TOML file's top comments when `toml_edit` rewrites it |
 | `model.rs` | The `Item` record that is shared with Elm (spec 4.4), and `read_item` |
-| `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection. `windows.rs` uses `windows-sys`. `unix.rs` covers everything that is not Windows. |
+| `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection, system icons. `windows.rs` uses `windows-sys` (icons through `SHGetFileInfoW`, encoded with `png`). `unix.rs` covers everything that is not Windows; `freedesktop.rs` finds icons in the icon theme. Check Windows code here with `cargo clippy --target x86_64-pc-windows-msvc` (needs `rustup target add x86_64-pc-windows-msvc`). |
 
 Notes:
 - Write files with `paths::write_atomic`.

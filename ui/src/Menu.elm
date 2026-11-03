@@ -165,6 +165,10 @@ baseMenus model tab =
                 , toggle "Light" "" (s.theme == "light") (CmdSetTheme "light")
                 , toggle "Dark" "" (s.theme == "dark") (CmdSetTheme "dark")
                 ]
+            , Submenu Text.icons
+                [ toggle Text.systemIcons "" (s.icons /= "builtin") (CmdSetIcons "system")
+                , toggle Text.builtinIcons "" (s.icons == "builtin") (CmdSetIcons "builtin")
+                ]
             , cmd "Refresh" "F5" CmdRefresh
             ]
       }

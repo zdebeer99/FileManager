@@ -36,6 +36,7 @@
 | REQ-004 | Favorite Sidebar view update | Side Bar | Update the Favorite sidebar as specified in REQ-004 below. | Normal | c1 | 03Nov26 Added. 03Nov26 Built (spec FR-FAV-03). |
 | REQ-005 | Sidebar view update | Side Bar | Remove the Context View in the sidebar. | Normal | c1 | 03Nov26 Added. 03Nov26 Removed (spec 5.7, decision log 13.1). |
 | REQ-006 | Bookmark Groups | Bookmarks | When adding a new bookmark add dropdown on the group field that also allow free text. The user can select an existing group, type to search existing groups or if the typed group does not exist create it as a new group. | Low | c1 | 02Nov26 new. 03Nov26 Built (spec FR-BM-01). |
+| REQ-010 | System file icons | File List | Show the icons the operating system shows: Windows shell icons (programs and shortcuts with their own icon), Linux icon theme icons. Load them in the background, cache them, never download cloud files for an icon, keep the built-in icons as the fallback, and add a setting to choose. | Normal | c2 | 03Nov26 Added and built: View › Icons, setting view.default.icons (spec FR-ICON-02). Needs a test on Windows. |
 
 ## Details
 
@@ -53,3 +54,4 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
   - **Corral**: gather files from many places into one spot.
   - **Hopper**: drop things in and move them on quickly.
 - **03Nov26** Request IDs, a Done table and the status list added.
+- **03Nov26 REQ-010 built** (c2) on branch `feature/system-icons`: system file icons with the built-in icons as fallback. See spec section 11.3.

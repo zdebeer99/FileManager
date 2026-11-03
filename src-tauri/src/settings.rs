@@ -129,6 +129,8 @@ pub struct ViewSettings {
     pub show_hidden: bool,
     pub show_extensions: bool,
     pub date_format: String,
+    /// "system": the operating system's icons; "builtin": File Catalog's own (FR-ICON-02).
+    pub icons: String,
 }
 
 impl Default for ViewSettings {
@@ -141,6 +143,7 @@ impl Default for ViewSettings {
             show_hidden: false,
             show_extensions: true,
             date_format: "yyyy-MM-dd HH:mm".into(),
+            icons: "system".into(),
         }
     }
 }

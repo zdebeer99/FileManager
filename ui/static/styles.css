@@ -1454,3 +1454,14 @@ button.small { height: 24px; padding: 0 8px; font-size: 12px; }
 }
 .side-item.selected { background: var(--bg-selected); }
 .side-item.hidden-item { opacity: 0.6; }
+
+/* System icons (FR-ICON-02): images from the operating system, drawn at 16 px. */
+.sysicon {
+  display: inline-block;
+  vertical-align: middle;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+  pointer-events: none;
+}
