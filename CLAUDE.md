@@ -9,6 +9,7 @@ File Catalog is a fast, keyboard-driven desktop file manager for information wor
 - When you build an item from spec section 12, move it into the section that describes it, and record the release in spec section 11.
 - [RequirementsDocument.md](RequirementsDocument.md) holds the user's original requirements. The user reviews documents by adding inline `[zdb]` comments. When asked to merge them, apply each decision to **both** documents, remove the markers, and add the decision to the decision log (spec 13.1).
 - **Feature requests live in [FeatureRequest.md](FeatureRequest.md).** Each has an ID (`REQ-001`…), a status and an update cycle (`c1`, `c2`…). "Implement the c2 features" means the open requests with update cycle `c2`. When one is built: move its row to the Done table with the spec IDs it became, add a line to the Log, and record the update cycle in spec section 11. Requests with status `proposed` wait for the user's decision; don't build them.
+- **Work on the `dev` branch.** All development and changes are made on the one long-lived `dev` branch; never create a new branch per change. Before starting, bring `dev` up to date with `main` (`git fetch origin main && git merge origin/main`). Changes reach `main` through a pull request from `dev`.
 - **No lock-in:** everything the app creates must be a plain file or folder that still works without File Catalog. Never write anything into the user's folders. Per-folder settings go only in the app settings folder.
 
 ## Commands
