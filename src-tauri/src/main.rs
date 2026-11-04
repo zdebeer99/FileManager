@@ -4,6 +4,7 @@
 mod bookmarks;
 mod colours;
 mod commands;
+mod editor;
 mod fileops;
 mod find;
 mod folder_view;
@@ -58,6 +59,8 @@ fn main() {
             commands::colours_get,
             commands::colours_set,
             commands::icons_get,
+            commands::editor_info,
+            commands::open_in_editor,
             commands::app_exit,
             commands::job_start,
             commands::job_cancel,

@@ -1,4 +1,4 @@
-module Menu exposing (Menu, colourEntries, columnEntries, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
+module Menu exposing (Menu, colourEntries, columnEntries, menuHeight, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
 
 {-| The Menu Bar (FR-MENU-01): every command grouped in standard menus.
 Commands that later milestones add are shown disabled, so the menus
@@ -9,7 +9,7 @@ import Columns exposing (Column)
 import Commands
 import Dict
 import Html exposing (Html, button, div, span, text)
-import Html.Attributes exposing (attribute, class, classList, disabled, tabindex)
+import Html.Attributes exposing (attribute, class, classList, disabled, style, tabindex)
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
 import Json.Decode as D
 import Path
@@ -83,6 +83,11 @@ baseMenus model tab =
             , cmd "Open" "Enter" CmdOpen
             , later "Open With" ""
             , cmd "Open in Terminal" "Ctrl+`" CmdOpenTerminal
+            , if model.editorName == "" then
+                later Text.openFolderWithEditor ""
+
+              else
+                cmd (Text.openFolderWith model.editorName) "" CmdOpenFolderInEditor
             , cmd "Show in File Manager" "" CmdReveal
             , later "Properties" "Alt+Enter"
             , Separator
@@ -382,7 +387,7 @@ viewMenuBar model tab =
                         [ text menu.title ]
                     , case ( open, model.menuBar ) of
                         ( True, Just state ) ->
-                            viewDropdown state.active state.sub True menu.entries
+                            viewDropdown model.windowHeight menuBarBottom state.active state.sub True menu.entries
 
                         _ ->
                             text ""
@@ -392,11 +397,55 @@ viewMenuBar model tab =
         )
 
 
-{-| A drop-down list of entries. `active` and `sub` mark the keyboard
-position; submenus also open on mouse hover.
+{-| Heights used to keep menus on screen (they match styles.css).
 -}
-viewDropdown : Int -> Maybe Int -> Bool -> List MenuEntry -> Html Msg
-viewDropdown active sub trackHover entries =
+itemHeight : Float
+itemHeight =
+    26
+
+
+separatorHeight : Float
+separatorHeight =
+    9
+
+
+{-| The padding and border above the first entry of a drop-down.
+-}
+menuInset : Float
+menuInset =
+    5
+
+
+{-| Where drop-downs from the Menu Bar start on screen.
+-}
+menuBarBottom : Float
+menuBarBottom =
+    30
+
+
+entryHeight : MenuEntry -> Float
+entryHeight entry =
+    case entry of
+        Separator ->
+            separatorHeight
+
+        _ ->
+            itemHeight
+
+
+{-| How tall a drop-down with these entries is drawn.
+-}
+menuHeight : List MenuEntry -> Float
+menuHeight entries =
+    List.sum (List.map entryHeight entries) + 2 * menuInset
+
+
+{-| A drop-down list of entries. `active` and `sub` mark the keyboard
+position; submenus also open on mouse hover. `windowHeight` and `top` (where
+the drop-down starts on screen) let submenus stay on screen.
+-}
+viewDropdown : Float -> Float -> Int -> Maybe Int -> Bool -> List MenuEntry -> Html Msg
+viewDropdown windowHeight top active sub trackHover entries =
     div [ class "menu dropdown", attribute "role" "menu", stopPropagationOn "click" (D.succeed ( NoOp, True )) ]
         (List.indexedMap
             (\i entry ->
@@ -440,6 +489,16 @@ viewDropdown active sub trackHover entries =
                             ]
 
                     Submenu label children ->
+                        let
+                            -- Where this entry is on screen, and where its submenu fits:
+                            -- level with the entry, or moved up so it stays on screen
+                            -- (REQ-011).
+                            itemTop =
+                                top + menuInset + List.sum (List.map entryHeight (List.take i entries))
+
+                            subTop =
+                                max 4 (min (itemTop - menuInset) (windowHeight - 4 - menuHeight children))
+                        in
                         div
                             ([ class "menu-item has-sub"
                              , classList [ ( "active", i == active ), ( "open", i == active && sub /= Nothing ) ]
@@ -450,8 +509,9 @@ viewDropdown active sub trackHover entries =
                             [ span [ class "check" ] []
                             , span [ class "label" ] [ text label ]
                             , span [ class "key" ] [ text "▸" ]
-                            , div [ class "submenu" ]
-                                [ viewDropdown
+                            , div [ class "submenu", style "top" (String.fromFloat (subTop - itemTop) ++ "px") ]
+                                [ viewDropdown windowHeight
+                                    subTop
                                     (if i == active then
                                         Maybe.withDefault -1 sub
 

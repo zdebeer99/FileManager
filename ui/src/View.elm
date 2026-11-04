@@ -382,6 +382,23 @@ viewTabBar model =
         )
 
 
+{-| A tab takes the colour of its folder or of the nearest folder above it
+that has one, so it keeps the colour in sub-folders (REQ-012, spec 6.4.5).
+-}
+tabColour : Model -> String -> Maybe String
+tabColour model path =
+    case Dict.get path model.folderColours of
+        Just colour ->
+            Just colour
+
+        Nothing ->
+            if Dict.isEmpty model.folderColours then
+                Nothing
+
+            else
+                Path.parent model.sep path |> Maybe.andThen (tabColour model)
+
+
 viewTab : Model -> Tab -> Html Msg
 viewTab model tab =
     let
@@ -395,7 +412,11 @@ viewTab model tab =
     in
     div
         ([ class "tab"
-         , classList [ ( "active", tab.id == model.active ), ( "tab-drop", dragOver ) ]
+         , classList
+            [ ( "active", tab.id == model.active )
+            , ( "tab-drop", dragOver )
+            , ( "tc-" ++ Maybe.withDefault "" (tabColour model tab.path), tabColour model tab.path /= Nothing )
+            ]
          , on "mousedown"
             (D.map2 Tuple.pair (D.field "button" D.int) (D.field "clientX" D.float)
                 |> D.andThen
@@ -701,14 +722,21 @@ folderEntries model path =
     in
     [ action Text.open (NavigateTo path)
     , action Text.openInNewTab (NavigateNewTab path)
-    , Separator
-    , if pinned then
-        action Text.unpin (fav "removeFavourite")
-
-      else
-        action Text.pin (fav "addFavourite")
-    , Menu.colourEntries model [ path ]
     ]
+        ++ (if model.editorName /= "" then
+                [ action (Text.openFolderWith model.editorName) (OpenInEditor [ path ]) ]
+
+            else
+                []
+           )
+        ++ [ Separator
+           , if pinned then
+                action Text.unpin (fav "removeFavourite")
+
+             else
+                action Text.pin (fav "addFavourite")
+           , Menu.colourEntries model [ path ]
+           ]
 
 
 viewFavourites : Model -> Tab -> List (Html Msg)
@@ -756,9 +784,14 @@ viewFavBrowse model tab browse =
                     |> String.join " › "
 
         fileEntries item =
-            [ Action { label = Text.open, key = "", msg = Just (OpenPath item.path), checked = Nothing }
-            , Action { label = Text.reveal, key = "", msg = Just (RevealPath item.path), checked = Nothing }
-            ]
+            [ Action { label = Text.open, key = "", msg = Just (OpenPath item.path), checked = Nothing } ]
+                ++ (if model.editorName /= "" then
+                        [ Action { label = Text.openWith model.editorName, key = "", msg = Just (OpenInEditor [ item.path ]), checked = Nothing } ]
+
+                    else
+                        []
+                   )
+                ++ [ Action { label = Text.reveal, key = "", msg = Just (RevealPath item.path), checked = Nothing } ]
 
         row item =
             button
@@ -1885,8 +1918,13 @@ viewPopup model =
             text ""
 
         Just (MenuPopup p) ->
-            div [ class "popup", style "left" (keepOnScreen p.x 260), style "top" (px p.y) ]
-                [ Menu.viewDropdown -1 Nothing False p.entries ]
+            let
+                -- Moved up when it would run off the bottom of the window (REQ-011).
+                top =
+                    max 4 (min p.y (model.windowHeight - 4 - Menu.menuHeight p.entries))
+            in
+            div [ class "popup", style "left" (keepOnScreen p.x 260), style "top" (px top) ]
+                [ Menu.viewDropdown model.windowHeight top -1 Nothing False p.entries ]
 
         Just (ColumnFilterPopup s) ->
             viewColumnFilter s

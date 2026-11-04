@@ -68,6 +68,7 @@ Command names are snake_case (`dir_list`, `folder_view_save`), even where spec 4
 | `settings.rs` | `settings.toml`. Each section is read on its own, so an error in one section resets only that section and adds a warning. `set_value` edits a dotted key with `toml_edit`, keeps the user's comments, keeps a `.bak` copy, and never overwrites a file that has syntax errors. |
 | `folder_view.rs` | Saved per-folder views in `<config>/folders/<name>-<hash>.toml`, with *apply to subfolders* |
 | `bookmarks.rs` | `bookmarks.toml`: bookmarks with groups, and favourites. Changes are made through `Edit` ops. |
+| `editor.rs` | `[editor]` settings and Open with … (FR-OPEN-06): finds the configured editor, or the first known one installed (VS Code, Zed, …), on PATH. |
 | `icons.rs` | System icons (FR-ICON-02) by key (`folder`, `ext:<ext>`, `file:<path>`), as `data:` URLs; memory cache plus a disk cache in `<cache>/icons/<version>/`. Never reads a file's own icon from slow or online-only files. |
 | `colours.rs` | `colours.toml`: folder colours (spec 6.4.5), a `[folders]` table of path → colour name. `set` keeps the user's comments. |
 | `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded bookmark groups) and the start-up listing snapshot in the cache folder |

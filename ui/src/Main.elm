@@ -64,6 +64,7 @@ init _ =
             , recent = []
             , address = ShowCrumbs
             , viewportHeight = 600
+            , windowHeight = 800
             , freeSpace = Nothing
             , message = Nothing
             , messageSeq = 0
@@ -89,6 +90,7 @@ init _ =
             , systemIcons = Dict.empty
             , iconsAsked = Set.empty
             , perFileIcons = False
+            , editorName = ""
             , colourWarnings = []
             , bookmarkSearch = ""
             , foldedGroups = Set.empty
@@ -115,7 +117,7 @@ init _ =
         ( withRequest, initCmd ) =
             request "app_init" (E.object []) False ReqInit model
     in
-    ( withRequest, Cmd.batch [ initCmd, Task.perform GotZone Time.here, Task.perform GotTime Time.now ] )
+    ( withRequest, Cmd.batch [ initCmd, Task.perform GotZone Time.here, Task.perform GotTime Time.now, Task.perform (\v -> WindowResized v.viewport.height) Dom.getViewport ] )
 
 
 emptyTab : Model -> Int -> String -> Tab
@@ -409,8 +411,8 @@ update msg model =
                 Err _ ->
                     ( model, Cmd.none )
 
-        WindowResized ->
-            ( model, measureList )
+        WindowResized height ->
+            ( { model | windowHeight = height }, measureList )
 
         RowClicked index mods ->
             ( updateActive (clickRow index mods) { model | popup = Nothing, menuBar = Nothing }, Cmd.none )
@@ -928,6 +930,9 @@ update msg model =
                         else
                             Set.insert key model.foldedGroups
                 }
+
+        OpenInEditor paths ->
+            request "open_in_editor" (E.object [ ( "paths", E.list E.string paths ) ]) False ReqOpen { model | popup = Nothing, menuBar = Nothing }
 
         SetFolderColour paths colour ->
             List.foldl
@@ -1668,6 +1673,36 @@ runCommand command model =
 
         CmdUndo ->
             request "undo_last" (E.object []) False ReqUndo model
+
+        CmdOpenInEditor ->
+            -- The selection, or the current folder when nothing is selected (FR-OPEN-06).
+            withActive model
+                (\tab ->
+                    let
+                        paths =
+                            case List.map .path (targetItems tab) of
+                                [] ->
+                                    [ tab.path ]
+
+                                selected ->
+                                    selected
+                    in
+                    if model.editorName == "" || tab.search /= Nothing && List.isEmpty (targetItems tab) then
+                        Nothing
+
+                    else
+                        Just (update (OpenInEditor paths) model)
+                )
+
+        CmdOpenFolderInEditor ->
+            withActive model
+                (\tab ->
+                    if model.editorName == "" || tab.search /= Nothing then
+                        Nothing
+
+                    else
+                        Just (update (OpenInEditor [ tab.path ]) model)
+                )
 
         CmdOpenTerminal ->
             withActive model
@@ -3787,6 +3822,12 @@ itemEntries model tab item =
                     []
     in
     [ act Text.open "Enter" (KeyCommand CmdOpen) ]
+        ++ (if model.editorName /= "" then
+                [ act (Text.openWith model.editorName) "" (OpenInEditor (List.map .path (targetItems tab))) ]
+
+            else
+                []
+           )
         ++ (if item.isDir then
                 [ act Text.openInNewTab "Ctrl+Enter" (NavigateNewTab item.path) ]
 
@@ -3862,6 +3903,12 @@ folderMenuEntries model tab =
     , act Text.refreshFolder "F5" (KeyCommand CmdRefresh)
     , act Text.openTerminalHere "" (KeyCommand CmdOpenTerminal)
     ]
+        ++ (if model.editorName /= "" && tab.search == Nothing then
+                [ act (Text.openFolderWith model.editorName) "" (OpenInEditor [ tab.path ]) ]
+
+            else
+                []
+           )
 
 
 
@@ -5189,6 +5236,14 @@ handleResponse reqId req envelope model =
                     -- Nothing came back: let these keys be asked for again later.
                     ( model, Cmd.none )
 
+        ReqEditorInfo ->
+            case ok (D.field "name" D.string) of
+                Just name ->
+                    ( { model | editorName = name }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
         ReqColours ->
             case ok coloursDecoder of
                 Just ( colours, warnings ) ->
@@ -5486,6 +5541,7 @@ boot data model =
         |> andThen persist
         |> andThen (request "bookmarks_get" (E.object []) False ReqBookmarks)
         |> andThen (request "colours_get" (E.object []) False ReqColours)
+        |> andThen (request "editor_info" (E.object []) False ReqEditorInfo)
         |> andThen (request "templates_list" (E.object []) False ReqTemplates)
         |> andThen (request "perf_mark" (E.object [ ( "label", E.string "ui-booted" ) ]) False ReqIgnore)
         |> addCmd (Cmd.batch [ focusList, measureList ])
@@ -5796,6 +5852,8 @@ handleEvent name data model =
                                 tab
                     in
                     ( { updated | tabs = List.map adjust model.tabs }, measureList )
+                        -- [editor] may have changed (FR-OPEN-06).
+                        |> andThen (request "editor_info" (E.object []) False ReqEditorInfo)
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -5960,7 +6018,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ Ports.fromBackend FromBackend
-        , Browser.Events.onResize (\_ _ -> WindowResized)
+        , Browser.Events.onResize (\_ h -> WindowResized (toFloat h))
         , Browser.Events.onKeyUp (D.map KeyUp (D.field "key" D.string))
         , Time.every 60000 GotTime
         , if model.drag /= Nothing then
