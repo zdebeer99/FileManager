@@ -84,13 +84,17 @@ Notes:
 ### Elm modules (`ui/src/`)
 
 - `Main.elm`: `init`, `update`, keyboard routing, and the backend message handlers. It is about 5,500 lines, divided by `-- SECTION` comment headers.
-- `View.elm`: all drawing. `Types.elm`: `Model`, `Msg`, `Request` and the tab state, shared by Main and View.
+- `View/`: all drawing, one module per component. `View.App` draws the window and puts the components together; `Main` uses only `View.App.view`, `View.Sidebar.treeRows` and `View.Popup.filterPopupValues`.
+  - Components: `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites, Bookmarks), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
+  - Shared: `Icons` (system and built-in icons, folder colours), `Common` (small helpers such as `viewIf`, `contextMenu`, `dropTarget`, `px`), `Keyboard` (key and mouse-button routing).
+  - A component imports only `Common`, `Icons` or another component it draws; keep the imports one-way (no cycles).
+- `Types.elm`: `Model`, `Msg`, `Request` and the tab state, shared by Main and the view.
 - Feature modules:
   - `Columns.elm`: column definitions and sort and filter keys.
   - `Filter.elm`: the Quick Filter syntax.
   - `Menu.elm`: the Menu Bar. Items from later milestones are shown disabled. Keys shown in menus come from the key map.
   - `Commands.elm`: every command with its id (spec Appendix A), its `Command` value and toolbar icon, the default key bindings, and `buildKeymap`, which applies `keybindings.toml`. **To add a command:** add a `Command` variant, handle it in `runCommand`, add a `Def` here, and its name to `Text.commandName`.
-  - `Keys.elm`: key names (`Ctrl+Shift+N`, chords), parsing what users write, and key-map lookups. View's `keyDecoder` uses it; cursor keys and typing are built in and not bindable.
+  - `Keys.elm`: key names (`Ctrl+Shift+N`, chords), parsing what users write, and key-map lookups. `View.Keyboard.keyDecoder` uses it; cursor keys and typing are built in and not bindable.
   - `Palette.elm`: the command palette's results and fuzzy matching.
   - `Item.elm`: the item decoder, natural sort, and the file type icon for an item (`iconName`).
   - `FileName.elm`: name checks while renaming or creating, and the F2 selection cycle.

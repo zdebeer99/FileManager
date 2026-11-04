@@ -28,7 +28,9 @@ import Task
 import Text
 import Time
 import Types exposing (..)
-import View
+import View.App
+import View.Popup
+import View.Sidebar
 
 
 main : Program () Model Msg
@@ -36,7 +38,7 @@ main =
     Browser.element
         { init = init
         , update = \msg model -> update msg model |> andThen ensureIcons
-        , view = View.view
+        , view = View.App.view
         , subscriptions = subscriptions
         }
 
@@ -706,7 +708,7 @@ update msg model =
                 (\s ->
                     let
                         shown =
-                            List.map Tuple.first (View.filterPopupValues s)
+                            List.map Tuple.first (View.Popup.filterPopupValues s)
                     in
                     if List.all (\v -> Set.member v s.checked) shown then
                         { s | checked = List.foldl Set.remove s.checked shown }
@@ -726,7 +728,7 @@ update msg model =
                 Just (ColumnFilterPopup s) ->
                     let
                         shown =
-                            Set.fromList (List.map Tuple.first (View.filterPopupValues s))
+                            Set.fromList (List.map Tuple.first (View.Popup.filterPopupValues s))
 
                         allValues =
                             Set.fromList (List.map Tuple.first s.values)
@@ -3421,7 +3423,7 @@ treeKey : Command -> Model -> ( Model, Cmd Msg )
 treeKey command model =
     let
         rows =
-            View.treeRows model
+            View.Sidebar.treeRows model
 
         count =
             List.length rows
