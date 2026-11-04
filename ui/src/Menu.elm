@@ -9,7 +9,7 @@ import Columns exposing (Column)
 import Commands
 import Dict
 import Html exposing (Html, button, div, span, text)
-import Html.Attributes exposing (attribute, class, classList, disabled, style, tabindex)
+import Html.Attributes exposing (attribute, class, classList, disabled, style, tabindex, title)
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
 import Json.Decode as D
 import Path
@@ -50,7 +50,7 @@ withKey model entry =
         Submenu label children ->
             Submenu label (List.map (withKey model) children)
 
-        Separator ->
+        _ ->
             entry
 
 
@@ -276,21 +276,8 @@ colourEntries model paths =
 
                 [] ->
                     Nothing
-
-        choice colour =
-            Action
-                { label = Text.colourName colour
-                , key = ""
-                , msg = Just (SetFolderColour paths (Just colour))
-                , checked = Just (current == Just colour)
-                }
     in
-    Submenu Text.folderColour
-        (List.map choice folderColours
-            ++ [ Separator
-               , Action { label = Text.noColour, key = "", msg = Just (SetFolderColour paths Nothing), checked = Just (current == Nothing) }
-               ]
-        )
+    Submenu Text.folderColour [ ColourPalette paths current ]
 
 
 {-| The column chooser, used by View › Columns and the header right-click menu.
@@ -359,7 +346,7 @@ selectable entries =
                     Submenu _ _ ->
                         Just i
 
-                    Separator ->
+                    _ ->
                         Nothing
             )
 
@@ -404,6 +391,13 @@ itemHeight =
     26
 
 
+{-| Two rows of 22 px circles with an 8 px gap and 6 px padding (styles.css).
+-}
+paletteHeight : Float
+paletteHeight =
+    64
+
+
 separatorHeight : Float
 separatorHeight =
     9
@@ -428,6 +422,9 @@ entryHeight entry =
     case entry of
         Separator ->
             separatorHeight
+
+        ColourPalette _ _ ->
+            paletteHeight
 
         _ ->
             itemHeight
@@ -526,8 +523,42 @@ viewDropdown windowHeight top active sub trackHover entries =
 
                     Separator ->
                         div [ class "menu-sep" ] []
+
+                    ColourPalette paths current ->
+                        viewPalette paths current
             )
             entries
+        )
+
+
+{-| The folder colour palette (spec 6.4.5): a circle for each colour and one
+for no colour. The current colour is ticked; each circle is named for
+tooltips and screen readers.
+-}
+viewPalette : List String -> Maybe String -> Html Msg
+viewPalette paths current =
+    let
+        swatch colour label extra =
+            button
+                [ class ("swatch " ++ extra)
+                , classList [ ( "selected", current == colour ) ]
+                , title label
+                , attribute "aria-label" label
+                , attribute "aria-pressed"
+                    (if current == colour then
+                        "true"
+
+                     else
+                        "false"
+                    )
+                , tabindex -1
+                , onClick (MenuRun (SetFolderColour paths colour))
+                ]
+                []
+    in
+    div [ class "palette", attribute "role" "group", attribute "aria-label" Text.folderColour ]
+        (List.map (\c -> swatch (Just c) (Text.colourName c) ("fc-" ++ c)) folderColours
+            ++ [ swatch Nothing Text.noColour "none" ]
         )
 
 

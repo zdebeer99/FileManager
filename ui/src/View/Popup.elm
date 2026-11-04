@@ -28,7 +28,14 @@ viewPopup model =
                 top =
                     max 4 (min p.y (model.windowHeight - 4 - Menu.menuHeight p.entries))
             in
-            div [ class "popup", style "left" (keepOnScreen p.x 260), style "top" (px top) ]
+            div
+                [ class "popup"
+
+                -- Submenus open to the left when there is no room on the right (FR-MENU-02).
+                , classList [ ( "subs-left", min p.x (model.windowWidth - 260) + 260 + 220 > model.windowWidth ) ]
+                , style "left" (keepOnScreen p.x 260)
+                , style "top" (px top)
+                ]
                 [ Menu.viewDropdown model.windowHeight top -1 Nothing False p.entries ]
 
         Just (ColumnFilterPopup s) ->

@@ -279,7 +279,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 | **Window** | Jobs, Next Tab, Previous Tab, Tabs ▸, Duplicate Tab, Reopen Closed Tab |
 | **Help** | Keyboard Shortcuts, Open Log Folder, About File Catalog |
 
-**FR-MENU-02** Menus stay on screen. A right-click menu opened near the bottom of the window moves up so that all its entries can be reached, and a submenu that would run off the bottom opens higher, level with the bottom of the window. (In a window shorter than the menu itself, the menu starts at the top of the window.)
+**FR-MENU-02** Menus stay on screen. A right-click menu opened near the bottom of the window moves up so that all its entries can be reached, and a submenu that would run off the bottom opens higher, level with the bottom of the window. Near the right edge of the window, submenus open to the left. (In a window shorter than the menu itself, the menu starts at the top of the window.)
 
 ### 5.3 Toolbar
 
@@ -450,7 +450,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 
 #### 6.4.5 Folder colours
 
-- **FR-FCOL-01** Right-click a folder in the list, the folder tree or the Favourites view and choose **Folder Colour ▸**: Red, Orange, Yellow, Green, Teal, Blue, Purple, Pink, Grey, or *No Colour*. With several folders selected, the choice applies to all of them.
+- **FR-FCOL-01** Right-click a folder in the list, the folder tree or the Favourites view and choose **Folder Colour ▸**: a palette of coloured circles (Red, Orange, Yellow, Green, Teal, Blue, Purple, Pink, Grey) and a crossed-out circle for *No Colour*. The folder's current colour is ticked, and each circle's name shows as a tooltip and is read by screen readers. With several folders selected, the choice applies to all of them.
 - **FR-FCOL-02** The folder's icon is shown in that colour everywhere File Catalog shows the folder (list, tree, Favourites).
 - **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour stays with the folder's path: a folder that is renamed or moved loses its colour (like FR-FS-02).
 

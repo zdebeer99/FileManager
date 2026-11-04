@@ -158,6 +158,8 @@ type MenuEntry
     = Action { label : String, key : String, msg : Maybe Msg, checked : Maybe Bool }
     | Submenu String (List MenuEntry)
     | Separator
+      -- The folder colour palette (spec 6.4.5): the folders it colours and their current colour.
+    | ColourPalette (List String) (Maybe String)
 
 
 {-| The open Menu Bar menu, the highlighted entry and, inside a submenu,
@@ -612,8 +614,9 @@ type alias Model =
     , address : Address
     , viewportHeight : Float
 
-    -- The window height, so menus can be kept on screen (spec 5.2).
+    -- The window size, so menus can be kept on screen (FR-MENU-02).
     , windowHeight : Float
+    , windowWidth : Float
     , freeSpace : Maybe Int
     , message : Maybe String
     , messageSeq : Int
@@ -694,7 +697,7 @@ type Msg
     | KeyUp String
     | ListScrolled Float Float
     | GotListViewport (Result Dom.Error Dom.Viewport)
-    | WindowResized Float
+    | WindowResized Float Float
     | RowClicked Int Mods
     | RowActivated Int
     | RowMiddleClicked Int
