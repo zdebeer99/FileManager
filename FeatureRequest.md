@@ -1,7 +1,7 @@
 # Feature Requests
 2026-11-02
 
- Update Cycle: c1
+ Update Cycle: c2
 
 ## How to use this file
 
@@ -22,9 +22,18 @@
 
 | ID | Name | Area | Description | Priority | Status | Update Cycle | Comment |
 | -- | ---- | ---- | ----------- | -------- | ------ | ------------ | ------- |
-| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low | new | c9 | 02Nov26 new |
-| REQ-008 | Catchy name | General | Get a better name for my file explorer | Low | proposed | c1 | 02Nov26 new. 03Nov26 Ideas in the log below; waiting for your choice. |
-| REQ-009 | Open Text Editor | Feature | Setup your favorite text editor default vscode, and always show on the context menu to open any file or quickly open the current folder with the application. | Normal | new | c2 | 03Nov26 added |
+| REQ-009 | Open Text Editor | File List | Setup your favorite text editor example like vscode, zed, sublime, etc and if set always show in the file context menu to open the file or open the current folder using this ide. even when the user right click on a open space in the file context view, the "open folder with vscode" should be visible. | Normal | new | c2 | 03Nov26 added |
+| REQ-0011 | File Content menu placement | File List | Fix When right clicking on a file at the bottom of the view, the file content window will go off screen and you cannot select one of the bottom menu items. Fix so that the content window will always be visible even when files are located at the bottom of the window. | Normal | new | c2 | 04Nov26 added |
+| REQ-0012 | Tab Color | Tabs | If a folder has a specified colour set and the folder is open in a tab, let the tab show the same colour. the tab colour should persist even when opening subfolders in that file view. |  |  |  |  |
+| REQ-0013 |  |  |  |  |  |  |  |
+| REQ-0014 |  |  |  |  |  |  |  |
+| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low | proposal | c9 | 02Nov26 new |
+
+
+
+
+
+
 
 ## Done
 
@@ -37,6 +46,7 @@
 | REQ-005 | Sidebar view update | Side Bar | Remove the Context View in the sidebar. | Normal | c1 | 03Nov26 Added. 03Nov26 Removed (spec 5.7, decision log 13.1). |
 | REQ-006 | Bookmark Groups | Bookmarks | When adding a new bookmark add dropdown on the group field that also allow free text. The user can select an existing group, type to search existing groups or if the typed group does not exist create it as a new group. | Low | c1 | 02Nov26 new. 03Nov26 Built (spec FR-BM-01). |
 | REQ-010 | System file icons | File List | Show the icons the operating system shows: Windows shell icons (programs and shortcuts with their own icon), Linux icon theme icons. Load them in the background, cache them, never download cloud files for an icon, keep the built-in icons as the fallback, and add a setting to choose. | Normal | c2 | 03Nov26 Added and built: View › Icons, setting view.default.icons (spec FR-ICON-02). 03Nov26 Tested on Windows: icons load. |
+| REQ-008 | Catchy name | General | Get a better name for my file explorer | Low | c1 | 04Nov26 Rejected |
 
 ## Details
 
