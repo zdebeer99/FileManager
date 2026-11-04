@@ -2,6 +2,7 @@
 2026-11-02
 
  Update Cycle: c2
+ Update Cycle: c2
 
 ## How to use this file
 
@@ -10,24 +11,24 @@
 - When a request is built, move its row to **Done**, with the spec IDs it became in the Comment column, and add a line to the **Log**.
 - IDs are `REQ-001`, `REQ-002`…, never reused. (They are not `FR-…`, so they can't be mixed up with the requirement IDs in the specification.)
 
-| Status | Meaning |
-| ------ | ------- |
-| `new` | Logged, not looked at yet. |
-| `planned` | Agreed, waiting for its update cycle. |
-| `proposed` | An answer or design is ready and waits for your decision. |
-| `done` | Built; see the Done table. |
+| Status     | Meaning                                                     |
+| ---------- | ----------------------------------------------------------- |
+| `new`      | Logged, not looked at yet.                                  |
+| `planned`  | Agreed, waiting for its update cycle.                       |
+| `proposed` | An answer or design is ready and waits for your decision.   |
+| `done`     | Built; see the Done table.                                  |
 | `rejected` | Not going to be built; the reason is in the Comment column. |
 
 ## Open requests
 
-| ID | Name | Area | Description | Priority | Status | Update Cycle | Comment |
-| -- | ---- | ---- | ----------- | -------- | ------ | ------------ | ------- |
-| REQ-009 | Open Text Editor | File List | Setup your favorite text editor example like vscode, zed, sublime, etc and if set always show in the file context menu to open the file or open the current folder using this ide. even when the user right click on a open space in the file context view, the "open folder with vscode" should be visible. | Normal | new | c2 | 03Nov26 added |
-| REQ-0011 | File Content menu placement | File List | Fix When right clicking on a file at the bottom of the view, the file content window will go off screen and you cannot select one of the bottom menu items. Fix so that the content window will always be visible even when files are located at the bottom of the window. | Normal | new | c2 | 04Nov26 added |
-| REQ-0012 | Tab Color | Tabs | If a folder has a specified colour set and the folder is open in a tab, let the tab show the same colour. the tab colour should persist even when opening subfolders in that file view. |  |  |  |  |
-| REQ-0013 |  |  |  |  |  |  |  |
-| REQ-0014 |  |  |  |  |  |  |  |
-| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low | proposal | c9 | 02Nov26 new |
+| ID       | Name                        | Area      | Description                                                                                                                                                                                                                                                                                                  | Priority | Status   | Update Cycle | Comment       |
+| -------- | --------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- | -------- | ------------ | ------------- |
+| REQ-009  | Open Text Editor            | File List | Setup your favorite text editor example like vscode, zed, sublime, etc and if set always show in the file context menu to open the file or open the current folder using this ide. even when the user right click on a open space in the file context view, the "open folder with vscode" should be visible. | Normal   | new      | c2           | 03Nov26 added |
+| REQ-0011 | File Content menu placement | File List | Fix When right clicking on a file at the bottom of the view, the file content window will go off screen and you cannot select one of the bottom menu items. Fix so that the content window will always be visible even when files are located at the bottom of the window.                                   | Normal   | new      | c2           | 04Nov26 added |
+| REQ-0012 | Tab Color                   | Tabs      | If a folder has a specified colour set and the folder is open in a tab, let the tab show the same colour. the tab colour should persist even when opening subfolders in that file view.                                                                                                                      |          |          |              |               |
+| REQ-0013 |                             |           |                                                                                                                                                                                                                                                                                                              |          |          |              |               |
+| REQ-0014 |                             |           |                                                                                                                                                                                                                                                                                                              |          |          |              |               |
+| REQ-007  | Bookmark Reordering         | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups.                                                                                                                                                                                                           | Low      | proposal | c9           | 02Nov26 new   |
 
 
 
@@ -37,16 +38,16 @@
 
 ## Done
 
-| ID | Name | Area | Description | Priority | Update Cycle | Comment |
-| -- | ---- | ---- | ----------- | -------- | ------------ | ------- |
-| REQ-001 | File Icons | File List | Add support for showing file icons. | Normal | c1 | 02Nov26 Added. 03Nov26 Built: icons by file type (spec FR-ICON-01). |
-| REQ-002 | Folder Colors | File List | Add Support for colored folders | Normal | c1 | 02Nov26 new. 03Nov26 Built: right-click › Folder Colour, saved in colours.toml (spec 6.4.5). |
-| REQ-003 | Folded Bookmarks in sidebar | Bookmarks | Allow groups to be folded to hide the sub content. | Normal | c1 | 02Nov26 new. 03Nov26 Built (spec FR-BM-06). |
-| REQ-004 | Favorite Sidebar view update | Side Bar | Update the Favorite sidebar as specified in REQ-004 below. | Normal | c1 | 03Nov26 Added. 03Nov26 Built (spec FR-FAV-03). |
-| REQ-005 | Sidebar view update | Side Bar | Remove the Context View in the sidebar. | Normal | c1 | 03Nov26 Added. 03Nov26 Removed (spec 5.7, decision log 13.1). |
-| REQ-006 | Bookmark Groups | Bookmarks | When adding a new bookmark add dropdown on the group field that also allow free text. The user can select an existing group, type to search existing groups or if the typed group does not exist create it as a new group. | Low | c1 | 02Nov26 new. 03Nov26 Built (spec FR-BM-01). |
-| REQ-010 | System file icons | File List | Show the icons the operating system shows: Windows shell icons (programs and shortcuts with their own icon), Linux icon theme icons. Load them in the background, cache them, never download cloud files for an icon, keep the built-in icons as the fallback, and add a setting to choose. | Normal | c2 | 03Nov26 Added and built: View › Icons, setting view.default.icons (spec FR-ICON-02). 03Nov26 Tested on Windows: icons load. |
-| REQ-008 | Catchy name | General | Get a better name for my file explorer | Low | c1 | 04Nov26 Rejected |
+| ID      | Name                         | Area      | Description                                                                                                                                                                                                                                                                                 | Priority | Update Cycle | Comment                                                                                                                     |
+| ------- | ---------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| REQ-001 | File Icons                   | File List | Add support for showing file icons.                                                                                                                                                                                                                                                         | Normal   | c1           | 02Nov26 Added. 03Nov26 Built: icons by file type (spec FR-ICON-01).                                                         |
+| REQ-002 | Folder Colors                | File List | Add Support for colored folders                                                                                                                                                                                                                                                             | Normal   | c1           | 02Nov26 new. 03Nov26 Built: right-click › Folder Colour, saved in colours.toml (spec 6.4.5).                                |
+| REQ-003 | Folded Bookmarks in sidebar  | Bookmarks | Allow groups to be folded to hide the sub content.                                                                                                                                                                                                                                          | Normal   | c1           | 02Nov26 new. 03Nov26 Built (spec FR-BM-06).                                                                                 |
+| REQ-004 | Favorite Sidebar view update | Side Bar  | Update the Favorite sidebar as specified in REQ-004 below.                                                                                                                                                                                                                                  | Normal   | c1           | 03Nov26 Added. 03Nov26 Built (spec FR-FAV-03).                                                                              |
+| REQ-005 | Sidebar view update          | Side Bar  | Remove the Context View in the sidebar.                                                                                                                                                                                                                                                     | Normal   | c1           | 03Nov26 Added. 03Nov26 Removed (spec 5.7, decision log 13.1).                                                               |
+| REQ-006 | Bookmark Groups              | Bookmarks | When adding a new bookmark add dropdown on the group field that also allow free text. The user can select an existing group, type to search existing groups or if the typed group does not exist create it as a new group.                                                                  | Low      | c1           | 02Nov26 new. 03Nov26 Built (spec FR-BM-01).                                                                                 |
+| REQ-010 | System file icons            | File List | Show the icons the operating system shows: Windows shell icons (programs and shortcuts with their own icon), Linux icon theme icons. Load them in the background, cache them, never download cloud files for an icon, keep the built-in icons as the fallback, and add a setting to choose. | Normal   | c2           | 03Nov26 Added and built: View › Icons, setting view.default.icons (spec FR-ICON-02). 03Nov26 Tested on Windows: icons load. |
+| REQ-008 | Catchy name                  | General   | Get a better name for my file explorer                                                                                                                                                                                                                                                      | Low      | c1           | 04Nov26 Rejected                                                                                                            |
 
 ## Details
 
