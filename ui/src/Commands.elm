@@ -78,6 +78,8 @@ all =
     , Def "item.open" CmdOpen "▶"
     , Def "item.openNewTab" CmdOpenNewTab "⧉"
     , Def "item.openTerminal" CmdOpenTerminal ".terminal"
+    , Def "item.openInEditor" CmdOpenInEditor "✎"
+    , Def "folder.openInEditor" CmdOpenFolderInEditor "✎"
     , Def "item.reveal" CmdReveal "⌕"
     , Def "item.contextMenu" CmdItemMenu "≡"
     , Def "view.saveForFolder" (CmdSaveView False) ".save"

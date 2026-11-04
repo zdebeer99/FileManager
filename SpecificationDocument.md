@@ -6,7 +6,7 @@
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
 | Status | 0.1.0 released. Update cycles **c1** and **c2** are built on top of it and not yet released (Sections 11.2, 11.3). |
-| Changes | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5). |
+| Changes | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5); Open with a text editor (FR-OPEN-06, `[editor]` 8.3); menus kept on screen (FR-MENU-02); tab colours (FR-TAB-06). |
 | | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
 | | 0.1.0: First stable release. M5 cancelled (decision log 13.1, 2026-11-03). The document now describes only what 0.1.0 does; everything planned but not built is listed in Section 12. Document versions restart at the application version. |
 | | Earlier drafts 0.2 to 0.5 (2026-10-31 to 2026-11-01): platforms decided, review decisions merged, scope reduced, M1 to M4 built. See the decision log (13.1). |
@@ -180,6 +180,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `folder_view_get` / `folder_view_save` / `folder_view_reset` / `folder_view_file` | `{ path, view?, applyToSubfolders? }` | resolved view / file path |
 | `bookmarks_get` / `bookmarks_edit` | `{ edit: { op, … } }` | favourites, bookmarks, warnings |
 | `colours_get` / `colours_set` | — / `{ path, colour }` (`null` clears it) | folder → colour map, warnings |
+| `editor_info` / `open_in_editor` | — / `{ paths }` | the editor's name (empty when none was found) / — |
 | `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>` | key → `data:` URL, or `null` where there is no system icon |
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `undo_last` | — | `{ ok } \| { error }` |
@@ -269,7 +270,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 
 | Menu | Items |
 |---|---|
-| **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Show in File Manager, Close Tab, Exit |
+| **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Close Tab, Exit |
 | **Edit** | Undo, Cut, Copy, Paste, Paste as Shortcut, Duplicate, Copy Path, Copy Name, Rename, Delete, Delete Permanently, Select All, Invert Selection, Select None |
 | **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Refresh |
 | **Go** | Back, Forward, Up, Home, Go to Address, Recent Folders ▸, Favourites ▸, Pin This Folder to Favourites |
@@ -277,6 +278,8 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 | **Tools** | Quick Find, Quick Filter, Command Palette, Commands…, Save Selection as Template, Edit Templates Folder, Open Settings File, Open Key Bindings File, Open Toolbar File |
 | **Window** | Jobs, Next Tab, Previous Tab, Tabs ▸, Duplicate Tab, Reopen Closed Tab |
 | **Help** | Keyboard Shortcuts, Open Log Folder, About File Catalog |
+
+**FR-MENU-02** Menus stay on screen. A right-click menu opened near the bottom of the window moves up so that all its entries can be reached, and a submenu that would run off the bottom opens higher, level with the bottom of the window. (In a window shorter than the menu itself, the menu starts at the top of the window.)
 
 ### 5.3 Toolbar
 
@@ -298,6 +301,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-TAB-02** New tab (`Ctrl+T`) opens the current folder; close (`Ctrl+W`, middle-click); reopen closed tab (`Ctrl+Shift+T`, last 20 kept); switch (`Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+1…9`); reorder by dragging; duplicate.
 - **FR-TAB-04** Open tabs and their locations are restored on start-up (setting `restoreTabs`).
 - **FR-TAB-05** Dropping files onto a tab copies or moves them into that tab's folder.
+- **FR-TAB-06** A tab whose folder has a folder colour (6.4.5) shows that colour: a coloured line along its top and a light tint. Sub-folders of a coloured folder take its colour, so the tab keeps it while you browse inside; the nearest coloured folder above wins.
 
 ### 5.6 Address Bar
 
@@ -535,6 +539,10 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-OPEN-03** **Open in Terminal** opens the configured terminal (`general.terminal`; default on Windows: Windows Terminal, else PowerShell; on Linux: `$TERMINAL`, else `x-terminal-emulator`, else `gnome-terminal` / `konsole`) in the current folder.
 - **FR-OPEN-04** **Copy Path** (`Ctrl+Shift+C`) copies the full path(s) of the selection, one per line. **Copy Name** copies names only.
 - **FR-OPEN-05** **Show in File Manager** shows the item in Explorer or the system file manager.
+- **FR-OPEN-06** **Open with *editor*** opens files and folders in a text editor or IDE (`[editor]` in `settings.toml`, Section 8.3):
+  - The editor is `editor.command` (a program on PATH such as `code`, `zed` or `subl`, or a full path), with optional `args`. When it is empty, the first one installed of VS Code, VSCodium, Zed, Sublime Text, Notepad++, Kate, GNOME Text Editor and gedit is used; on Windows also VS Code installed without being on PATH.
+  - The menus show the editor's name (*Open with VS Code*), or `editor.name` when set. When no editor is found, the items are not shown (File menu: shown disabled).
+  - Right-click on files or folders: *Open with …* (all selected items). Right-click on empty space, in the folder tree and on favourites: *Open Folder with …*. **File › Open Folder with …** and the commands `item.openInEditor` (the selection, or the current folder) and `folder.openInEditor` can be bound to keys.
 
 ### 6.12 File operations
 
@@ -710,6 +718,11 @@ dateFormat = "yyyy-MM-dd"
 
 [network]
 timeoutSeconds = 5
+
+[editor]                          # Open with … (FR-OPEN-06)
+command = ""                      # "code", "zed", "subl" or a full path; empty = the first one installed
+name    = ""                      # the name shown in menus; empty = worked out from the program
+args    = []                      # extra arguments, e.g. ["--new-window"]
 ```
 
 ```toml
@@ -872,10 +885,15 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | Feature request | Built as |
 |---|---|
 | REQ-010 System file icons | FR-ICON-02, `view.default.icons` (8.3), icon cache (4.5). Tested in the app on Windows (2026-11-03). |
+| REQ-009 Open Text Editor | FR-OPEN-06, `[editor]` (8.3) |
+| REQ-011 Context menu placement | FR-MENU-02 |
+| REQ-012 Tab colour | FR-TAB-06 |
 
 **Known limits in c2:**
 - On Linux, a changed icon theme is picked up after a restart and after deleting `<cache folder>/icons`.
 - On Linux, shortcuts (symbolic links) show the built-in shortcut icon.
+- In a window shorter than a menu, the menu's last entries are still cut off (FR-MENU-02).
+- Opening a file in the editor was checked in the UI only; starting the editor needs a test on Windows and Linux.
 
 ---
 
@@ -1043,6 +1061,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `item.open` / `item.openNewTab` | Open / Open in New Tab | `Enter` / `Ctrl+Enter` |
 | `item.openTerminal` | Open in Terminal | `` Ctrl+` `` |
 | `item.reveal` | Show in File Manager | — |
+| `item.openInEditor` / `folder.openInEditor` | Open with Text Editor / Open Folder with Text Editor | — |
 | `item.contextMenu` | Right-click Menu | `Shift+F10`, Menu key |
 | `view.saveForFolder` | Save View for This Folder | `Ctrl+S` |
 | `view.saveForSubfolders` / `view.resetForFolder` / `view.openFolderSettings` | Save for Subfolders / Reset View / Open Folder Settings File | — |

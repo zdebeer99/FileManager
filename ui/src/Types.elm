@@ -137,6 +137,7 @@ type Request
     | ReqOpenReturnedFile
     | ReqLocate Bookmark
     | ReqColours
+    | ReqEditorInfo
     | ReqIcons
     | ReqFavList
     | ReqColourSet
@@ -610,6 +611,9 @@ type alias Model =
     , recent : List String
     , address : Address
     , viewportHeight : Float
+
+    -- The window height, so menus can be kept on screen (spec 5.2).
+    , windowHeight : Float
     , freeSpace : Maybe Int
     , message : Maybe String
     , messageSeq : Int
@@ -639,6 +643,9 @@ type alias Model =
     , systemIcons : Dict String String
     , iconsAsked : Set String
     , perFileIcons : Bool
+
+    -- The text editor for "Open with …" (FR-OPEN-06); "" when none was found.
+    , editorName : String
 
     -- Folder colours (spec 6.4.5): folder path -> colour name, from colours.toml.
     , folderColours : Dict String String
@@ -687,7 +694,7 @@ type Msg
     | KeyUp String
     | ListScrolled Float Float
     | GotListViewport (Result Dom.Error Dom.Viewport)
-    | WindowResized
+    | WindowResized Float
     | RowClicked Int Mods
     | RowActivated Int
     | RowMiddleClicked Int
@@ -755,6 +762,7 @@ type Msg
     | EditBookmark Bookmark
     | LocateBookmark Bookmark
     | SetFolderColour (List String) (Maybe String)
+    | OpenInEditor (List String)
     | TabMouseDown Int Float
     | TabHover Int
     | RegionFocused Region
@@ -883,6 +891,8 @@ type Command
     | CmdNewItem NewKind
     | CmdUndo
     | CmdOpenTerminal
+    | CmdOpenInEditor
+    | CmdOpenFolderInEditor
     | CmdReveal
     | CmdItemMenu
     | CmdPasteShortcut

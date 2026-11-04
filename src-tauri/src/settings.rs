@@ -19,6 +19,7 @@ pub struct Settings {
     pub search: crate::find::SearchSettings,
     pub templates: TemplateSettings,
     pub network: Network,
+    pub editor: crate::editor::EditorSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -208,6 +209,7 @@ pub fn parse(text: &str) -> (Settings, Vec<String>) {
         search: section(&table, "search", "search", &mut warnings),
         templates: section(&table, "templates", "templates", &mut warnings),
         network: section(&table, "network", "network", &mut warnings),
+        editor: section(&table, "editor", "editor", &mut warnings),
     };
     (settings, warnings)
 }
@@ -256,6 +258,7 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 # showHidden   = false
 # showExtensions = true
 # dateFormat   = "yyyy-MM-dd HH:mm"
+# icons        = "system"           # "system": the operating system's icons | "builtin"
 
 # [search]                          # Quick Find (Ctrl+Shift+F)
 # includeHidden   = false
@@ -270,6 +273,11 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 
 # [network]
 # timeoutSeconds = 5                # how long to wait for a network folder
+
+# [editor]                          # "Open with …" for files and folders
+# command = ""                      # e.g. "code", "zed", "subl" or a full path; empty = the first one installed
+# name    = ""                      # the name shown in menus; empty = worked out from the program
+# args    = []                      # extra arguments, e.g. ["--new-window"]
 "##;
 
 /// Changes one value in a TOML file, keeping the user's comments and layout

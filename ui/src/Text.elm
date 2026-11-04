@@ -588,6 +588,21 @@ undo =
     "Undo"
 
 
+openWith : String -> String
+openWith editor =
+    "Open with " ++ editor
+
+
+openFolderWith : String -> String
+openFolderWith editor =
+    "Open Folder with " ++ editor
+
+
+openFolderWithEditor : String
+openFolderWithEditor =
+    "Open Folder with Text Editor"
+
+
 openTerminalHere : String
 openTerminalHere =
     "Open in Terminal"
@@ -1152,6 +1167,12 @@ commandName id =
 
         "item.openTerminal" ->
             "Open in Terminal"
+
+        "item.openInEditor" ->
+            "Open with Text Editor"
+
+        "folder.openInEditor" ->
+            "Open Folder with Text Editor"
 
         "item.reveal" ->
             "Show in File Manager"

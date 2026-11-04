@@ -1383,15 +1383,43 @@ button.small { height: 24px; padding: 0 8px; font-size: 12px; }
 .size-range input.invalid { border-color: var(--danger); }
 
 /* Folder colours (spec 6.4.5). The names match colours.toml. */
-.icon.folder.fc-red { background-color: #d64545; }
-.icon.folder.fc-orange { background-color: #e07b2c; }
-.icon.folder.fc-yellow { background-color: #d9b21f; }
-.icon.folder.fc-green { background-color: #2f9e57; }
-.icon.folder.fc-teal { background-color: #179b9b; }
-.icon.folder.fc-blue { background-color: #2f74d6; }
-.icon.folder.fc-purple { background-color: #8957d6; }
-.icon.folder.fc-pink { background-color: #d6509c; }
-.icon.folder.fc-grey { background-color: #8a939e; }
+.app {
+  --fc-red: #d64545;
+  --fc-orange: #e07b2c;
+  --fc-yellow: #d9b21f;
+  --fc-green: #2f9e57;
+  --fc-teal: #179b9b;
+  --fc-blue: #2f74d6;
+  --fc-purple: #8957d6;
+  --fc-pink: #d6509c;
+  --fc-grey: #8a939e;
+}
+.icon.folder.fc-red { background-color: var(--fc-red); }
+.icon.folder.fc-orange { background-color: var(--fc-orange); }
+.icon.folder.fc-yellow { background-color: var(--fc-yellow); }
+.icon.folder.fc-green { background-color: var(--fc-green); }
+.icon.folder.fc-teal { background-color: var(--fc-teal); }
+.icon.folder.fc-blue { background-color: var(--fc-blue); }
+.icon.folder.fc-purple { background-color: var(--fc-purple); }
+.icon.folder.fc-pink { background-color: var(--fc-pink); }
+.icon.folder.fc-grey { background-color: var(--fc-grey); }
+
+/* Tab colours (REQ-012): a tab shows the colour of its folder, or of the
+   nearest folder above it that has one. */
+.tab.tc-red { --tab-colour: var(--fc-red); }
+.tab.tc-orange { --tab-colour: var(--fc-orange); }
+.tab.tc-yellow { --tab-colour: var(--fc-yellow); }
+.tab.tc-green { --tab-colour: var(--fc-green); }
+.tab.tc-teal { --tab-colour: var(--fc-teal); }
+.tab.tc-blue { --tab-colour: var(--fc-blue); }
+.tab.tc-purple { --tab-colour: var(--fc-purple); }
+.tab.tc-pink { --tab-colour: var(--fc-pink); }
+.tab.tc-grey { --tab-colour: var(--fc-grey); }
+.tab[class*="tc-"] {
+  box-shadow: inset 0 3px 0 var(--tab-colour);
+  background: color-mix(in srgb, var(--tab-colour) 12%, transparent);
+}
+.tab.active[class*="tc-"] { background: color-mix(in srgb, var(--tab-colour) 16%, var(--bg)); }
 
 /* Bookmark group drop-down (spec 6.4.2). */
 .combo { position: relative; }

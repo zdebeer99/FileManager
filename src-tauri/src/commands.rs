@@ -13,6 +13,7 @@ use tauri::{AppHandle, State};
 
 use crate::bookmarks::{self, Bookmarks};
 use crate::colours::{self, Colours};
+use crate::editor;
 use crate::fileops;
 use crate::find::{self, FindEvent};
 use crate::folder_view::{self, FolderView};
@@ -534,6 +535,22 @@ pub async fn clipboard_write_text(state: State<'_, AppState>, text: String) -> R
 pub async fn open_terminal(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let configured = state.settings.read().unwrap().general.terminal.clone();
     platform::open_terminal(Path::new(&path), configured.trim())
+}
+
+/// The text editor that "Open with …" uses; an empty name when none was found (FR-OPEN-06).
+#[tauri::command]
+pub async fn editor_info(state: State<'_, AppState>) -> Result<editor::EditorInfo, String> {
+    let settings = state.settings.read().unwrap().editor.clone();
+    let paths = state.paths.clone();
+    state.pools.run(&paths.config, Duration::from_secs(10), move || editor::info(&settings)).await
+}
+
+/// Opens files or folders in the text editor (FR-OPEN-06).
+#[tauri::command]
+pub async fn open_in_editor(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
+    let settings = state.settings.read().unwrap().editor.clone();
+    let config = state.paths.config.clone();
+    state.pools.run(&config, Duration::from_secs(10), move || editor::open(&settings, &paths)).await?
 }
 
 /// Shows the item in the system file manager.
