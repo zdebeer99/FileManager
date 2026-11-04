@@ -1,7 +1,7 @@
 # Feature Requests
 2026-11-02
 
- Update Cycle: c1
+ Update Cycle: c2
 
 ## How to use this file
 
@@ -22,9 +22,9 @@
 
 | ID | Name | Area | Description | Priority | Status | Update Cycle | Comment |
 | -- | ---- | ---- | ----------- | -------- | ------ | ------------ | ------- |
-| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low | new | c9 | 02Nov26 new |
-| REQ-008 | Catchy name | General | Get a better name for my file explorer | Low | proposed | c1 | 02Nov26 new. 03Nov26 Ideas in the log below; waiting for your choice. |
+| REQ-010 | Bug Content menu off screen | File View | When right clicking on a file at the bottom of the window, the content window will go offscreen, and if it is one of the last files in the list there is no easy way to see and click on the lower placed items int the context menu. | Normal | New | c2 | 03Nov26 added |
 | REQ-009 | Open Text Editor | Feature | Setup your favorite text editor default vscode, and always show on the context menu to open any file or quickly open the current folder with the application. | Normal | new | c2 | 03Nov26 added |
+| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low | new | c9 | 02Nov26 new |
 
 ## Done
 
