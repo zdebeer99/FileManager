@@ -28,7 +28,9 @@ import Task
 import Text
 import Time
 import Types exposing (..)
-import View
+import View.App
+import View.Popup
+import View.Sidebar
 
 
 main : Program () Model Msg
@@ -36,7 +38,7 @@ main =
     Browser.element
         { init = init
         , update = \msg model -> update msg model |> andThen ensureIcons
-        , view = View.view
+        , view = View.App.view
         , subscriptions = subscriptions
         }
 
@@ -65,6 +67,7 @@ init _ =
             , address = ShowCrumbs
             , viewportHeight = 600
             , windowHeight = 800
+            , windowWidth = 1200
             , freeSpace = Nothing
             , message = Nothing
             , messageSeq = 0
@@ -117,7 +120,7 @@ init _ =
         ( withRequest, initCmd ) =
             request "app_init" (E.object []) False ReqInit model
     in
-    ( withRequest, Cmd.batch [ initCmd, Task.perform GotZone Time.here, Task.perform GotTime Time.now, Task.perform (\v -> WindowResized v.viewport.height) Dom.getViewport ] )
+    ( withRequest, Cmd.batch [ initCmd, Task.perform GotZone Time.here, Task.perform GotTime Time.now, Task.perform (\v -> WindowResized v.viewport.width v.viewport.height) Dom.getViewport ] )
 
 
 emptyTab : Model -> Int -> String -> Tab
@@ -411,8 +414,8 @@ update msg model =
                 Err _ ->
                     ( model, Cmd.none )
 
-        WindowResized height ->
-            ( { model | windowHeight = height }, measureList )
+        WindowResized width height ->
+            ( { model | windowWidth = width, windowHeight = height }, measureList )
 
         RowClicked index mods ->
             ( updateActive (clickRow index mods) { model | popup = Nothing, menuBar = Nothing }, Cmd.none )
@@ -706,7 +709,7 @@ update msg model =
                 (\s ->
                     let
                         shown =
-                            List.map Tuple.first (View.filterPopupValues s)
+                            List.map Tuple.first (View.Popup.filterPopupValues s)
                     in
                     if List.all (\v -> Set.member v s.checked) shown then
                         { s | checked = List.foldl Set.remove s.checked shown }
@@ -726,7 +729,7 @@ update msg model =
                 Just (ColumnFilterPopup s) ->
                     let
                         shown =
-                            Set.fromList (List.map Tuple.first (View.filterPopupValues s))
+                            Set.fromList (List.map Tuple.first (View.Popup.filterPopupValues s))
 
                         allValues =
                             Set.fromList (List.map Tuple.first s.values)
@@ -3421,7 +3424,7 @@ treeKey : Command -> Model -> ( Model, Cmd Msg )
 treeKey command model =
     let
         rows =
-            View.treeRows model
+            View.Sidebar.treeRows model
 
         count =
             List.length rows
@@ -6018,7 +6021,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ Ports.fromBackend FromBackend
-        , Browser.Events.onResize (\_ h -> WindowResized (toFloat h))
+        , Browser.Events.onResize (\w h -> WindowResized (toFloat w) (toFloat h))
         , Browser.Events.onKeyUp (D.map KeyUp (D.field "key" D.string))
         , Time.every 60000 GotTime
         , if model.drag /= Nothing then
