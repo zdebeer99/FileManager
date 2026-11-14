@@ -23,13 +23,26 @@
 | ID      | Name                                              | Area                | Description                                                  | Priority | Status   | Update Cycle | Comment       |
 | ------- | ------------------------------------------------- | ------------------- | ------------------------------------------------------------ | -------- | -------- | ------------ | ------------- |
 | REQ-013 | Folder Rename color issue                         | File View           | When a folder with a color is renamed it loses its color. make it that the color stay even after renaming the folder | Normal   | New      | C3           | 04Nov26 added |
-| REQ-014 | Quick Shortcut                                    | Selected File       | Create a new shortcut file pointing to the selected file.    |          |          |              |               |
+| REQ-014 | Quick Shortcut                                    | Selected File       | Create a new shortcut file pointing to the selected file.    | Normal   | New      | c3           | 14Nov26 added |
 | REQ-007 | Bookmark Reordering                               | Bookmarks           | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low      | proposal | c9           | 02Nov26 new   |
-| REQ-015 | Fix Command pallette sizing                       | 6.9 Command palette | The command pallet width is to narrow, it only show the first character or icon. correct the command pallet width. | Normal   | New      | c3           | 10Nov26 added |
-| REQ-016 | Issue with copying files from the favroutes view. | 6.4.3 Favourites    | Dragging a file from the favroutes into the file view does not nothing (strangely it works when dragging the file on the fileview grid header. Ex dragging the file over the name field.), it should copy the file into the active folder when droping anyware on the fileview. Also add cut/copy options on the favroutes context menu. | Normal   | New      | c3           | 10Nov26 added |
-|         |                                                   |                     |                                                              |          |          |              |               |
+| REQ-015 | Fix Command palette sizing                        | 6.9 Command palette | The command pallet width is to narrow, it only show the first character or icon. correct the command pallet width. | Normal   | New      | c3           | 10Nov26 added |
+| REQ-016 | Issue with copying files from the favorites view. | 6.4.3 Favorites     | Dragging a file from the favorites into the file view does not nothing (strangely it works when dragging the file on the file view grid header. Ex dragging the file over the name field.), it should copy the file into the active folder when droping anyware on the fileview. Also add cut/copy options on the favorites context menu. | Normal   | New      | c3           | 10Nov26 added |
+| REQ-017 | Bookmark icons not showing                        | Bookmarks Bar       | In the bookmark bar groups the icons is not showing.         | Normal   | New      | c3           | 14Nov26 Added |
+| REQ-018 | UI Style                                          | Look and Feel       | Use Tailwind css style sheets to style the application components | Normal   | New      | c3           | 14Nov26 Added |
+| REQ-019 | Open in VSCode Error                              | Command             | Open in VSCode is not working, it gives an error.  "Could not open VS Code: %1 is not a valid Win32 application. (os error 193)" | Normal   | New      | c3           | 14Nov26 Added |
+| REQ-020 | Logging Errors                                    | Log File            | Errors is not logged in the log file.                        | Normal   | New      | c3           | 14Nov26 Added |
+| REQ-021 | Topic View                                        | Left Side View      | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" Section Below | Normal   | proposal | c9           | 14Nov26 Added |
+| REQ-022 |                                                   |                     |                                                              |          |          |              |               |
+| REQ-023 |                                                   |                     |                                                              |          |          |              |               |
+| REQ-024 |                                                   |                     |                                                              |          |          |              |               |
+
+### REQ-021 Topic View
+
+2026-11-14
 
 
+
+This section is still a work in progress.
 
 
 
