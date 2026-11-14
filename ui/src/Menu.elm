@@ -104,6 +104,7 @@ baseMenus model tab =
             , Action { label = "Paste", key = "Ctrl+V", msg = Maybe.map (\_ -> KeyCommand CmdPaste) model.clipboard, checked = Nothing }
             , cmd "Paste as Shortcut" "Ctrl+Shift+V" CmdPasteShortcut
             , cmd "Duplicate" "" CmdDuplicate
+            , cmd Text.createShortcut "" CmdCreateShortcut
             , cmd "Copy Path" "Ctrl+Shift+C" CmdCopyPath
             , cmd "Copy Name" "" CmdCopyName
             , Separator
@@ -346,6 +347,9 @@ selectable entries =
                     Submenu _ _ ->
                         Just i
 
+                    IconAction _ ->
+                        Just i
+
                     _ ->
                         Nothing
             )
@@ -526,6 +530,28 @@ viewDropdown windowHeight top active sub trackHover entries =
 
                     ColourPalette paths current ->
                         viewPalette paths current
+
+                    IconAction a ->
+                        button
+                            ([ class "menu-item"
+                             , classList [ ( "active", i == active ) ]
+                             , tabindex -1
+                             , attribute "role" "menuitem"
+                             , onClick (MenuRun a.msg)
+                             ]
+                                ++ hover Nothing
+                            )
+                            [ span [ class "check" ]
+                                [ case a.icon.url of
+                                    Just url ->
+                                        Html.img [ class "sysicon", Html.Attributes.src url, Html.Attributes.alt "", attribute "draggable" "false" ] []
+
+                                    Nothing ->
+                                        span [ class ("icon " ++ a.icon.builtin) ] []
+                                ]
+                            , span [ class "label" ] [ text a.label ]
+                            , span [ class "key" ] []
+                            ]
             )
             entries
         )
@@ -556,7 +582,7 @@ viewPalette paths current =
                 ]
                 []
     in
-    div [ class "palette", attribute "role" "group", attribute "aria-label" Text.folderColour ]
+    div [ class "colour-palette", attribute "role" "group", attribute "aria-label" Text.folderColour ]
         (List.map (\c -> swatch (Just c) (Text.colourName c) ("fc-" ++ c)) folderColours
             ++ [ swatch Nothing Text.noColour "none" ]
         )

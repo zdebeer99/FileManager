@@ -276,7 +276,8 @@ pub fn same_volume(a: &Path, b: &Path) -> bool {
 
 /// Makes a shortcut to `target` in `parent` with a free name, like Explorer's
 /// *Paste shortcut*: `Report.docx - Shortcut.lnk` on Windows, `Report.docx`
-/// (or `Report (2).docx`) as a symbolic link on Linux.
+/// (or `Report (2).docx`) as a symbolic link on Linux, and `Link to
+/// Report.docx` there when it sits next to its target (FR-NEW-06).
 pub fn create_shortcut_auto(parent: &Path, target: &Path) -> Result<PathBuf, String> {
     let name =
         target.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or("This item can't have a shortcut.")?;
@@ -285,7 +286,8 @@ pub fn create_shortcut_auto(parent: &Path, target: &Path) -> Result<PathBuf, Str
         let stem = free.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         create_shortcut(parent, stem.trim_end_matches(".lnk"), target)
     } else {
-        let free = free_name(parent, &name, Naming::Numbered);
+        let wanted = if target.parent() == Some(parent) { format!("Link to {name}") } else { name };
+        let free = free_name(parent, &wanted, Naming::Numbered);
         let free_name = free.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         create_shortcut(parent, &free_name, target)
     }
@@ -306,6 +308,19 @@ pub fn describe(error: &io::Error, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_shortcut_next_to_its_file_is_called_link_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("Report.docx");
+        fs::write(&file, "x").unwrap();
+        let first = create_shortcut_auto(dir.path(), &file).unwrap();
+        assert_eq!(first.file_name().unwrap(), "Link to Report.docx");
+        let second = create_shortcut_auto(dir.path(), &file).unwrap();
+        assert_eq!(second.file_name().unwrap(), "Link to Report (2).docx");
+        assert_eq!(fs::read_link(&first).unwrap(), file);
+    }
 
     #[test]
     fn names_are_checked() {

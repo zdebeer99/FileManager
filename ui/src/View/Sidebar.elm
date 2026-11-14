@@ -241,6 +241,12 @@ viewFavBrowse model tab browse =
                     |> (::) (Path.name model.sep browse.root)
                     |> String.join " › "
 
+        clip item =
+            [ Separator
+            , Action { label = Text.cut, key = "", msg = Just (ClipboardPaths True [ item.path ]), checked = Nothing }
+            , Action { label = Text.copy, key = "", msg = Just (ClipboardPaths False [ item.path ]), checked = Nothing }
+            ]
+
         fileEntries item =
             [ Action { label = Text.open, key = "", msg = Just (OpenPath item.path), checked = Nothing } ]
                 ++ (if model.editorName /= "" then
@@ -250,6 +256,7 @@ viewFavBrowse model tab browse =
                         []
                    )
                 ++ [ Action { label = Text.reveal, key = "", msg = Just (RevealPath item.path), checked = Nothing } ]
+                ++ clip item
 
         row item =
             button
@@ -284,7 +291,7 @@ viewFavBrowse model tab browse =
                     )
                  , contextMenu
                     (if item.isDir then
-                        folderEntries model item.path
+                        folderEntries model item.path ++ clip item
 
                      else
                         fileEntries item

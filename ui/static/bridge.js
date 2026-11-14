@@ -21,7 +21,12 @@
     }
     invoke(cmd, callArgs).then(
       (data) => send({ id, type: 'ok', data: data === undefined ? null : data }),
-      (error) => send({ id, type: 'err', data: String((error && error.message) || error) })
+      (error) => {
+        const message = String((error && error.message) || error);
+        // Every error a command returns also goes to the log file (REQ-020).
+        if (cmd !== 'log_error') invoke('log_error', { command: cmd, message }).catch(() => {});
+        send({ id, type: 'err', data: message });
+      }
     );
   });
 

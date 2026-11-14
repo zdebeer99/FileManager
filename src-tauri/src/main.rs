@@ -49,6 +49,7 @@ fn main() {
             commands::free_space,
             commands::session_save,
             commands::perf_mark,
+            commands::log_error,
             commands::settings_set,
             commands::folder_view_get,
             commands::folder_view_save,

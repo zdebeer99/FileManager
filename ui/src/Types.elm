@@ -160,6 +160,15 @@ type MenuEntry
     | Separator
       -- The folder colour palette (spec 6.4.5): the folders it colours and their current colour.
     | ColourPalette (List String) (Maybe String)
+      -- An entry with an icon, such as a bookmark in a Bookmark Bar group (REQ-017).
+    | IconAction { icon : MenuIcon, label : String, msg : Msg }
+
+
+{-| A menu entry's icon: a system icon's image when there is one, else a
+built-in icon class.
+-}
+type alias MenuIcon =
+    { url : Maybe String, builtin : String }
 
 
 {-| The open Menu Bar menu, the highlighted entry and, inside a submenu,
@@ -307,6 +316,9 @@ type alias DragState =
     , y : Float
     , moved : Bool
     , target : Maybe DropTarget
+
+    -- Drags from the Favourites view copy unless Shift is held (FR-FAV-03).
+    , copyByDefault : Bool
     }
 
 
@@ -766,6 +778,7 @@ type Msg
     | LocateBookmark Bookmark
     | SetFolderColour (List String) (Maybe String)
     | OpenInEditor (List String)
+    | ClipboardPaths Bool (List String)
     | TabMouseDown Int Float
     | TabHover Int
     | RegionFocused Region
@@ -895,6 +908,7 @@ type Command
     | CmdUndo
     | CmdOpenTerminal
     | CmdOpenInEditor
+    | CmdCreateShortcut
     | CmdOpenFolderInEditor
     | CmdReveal
     | CmdItemMenu

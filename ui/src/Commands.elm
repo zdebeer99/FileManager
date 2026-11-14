@@ -67,6 +67,7 @@ all =
     , Def "edit.paste" CmdPaste ".paste"
     , Def "edit.pasteShortcut" CmdPasteShortcut "⤤"
     , Def "edit.duplicate" CmdDuplicate "⧉"
+    , Def "edit.createShortcut" CmdCreateShortcut "↗"
     , Def "edit.copyPath" CmdCopyPath "⋯"
     , Def "edit.copyName" CmdCopyName "Aa"
     , Def "edit.rename" CmdRename "✎"

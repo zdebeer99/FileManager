@@ -121,26 +121,38 @@ fn search_path() -> Vec<PathBuf> {
 /// A program by full path, or by name in `dirs` (on Windows also with the
 /// PATHEXT extensions, such as `code.cmd`).
 fn find_program(program: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    let pathext = std::env::var("PATHEXT").unwrap_or_default();
     let given = Path::new(program);
     if given.components().count() > 1 || given.is_absolute() {
-        return is_program(given).then(|| given.to_path_buf());
+        let runnable = !cfg!(windows) || has_program_extension(program, &pathext);
+        return (runnable && is_program(given)).then(|| given.to_path_buf());
     }
-    let extensions: Vec<String> = if cfg!(windows) {
-        std::iter::once(String::new())
-            .chain(
-                std::env::var("PATHEXT")
-                    .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into())
-                    .split(';')
-                    .filter(|e| !e.is_empty())
-                    .map(str::to_lowercase),
-            )
-            .collect()
-    } else {
-        vec![String::new()]
-    };
-    dirs.iter()
-        .flat_map(|dir| extensions.iter().map(move |ext| dir.join(format!("{program}{ext}"))))
-        .find(|p| is_program(p))
+    let names = program_names(program, cfg!(windows), &pathext);
+    dirs.iter().flat_map(|dir| names.iter().map(move |name| dir.join(name))).find(|p| is_program(p))
+}
+
+/// The file names a program can have. On Windows only names with a runnable
+/// extension count: VS Code's `bin` folder also holds a `code` shell script
+/// (for Git Bash) next to `code.cmd`, and Windows can't start that script
+/// ("not a valid Win32 application", REQ-019).
+fn program_names(program: &str, windows: bool, pathext: &str) -> Vec<String> {
+    if !windows {
+        return vec![program.to_string()];
+    }
+    if has_program_extension(program, pathext) {
+        return vec![program.to_string()];
+    }
+    windows_extensions(pathext).into_iter().map(|ext| format!("{program}{ext}")).collect()
+}
+
+fn windows_extensions(pathext: &str) -> Vec<String> {
+    let list = if pathext.trim().is_empty() { ".COM;.EXE;.BAT;.CMD" } else { pathext };
+    list.split(';').filter(|e| !e.is_empty()).map(str::to_lowercase).collect()
+}
+
+fn has_program_extension(program: &str, pathext: &str) -> bool {
+    let lower = program.to_lowercase();
+    windows_extensions(pathext).iter().any(|ext| lower.ends_with(ext.as_str()))
 }
 
 fn is_program(path: &Path) -> bool {
@@ -202,5 +214,25 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("code"), "not executable").unwrap();
         assert_eq!(find_program("code", &[dir.path().to_path_buf()]), None);
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn windows_only_looks_for_runnable_names() {
+        let pathext = ".COM;.EXE;.BAT;.CMD";
+        // Never the bare `code` script from VS Code's bin folder.
+        assert_eq!(program_names("code", true, pathext), ["code.com", "code.exe", "code.bat", "code.cmd"]);
+        assert_eq!(program_names("Code.exe", true, pathext), ["Code.exe"]);
+        assert_eq!(
+            program_names("notepad++", true, ""),
+            ["notepad++.com", "notepad++.exe", "notepad++.bat", "notepad++.cmd"]
+        );
+        assert_eq!(program_names("code", false, pathext), ["code"]);
+        assert!(has_program_extension(r"C:\Tools\zed.EXE", pathext));
+        assert!(!has_program_extension(r"C:\VS Code\bin\code", pathext));
     }
 }

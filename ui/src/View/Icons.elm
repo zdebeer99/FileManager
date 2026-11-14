@@ -1,4 +1,4 @@
-module View.Icons exposing (viewBookmarkIcon, viewFolderIcon, viewIcon)
+module View.Icons exposing (bookmarkMenuIcon, viewBookmarkIcon, viewFolderIcon, viewIcon)
 
 {-| Item, folder and bookmark icons: system icons when available (FR-ICON-02), else the built-in ones (FR-ICON-01), and folder colours (spec 6.4.5).
 -}
@@ -78,6 +78,21 @@ viewBookmarkIcon model b =
 
         Nothing ->
             span [ class ("icon " ++ bookmarkIcon b) ] []
+
+
+{-| A bookmark's icon for a menu entry (REQ-017): the same choice as
+`viewBookmarkIcon`, as data the menu can draw.
+-}
+bookmarkMenuIcon : Model -> Bookmark -> MenuIcon
+bookmarkMenuIcon model b =
+    { url =
+        if model.settings.icons == "system" then
+            bookmarkIconKey b |> Maybe.andThen (\key -> Dict.get key model.systemIcons)
+
+        else
+            Nothing
+    , builtin = bookmarkIcon b
+    }
 
 
 iconOrBuiltin : Model -> String -> String -> Html msg

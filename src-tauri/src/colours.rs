@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
+use std::path::PathBuf;
 
 use serde::Serialize;
 use toml_edit::{DocumentMut, Item, Table};
@@ -99,6 +100,50 @@ pub fn set(paths: &AppPaths, path: &str, colour: Option<&str>) -> Result<(), Str
     write_atomic(&file, format!("{header}{doc}").as_bytes()).map_err(|e| e.to_string())
 }
 
+/// Keeps colours with folders that File Catalog renamed or moved (REQ-013):
+/// each `(from, to)` pair moves the colour of `from` and of every folder
+/// inside it. Does nothing when no coloured folder was involved.
+pub fn moved(paths: &AppPaths, pairs: &[(PathBuf, PathBuf)]) -> Result<(), String> {
+    let file = paths.colours_file();
+    let Ok(text) = fs::read_to_string(&file) else { return Ok(()) };
+    let mut doc = text
+        .parse::<DocumentMut>()
+        .map_err(|e| format!("colours.toml has an error, so folder colours were not moved. {e}"))?;
+    let Some(folders) = doc.get_mut("folders").and_then(Item::as_table_like_mut) else { return Ok(()) };
+    let sep = std::path::MAIN_SEPARATOR;
+    let mut changes: Vec<(String, String, Item)> = Vec::new();
+    for (key, value) in folders.iter() {
+        let current = normalize(&expand_home(key));
+        for (from, to) in pairs {
+            let (from, to) = (normalize(&from.to_string_lossy()), normalize(&to.to_string_lossy()));
+            let rest = if current == from {
+                Some("")
+            } else {
+                current.strip_prefix(&from).filter(|r| r.starts_with(sep)).or_else(|| {
+                    // Windows paths are not case-sensitive.
+                    (cfg!(windows) && current.to_lowercase().starts_with(&format!("{}{sep}", from.to_lowercase())))
+                        .then(|| &current[from.len()..])
+                })
+            };
+            if let Some(rest) = rest {
+                changes.push((key.to_string(), format!("{to}{rest}"), value.clone()));
+                break;
+            }
+        }
+    }
+    if changes.is_empty() {
+        return Ok(());
+    }
+    for (old, _, _) in &changes {
+        folders.remove(old);
+    }
+    for (_, new, value) in changes {
+        folders.insert(&new, value);
+    }
+    let _ = fs::write(file.with_extension("toml.bak"), &text);
+    write_atomic(&file, doc.to_string().as_bytes()).map_err(|e| e.to_string())
+}
+
 fn expand_home(path: &str) -> String {
     crate::paths::expand(path, &crate::paths::home_dir())
 }
@@ -129,6 +174,33 @@ mod tests {
 
         set(&paths, &folder, None).unwrap();
         assert!(load(&paths).folders.is_empty());
+    }
+
+    #[test]
+    fn colours_follow_renamed_and_moved_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        let root = dir.path().to_path_buf();
+        let p = |rel: &str| root.join(rel).to_string_lossy().into_owned();
+        set(&paths, &p("Vendors"), Some("blue")).unwrap();
+        set(&paths, &p("Vendors/Acme"), Some("green")).unwrap();
+        set(&paths, &p("VendorsOld"), Some("red")).unwrap();
+
+        // Renaming Vendors moves its colour and its sub-folder's, not VendorsOld's.
+        moved(&paths, &[(root.join("Vendors"), root.join("Suppliers"))]).unwrap();
+        let loaded = load(&paths);
+        let colour = |rel: &str| loaded.folders.get(&normalize(&p(rel))).map(String::as_str);
+        assert_eq!(colour("Suppliers"), Some("blue"));
+        assert_eq!(colour("Suppliers/Acme"), Some("green"));
+        assert_eq!(colour("VendorsOld"), Some("red"));
+        assert_eq!(colour("Vendors"), None);
+
+        // Moving (or undoing) back restores the old keys; unrelated moves change nothing.
+        moved(&paths, &[(root.join("Suppliers"), root.join("Vendors"))]).unwrap();
+        moved(&paths, &[(root.join("Elsewhere"), root.join("Other"))]).unwrap();
+        let loaded = load(&paths);
+        assert_eq!(loaded.folders.get(&normalize(&p("Vendors/Acme"))).map(String::as_str), Some("green"));
+        assert_eq!(loaded.folders.len(), 3);
     }
 
     #[test]

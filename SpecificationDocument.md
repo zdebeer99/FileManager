@@ -6,7 +6,8 @@
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
 | Status | 0.1.0 released. Update cycles **c1** and **c2** are built on top of it and not yet released (Sections 11.2, 11.3). |
-| Changes | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5); Open with a text editor (FR-OPEN-06, `[editor]` 8.3); menus kept on screen (FR-MENU-02); tab colours (FR-TAB-06). |
+| Changes | c3 (unreleased, 2026-11-14): Create Shortcut (FR-NEW-06); folder colours follow renamed and moved folders (FR-FCOL-03); Favourites drops anywhere on the file list copy, and Cut/Copy in its menus (FR-FAV-03); icons in Bookmark Bar groups (FR-BB-01); errors written to the log (NFR-MNT-03); fixes for the command palette width and Open with VS Code on Windows (FR-OPEN-06). |
+| | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5); Open with a text editor (FR-OPEN-06, `[editor]` 8.3); menus kept on screen (FR-MENU-02); tab colours (FR-TAB-06). |
 | | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
 | | 0.1.0: First stable release. M5 cancelled (decision log 13.1, 2026-11-03). The document now describes only what 0.1.0 does; everything planned but not built is listed in Section 12. Document versions restart at the application version. |
 | | Earlier drafts 0.2 to 0.5 (2026-10-31 to 2026-11-01): platforms decided, review decisions merged, scope reduced, M1 to M4 built. See the decision log (13.1). |
@@ -193,6 +194,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `keybindings_get` / `keybindings_set` / `keybindings_file` | — / `{ changes: [{ command, when, keys, removeDefaults }] }` / — | bindings with line numbers and warnings / file path |
 | `toolbar_get` / `toolbar_save` / `toolbar_file` | — / `{ style, items }` / — | style, items, defaults, warnings / file path |
 | `perf_mark` / `app_exit` | — | — |
+| `log_error` | `{ command, message }` | — (the bridge sends every failed command here, NFR-MNT-03) |
 
 **Events (Rust → Elm):** `dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `keybindings-changed`, `toolbar-changed`, `job-progress`, `job-conflict`, `file-drop`. Every event must also be in the `listen` list in `bridge.js`.
 
@@ -271,7 +273,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 | Menu | Items |
 |---|---|
 | **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Close Tab, Exit |
-| **Edit** | Undo, Cut, Copy, Paste, Paste as Shortcut, Duplicate, Copy Path, Copy Name, Rename, Delete, Delete Permanently, Select All, Invert Selection, Select None |
+| **Edit** | Undo, Cut, Copy, Paste, Paste as Shortcut, Duplicate, Create Shortcut, Copy Path, Copy Name, Rename, Delete, Delete Permanently, Select All, Invert Selection, Select None |
 | **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Refresh |
 | **Go** | Back, Forward, Up, Home, Go to Address, Recent Folders ▸, Favourites ▸, Pin This Folder to Favourites |
 | **Bookmarks** | Bookmark This Folder, Bookmark Selected Item, Manage Bookmarks, Open Bookmarks File, All Bookmarks ▸ |
@@ -290,7 +292,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 
 ### 5.4 Bookmark Bar
 
-- **FR-BB-01** Shows the bookmarks in the `bar` group as buttons. Groups appear as drop-down menus.
+- **FR-BB-01** Shows the bookmarks in the `bar` group as buttons. Groups appear as drop-down menus, whose entries show each bookmark's icon (REQ-017).
 - **FR-BB-02** Clicking opens the target (folder: navigate; file: open with its default app; URL: open in the default browser). Middle-click or `Ctrl+click` on a folder opens it in a new tab.
 - **FR-BB-03** Dragging a folder, file or URL onto the bar creates a bookmark.
 - **FR-BB-04** Right-click menu: Open, Open in New Tab, Edit, Delete, New Group.
@@ -446,13 +448,13 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 
 - **FR-FAV-01** Pin or unpin a folder to Favourites from the right-click menu, the Go menu, the palette, or by dragging it into the Favourites view.
 - **FR-FAV-02** Stored as an ordered list in `bookmarks.toml` under `[favourites]`.
-- **FR-FAV-03** Clicking a favourite in the Favourites view shows the files and folders inside it, folders first. Clicking a folder goes into it; the header shows where you are (for example *Downloads › Invoices*), *Back* (‹) goes up one level and, at the favourite itself, back to the list of favourites; ↗ shows the folder in the file list. Double-click opens a file, or shows a folder in the file list. Items can be dragged onto the file list (into the active tab's folder), onto a folder, a tab or the Bookmark Bar, like items in the list (FR-COPY-06). The folder shown is watched, so it stays up to date. This makes it quick to move, for example, files saved from e-mail in Downloads into the folder you are working in.
+- **FR-FAV-03** Clicking a favourite in the Favourites view shows the files and folders inside it, folders first. Clicking a folder goes into it; the header shows where you are (for example *Downloads › Invoices*), *Back* (‹) goes up one level and, at the favourite itself, back to the list of favourites; ↗ shows the folder in the file list. Double-click opens a file, or shows a folder in the file list. Items can be dragged anywhere onto the file list, including an empty folder's message, into the active tab's folder, or onto a folder, a tab or the Bookmark Bar (FR-COPY-06). Dragged from here they are **copied** unless `Shift` is held (move); `Alt` makes shortcuts. Their right-click menus also offer *Cut* and *Copy* (REQ-016). The folder shown is watched, so it stays up to date. This makes it quick to move, for example, files saved from e-mail in Downloads into the folder you are working in.
 
 #### 6.4.5 Folder colours
 
 - **FR-FCOL-01** Right-click a folder in the list, the folder tree or the Favourites view and choose **Folder Colour ▸**: a palette of coloured circles (Red, Orange, Yellow, Green, Teal, Blue, Purple, Pink, Grey) and a crossed-out circle for *No Colour*. The folder's current colour is ticked, and each circle's name shows as a tooltip and is read by screen readers. With several folders selected, the choice applies to all of them.
 - **FR-FCOL-02** The folder's icon is shown in that colour everywhere File Catalog shows the folder (list, tree, Favourites).
-- **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour stays with the folder's path: a folder that is renamed or moved loses its colour (like FR-FS-02).
+- **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour follows its folder, and the folders inside it, when File Catalog renames or moves the folder or undoes that (REQ-013). A folder renamed or moved by another program loses its colour, because only its path is known.
 
 ### 6.5 Per-folder view persistence ("Quick persist")
 
@@ -487,6 +489,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-NEW-03** **New Shortcut** asks for a target and a name. It creates a `.lnk` (Windows) or a symbolic link (Linux). **Paste as Shortcut** (`Ctrl+Shift+V`) creates shortcuts to the items on the clipboard.
 - **FR-NEW-04** **New Web Link** asks for a URL and a name (filled in from the domain). It creates a `.url` file, which works on all platforms.
 - **FR-NEW-05** All new items are selected and scrolled into view after they are created.
+- **FR-NEW-06** **Create Shortcut** (right-click menu, **Edit** menu, command `edit.createShortcut`) makes a shortcut to each selected item next to it: `Report.docx - Shortcut.lnk` on Windows, a symbolic link `Link to Report.docx` on Linux (REQ-014).
 
 ### 6.8 Create from template
 
@@ -540,7 +543,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-OPEN-04** **Copy Path** (`Ctrl+Shift+C`) copies the full path(s) of the selection, one per line. **Copy Name** copies names only.
 - **FR-OPEN-05** **Show in File Manager** shows the item in Explorer or the system file manager.
 - **FR-OPEN-06** **Open with *editor*** opens files and folders in a text editor or IDE (`[editor]` in `settings.toml`, Section 8.3):
-  - The editor is `editor.command` (a program on PATH such as `code`, `zed` or `subl`, or a full path), with optional `args`. When it is empty, the first one installed of VS Code, VSCodium, Zed, Sublime Text, Notepad++, Kate, GNOME Text Editor and gedit is used; on Windows also VS Code installed without being on PATH.
+  - The editor is `editor.command` (a program on PATH such as `code`, `zed` or `subl`, or a full path), with optional `args`. When it is empty, the first one installed of VS Code, VSCodium, Zed, Sublime Text, Notepad++, Kate, GNOME Text Editor and gedit is used; on Windows also VS Code installed without being on PATH. On Windows only files with a runnable extension (`PATHEXT`: `.exe`, `.cmd`, `.bat`, `.com`) count, so VS Code's `bin\code` script for Git Bash is never started (REQ-019); `bin\code.cmd` is replaced by the `Code.exe` next to it.
   - The menus show the editor's name (*Open with VS Code*), or `editor.name` when set. When no editor is found, the items are not shown (File menu: shown disabled).
   - Right-click on files or folders: *Open with …* (all selected items). Right-click on empty space, in the folder tree and on favourites: *Open Folder with …*. **File › Open Folder with …** and the commands `item.openInEditor` (the selection, or the current folder) and `folder.openInEditor` can be bound to keys.
 
@@ -634,7 +637,7 @@ Reference hardware: 4-core CPU (2020 or newer), 8 GB RAM, NVMe SSD. Targets appl
 
 - **NFR-MNT-01** Rust: `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` pass. Elm: `elm-format` is used on changed files.
 - **NFR-MNT-02** Rust unit and integration tests cover file operations, jobs, settings, key bindings, toolbar, templates and search (`cargo test`).
-- **NFR-MNT-03** Logs (`tracing`) go to `<app settings>/logs/`, one file per day, kept for 7 days. The default level is `info`.
+- **NFR-MNT-03** Logs (`tracing`) go to `<app settings>/logs/`, one file per day, kept for 7 days. The default level is `info`. Every error a command returns to the UI is logged with the command's name (through `log_error`), as are folders that can't be listed or don't answer, and items a job could not handle (REQ-020).
 
 ---
 
@@ -878,7 +881,7 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | Catchy name | Not a code change: name ideas are in FeatureRequest.md, waiting for a choice. |
 
 **Known limits in c1:**
-- A folder colour does not follow a folder that is renamed or moved.
+- A folder colour does not follow a folder that is renamed or moved. (Fixed in c3 for renames and moves made in File Catalog.)
 
 ### 11.3 Update cycle c2 (unreleased)
 
@@ -894,6 +897,22 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 - On Linux, shortcuts (symbolic links) show the built-in shortcut icon.
 - In a window shorter than a menu, the menu's last entries are still cut off (FR-MENU-02).
 - Opening a file in the editor was checked in the UI only; starting the editor needs a test on Windows and Linux.
+
+### 11.4 Update cycle c3 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-013 Folder rename colour issue | FR-FCOL-03 |
+| REQ-014 Quick Shortcut | FR-NEW-06 |
+| REQ-015 Command palette sizing | Fix: the folder colour palette's CSS class (`palette`) was also the command palette's; it is now `colour-palette` (6.9 unchanged) |
+| REQ-016 Copying from the Favourites view | FR-FAV-03. Cause: an empty folder's message lay over the list outside its drop zone; the whole list area now takes drops |
+| REQ-017 Bookmark icons in Bookmark Bar groups | FR-BB-01 |
+| REQ-019 Open in VS Code error (os error 193) | FR-OPEN-06 |
+| REQ-020 Logging errors | NFR-MNT-03 |
+
+**Known limits in c3:**
+- REQ-018 (Tailwind CSS) is not part of c3; its scope is still to be agreed.
+- Open with VS Code on Windows and writing to the log file were checked with unit tests and in the UI only; they need a test in the app on Windows.
 
 ---
 
@@ -1054,6 +1073,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `edit.pasteShortcut` | Paste as Shortcut | `Ctrl+Shift+V` |
 | `edit.copyPath` / `edit.copyName` | Copy Path / Copy Name | `Ctrl+Shift+C` / — |
 | `edit.duplicate` | Duplicate | — |
+| `edit.createShortcut` | Create Shortcut | — |
 | `edit.rename` | Rename | `F2` |
 | `edit.delete` / `edit.deletePermanent` | Delete / Delete Permanently | `Del` / `Shift+Del` |
 | `edit.undo` | Undo | `Ctrl+Z` |

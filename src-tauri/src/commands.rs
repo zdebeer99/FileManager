@@ -133,7 +133,10 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
     };
 
     if state.jobs.lock().unwrap().is_none() {
-        *state.jobs.lock().unwrap() = Some(JobManager::start(app.clone()));
+        let manager = JobManager::start(app.clone());
+        let colour_paths = state.paths.clone();
+        manager.set_on_moved(Arc::new(move |pairs| follow_colours(&colour_paths, pairs.to_vec())));
+        *state.jobs.lock().unwrap() = Some(manager);
     }
 
     match DirWatcher::start(app, state.cache.clone(), state.paths.clone(), state.settings.clone()) {
@@ -210,6 +213,7 @@ pub async fn dir_list(state: State<'_, AppState>, path: String, on_event: Channe
             }
             Err(e) => {
                 cache.remove(&key);
+                tracing::warn!(path = %key, "could not list the folder: {e}");
                 let _ = channel.send(DirEvent::Error { kind: error_kind(&e), message: e.to_string() });
             }
         }
@@ -219,6 +223,7 @@ pub async fn dir_list(state: State<'_, AppState>, path: String, on_event: Channe
     let timeout = state.timeout();
     tauri::async_runtime::spawn(async move {
         if tokio::time::timeout(timeout, first_rx).await.is_err() {
+            tracing::warn!(path = %path, "the location did not respond within {} s", timeout.as_secs());
             cancelled.store(true, Ordering::Relaxed);
             let _ = on_event
                 .send(DirEvent::Error { kind: "unavailable", message: "The location did not respond in time.".into() });
@@ -332,6 +337,14 @@ pub async fn session_save(state: State<'_, AppState>, session: Session) -> Resul
         .await?
 }
 
+/// Writes an error that a command returned to the UI into the log file
+/// (REQ-020, NFR-MNT-03). The bridge calls it for every failed command.
+#[tauri::command]
+pub async fn log_error(command: String, message: String) -> Result<(), String> {
+    tracing::error!(command = %command, "{message}");
+    Ok(())
+}
+
 /// Logs how long after process start a UI milestone was reached (NFR-PERF-01).
 #[tauri::command]
 pub async fn perf_mark(label: String) -> Result<u64, String> {
@@ -412,6 +425,14 @@ pub async fn icons_get(
     state.pools.run(&paths.cache.clone(), Duration::from_secs(30), move || icons::get(&cache, &paths, keys)).await
 }
 
+/// Moves folder colours along with renamed or moved folders (REQ-013).
+/// A problem is logged, never shown: the rename itself worked.
+fn follow_colours(paths: &AppPaths, pairs: Vec<(PathBuf, PathBuf)>) {
+    if let Err(e) = colours::moved(paths, &pairs) {
+        tracing::warn!("{e}");
+    }
+}
+
 /// Folder colours (spec 6.4.5).
 #[tauri::command]
 pub async fn colours_get(state: State<'_, AppState>) -> Result<Colours, String> {
@@ -480,7 +501,8 @@ pub async fn fs_rename(state: State<'_, AppState>, path: String, new_name: Strin
     let jobs = state.jobs()?;
     let from = PathBuf::from(&path);
     let renamed = state.pools.run(&from.clone(), state.timeout(), move || fileops::rename(&from, &new_name)).await??;
-    jobs.push_undo(UndoStep::Renamed { from: PathBuf::from(path), to: renamed.clone() });
+    jobs.push_undo(UndoStep::Renamed { from: PathBuf::from(&path), to: renamed.clone() });
+    follow_colours(&state.paths, vec![(PathBuf::from(path), renamed.clone())]);
     Ok(renamed.to_string_lossy().into_owned())
 }
 
@@ -516,8 +538,13 @@ pub async fn fs_create(state: State<'_, AppState>, parent: String, item: NewItem
 #[tauri::command]
 pub async fn undo_last(state: State<'_, AppState>) -> Result<String, String> {
     let step = state.jobs()?.pop_undo().ok_or("There is nothing to undo.")?;
+    let moves = jobs::undo_moves(&step);
     let home = paths::home_dir();
-    state.pools.run(&home, Duration::from_secs(60), move || jobs::undo(step)).await?
+    let result = state.pools.run(&home, Duration::from_secs(60), move || jobs::undo(step)).await?;
+    if result.is_ok() {
+        follow_colours(&state.paths, moves);
+    }
+    result
 }
 
 /// Puts text on the OS clipboard (Copy Path, FR-OPEN-04).

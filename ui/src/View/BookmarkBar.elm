@@ -11,7 +11,7 @@ import Json.Encode
 import Text
 import Types exposing (..)
 import View.Common exposing (contextMenu, dropTarget, middleClick)
-import View.Icons exposing (viewBookmarkIcon)
+import View.Icons exposing (bookmarkMenuIcon, viewBookmarkIcon)
 
 
 type BarEntry
@@ -72,7 +72,7 @@ viewBookmarkBar model =
                                         (\x y ->
                                             ( ItemContextMenu
                                                 (List.map
-                                                    (\b -> Action { label = b.name, key = "", msg = Just (OpenBookmark b False), checked = Nothing })
+                                                    (\b -> IconAction { icon = bookmarkMenuIcon model b, label = b.name, msg = OpenBookmark b False })
                                                     members
                                                 )
                                                 x

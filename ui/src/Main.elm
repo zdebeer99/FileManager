@@ -614,6 +614,7 @@ update msg model =
                                                 , y = y
                                                 , moved = False
                                                 , target = Nothing
+                                                , copyByDefault = False
                                                 }
                                             )
                                   }
@@ -917,6 +918,7 @@ update msg model =
                             , y = y
                             , moved = False
                             , target = Nothing
+                            , copyByDefault = True
                             }
                         )
               }
@@ -933,6 +935,9 @@ update msg model =
                         else
                             Set.insert key model.foldedGroups
                 }
+
+        ClipboardPaths cut paths ->
+            pathsToClipboard cut paths model
 
         OpenInEditor paths ->
             request "open_in_editor" (E.object [ ( "paths", E.list E.string paths ) ]) False ReqOpen { model | popup = Nothing, menuBar = Nothing }
@@ -1677,6 +1682,24 @@ runCommand command model =
         CmdUndo ->
             request "undo_last" (E.object []) False ReqUndo model
 
+        CmdCreateShortcut ->
+            -- A shortcut to each selected item, next to it (FR-NEW-06).
+            withActive model
+                (\tab ->
+                    case ( tab.search, List.map .path (targetItems tab) ) of
+                        ( Nothing, (_ :: _) as paths ) ->
+                            Just
+                                (request "fs_create_shortcuts"
+                                    (E.object [ ( "parent", E.string tab.path ), ( "targets", E.list E.string paths ) ])
+                                    False
+                                    (ReqShortcuts tab.id)
+                                    { model | popup = Nothing }
+                                )
+
+                        _ ->
+                            Nothing
+                )
+
         CmdOpenInEditor ->
             -- The selection, or the current folder when nothing is selected (FR-OPEN-06).
             withActive model
@@ -2013,6 +2036,9 @@ menuKey command model =
 
                                 Just (Submenu _ _) ->
                                     set { state | sub = Just (step (Menu.selectable children) -1 1) }
+
+                                Just (IconAction a) ->
+                                    update (MenuRun a.msg) model
 
                                 _ ->
                                     ( model, Cmd.none )
@@ -2773,7 +2799,7 @@ mouseUp mods model =
                             Nothing ->
                                 d.target
                 in
-                dropItems mods d.paths target done
+                dropItems { mods | ctrl = mods.ctrl || d.copyByDefault && not mods.shift } d.paths target done
 
             else
                 ( done, Cmd.none )
@@ -3594,24 +3620,28 @@ withTargets model f =
 
 toClipboard : Bool -> Model -> ( Model, Cmd Msg )
 toClipboard cut model =
-    withTargets model
-        (\items ->
-            flash
-                (if cut then
-                    Text.itemsCut (List.length items)
+    withTargets model (\items -> pathsToClipboard cut (List.map .path items) model)
 
-                 else
-                    Text.itemsCopied (List.length items)
-                )
-                { model | clipboard = Just { paths = List.map .path items, cut = cut } }
-                -- Also on the system clipboard, so Explorer and other file managers can paste them (FR-OP-01).
-                |> andThen
-                    (request "clipboard_set_files"
-                        (E.object [ ( "paths", E.list E.string (List.map .path items) ), ( "cut", E.bool cut ) ])
-                        False
-                        ReqIgnore
-                    )
+
+{-| Cut or Copy these paths, in File Catalog and on the system clipboard, so
+Explorer and other file managers can paste them too (FR-OP-01).
+-}
+pathsToClipboard : Bool -> List String -> Model -> ( Model, Cmd Msg )
+pathsToClipboard cut paths model =
+    flash
+        (if cut then
+            Text.itemsCut (List.length paths)
+
+         else
+            Text.itemsCopied (List.length paths)
         )
+        { model | clipboard = Just { paths = paths, cut = cut }, popup = Nothing }
+        |> andThen
+            (request "clipboard_set_files"
+                (E.object [ ( "paths", E.list E.string paths ), ( "cut", E.bool cut ) ])
+                False
+                ReqIgnore
+            )
 
 
 startJob : String -> List String -> Maybe String -> Bool -> Model -> ( Model, Cmd Msg )
@@ -3843,6 +3873,7 @@ itemEntries model tab item =
            ]
         ++ pasteInto
         ++ [ act Text.duplicate "" (KeyCommand CmdDuplicate)
+           , act Text.createShortcut "" (KeyCommand CmdCreateShortcut)
            , act Text.copyPath "Ctrl+Shift+C" (KeyCommand CmdCopyPath)
            , Separator
            ]

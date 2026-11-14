@@ -134,7 +134,12 @@ pub struct JobManager {
     wake: Condvar,
     controls: Mutex<HashMap<u64, Arc<Control>>>,
     undo: Mutex<Vec<UndoStep>>,
+    /// Called with the (from, to) pairs of every finished move, so folder
+    /// colours can follow the folders (REQ-013).
+    on_moved: Mutex<Option<MovedHook>>,
 }
+
+pub type MovedHook = Arc<dyn Fn(&[(PathBuf, PathBuf)]) + Send + Sync>;
 
 impl JobManager {
     pub fn start(app: AppHandle) -> Arc<Self> {
@@ -151,6 +156,7 @@ impl JobManager {
             wake: Condvar::new(),
             controls: Mutex::new(HashMap::new()),
             undo: Mutex::new(Vec::new()),
+            on_moved: Mutex::new(None),
         });
         let worker = manager.clone();
         thread::Builder::new()
@@ -228,6 +234,10 @@ impl JobManager {
 
     fn send(&self, name: &'static str, payload: &impl Serialize) {
         (self.events)(name, serde_json::to_value(payload).unwrap_or_default());
+    }
+
+    pub fn set_on_moved(&self, hook: MovedHook) {
+        *self.on_moved.lock().unwrap() = Some(hook);
     }
 
     pub fn push_undo(&self, step: UndoStep) {
@@ -312,6 +322,12 @@ impl<'a> Runner<'a> {
                 self.emit(true);
                 let dest = PathBuf::from(self.request.dest.clone().unwrap_or_default());
                 let moved: Vec<(PathBuf, PathBuf)> = sources.iter().filter_map(|s| self.move_entry(s, &dest)).collect();
+                if !moved.is_empty() {
+                    let hook = self.manager.on_moved.lock().unwrap().clone();
+                    if let Some(hook) = hook {
+                        hook(&moved);
+                    }
+                }
                 (!moved.is_empty()).then_some(UndoStep::Moved(moved))
             }
             JobKind::Delete => {
@@ -592,6 +608,16 @@ impl<'a> Runner<'a> {
             self.last_emit = Instant::now();
             self.manager.send("job-progress", &self.status);
         }
+    }
+}
+
+/// The (from, to) pairs that taking back this step moves, so folder colours
+/// can follow (REQ-013).
+pub fn undo_moves(step: &UndoStep) -> Vec<(PathBuf, PathBuf)> {
+    match step {
+        UndoStep::Renamed { from, to } => vec![(to.clone(), from.clone())],
+        UndoStep::Moved(pairs) => pairs.iter().map(|(from, to)| (to.clone(), from.clone())).collect(),
+        _ => Vec::new(),
     }
 }
 

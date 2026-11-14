@@ -47,7 +47,8 @@ viewContent model tab =
                 |> Array.toIndexedList
                 |> List.map (\( offset, item ) -> viewRow model tab query template (first + offset) item)
     in
-    div [ class "content" ]
+    -- The whole area takes drops, including the empty-folder message over the rows (FR-COPY-06).
+    div [ class "content", attribute "data-drop" tab.path ]
         [ div
             [ id listId
             , class "list"

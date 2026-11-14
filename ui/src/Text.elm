@@ -588,6 +588,11 @@ undo =
     "Undo"
 
 
+createShortcut : String
+createShortcut =
+    "Create Shortcut"
+
+
 openWith : String -> String
 openWith editor =
     "Open with " ++ editor
@@ -1131,6 +1136,9 @@ commandName id =
 
         "edit.pasteShortcut" ->
             "Paste as Shortcut"
+
+        "edit.createShortcut" ->
+            "Create Shortcut"
 
         "edit.duplicate" ->
             "Duplicate"
