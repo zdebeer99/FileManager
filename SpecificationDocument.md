@@ -89,7 +89,8 @@ Its guiding principle is **no lock-in**: everything File Catalog creates (folder
 - Elm **0.19.3** is used. `elm.json` sets `"elm-version": "0.19.3"`, and the compiler is pinned as a project dev dependency (npm `elm@0.19.3-0`) so every build uses the same version.
 - All UI is written in Elm, using The Elm Architecture (Model / Update / View).
 - Elm talks to the Rust backend only through **ports**. A small, hand-written JavaScript bridge (`ui/static/bridge.js`) connects Elm ports to Tauri's `invoke`, channel and event APIs. No other JavaScript application logic is allowed.
-- Styling uses plain CSS with CSS custom properties for the light and dark themes. No CSS framework.
+- Styling uses plain CSS with CSS custom properties for the light and dark themes. No CSS framework (Tailwind was considered for REQ-018 and not needed; decision log 13.1).
+- **Look ("Studio", REQ-018):** a dark frame (Menu Bar, toolbar, Bookmark Bar, flat tabs with a blue accent line, Address Bar and sidebar) around the file list, which is light in the light theme and dark in the dark theme; a blue status bar; rounder menus and dialogs. The accent is a bright blue (`#60cdff`) on dark surfaces and a deeper blue (`#0f6cbd`) on light ones. Colours are tokens (`--chrome*` for the frame) in `styles.css`.
 - Build: `elm make --optimize`, then minify with `esbuild` (`ui/build.mjs`). Target bundle size: ≤ 250 KB minified, ≤ 80 KB gzipped.
 
 ### 3.3 Main Rust crates
@@ -329,13 +330,14 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 ### 5.8 Content container
 
 - **FR-CC-01** **Details view**: one row per item, with sortable, resizable and reorderable columns (Section 5.8.2). Any column can be shown or hidden by right-clicking a column header or with **View › Columns ▸**, and the choice is part of the folder view (Section 6.5). Visible by default: **Name**, **Date modified**, **Date created**, **Size**, **Sync status** (Sync status only on Windows).
+- **FR-CC-11** Rows are 28 px high (comfortable density), with 18 px icons; column headers are small upper-case labels and alternate rows are faintly striped (REQ-018).
 - **FR-CC-03** The list is **virtualised**: only visible rows (plus a buffer) are drawn, so folders with 100,000 items scroll smoothly (NFR-PERF-05).
 - **FR-CC-04** Selection: click, `Ctrl+click`, `Shift+click`, `Ctrl+A`, keyboard (arrows, `Home`/`End`, `PgUp`/`PgDn`, with `Shift` to extend and `Ctrl` + `Space` to toggle).
 - **FR-CC-05** Type-ahead: typing letters when the list has focus jumps to the next item starting with those letters (reset after 1 s).
 - **FR-CC-06** `Enter` / double-click opens the item. Folders open in the current tab; `Ctrl+Enter` opens a folder in a new tab. `Backspace` / `Alt+Up` goes to the parent folder.
 - **FR-CC-07** Right-click menus (also `Shift+F10` and the Menu key) on items and on empty space, with the commands that apply.
 - **FR-CC-08** Drag and drop: inside the app, out of the window to other apps, and files dropped in from other apps.
-- **FR-ICON-01** Every item shows an icon for its kind: folder, shortcut, web link, or for files a category picked from the extension: text, document, PDF, spreadsheet, presentation, code, archive, program, image, audio, video, e-mail, or other. Each category has its own colour in both themes. Folders show their folder colour (6.4.5). The icons are built into the app; nothing is read from the files. They are used when `view.default.icons = "builtin"`, and in system mode until a system icon has arrived or where there is none.
+- **FR-ICON-01** Every item shows an icon for its kind: folder, shortcut, web link, or for files a category picked from the extension: text, document, PDF, spreadsheet, presentation, code, archive, program, image, audio, video, e-mail, or other. Each category has its own colour in both themes. File icons are two-tone: a pale page tinted in that colour, with a coloured outline and a small symbol for the type; folder icons have a darker back and a lighter front (REQ-018). Toolbar and menu commands use a matching set of line icons. Folders show their folder colour (6.4.5). The icons are built into the app; nothing is read from the files. They are used when `view.default.icons = "builtin"`, and in system mode until a system icon has arrived or where there is none.
 - **FR-ICON-02** With `view.default.icons = "system"` (the default; **View › Icons ▸ System Icons / Built-in Icons**), items show the icons the operating system shows:
   - **Windows:** the shell's icon for each file type and for folders, found from the extension without touching any file. Programs (`.exe`), icon files (`.ico`) and shortcuts (`.lnk`) show their own icon, read from the file.
   - **Linux:** the icon for the file's MIME type (from the shared-mime-info database) in the desktop's icon theme (GTK, GNOME or KDE setting; else Adwaita), following the freedesktop.org Icon Theme Specification, then hicolor. Files have no icon of their own.
@@ -909,9 +911,10 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | REQ-017 Bookmark icons in Bookmark Bar groups | FR-BB-01 |
 | REQ-019 Open in VS Code error (os error 193) | FR-OPEN-06 |
 | REQ-020 Logging errors | NFR-MNT-03 |
+| REQ-018 UI style (visual refresh) | 3.2 (look), FR-CC-11, FR-ICON-01; decision log 13.1 |
 
 **Known limits in c3:**
-- REQ-018 (Tailwind CSS) is not part of c3; its scope is still to be agreed.
+- REQ-018 was built as a visual refresh in plain CSS, without Tailwind. The look was checked in a browser in both themes, not yet in the desktop app on Windows or Linux.
 - Open with VS Code on Windows and writing to the log file were checked with unit tests and in the UI only; they need a test in the app on Windows.
 
 ---
@@ -1002,6 +1005,7 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-03 | M5 cancelled. M1 to M4 released as **0.1.0**, the first stable release. The specification now describes only what 0.1.0 does; all M5 work, the M5 deferrals and the parts found not built are listed in Section 12 for a later version. | 1, 11, 12 |
 | 2026-11-03 | Context view removed from the sidebar (feature request c1); context bookmarks are no longer planned | 5.7, 12 |
 | 2026-11-03 | Folder colours stored in `colours.toml` in the app settings folder, never in the folders | 6.4.5, 8.7 |
+| 2026-11-14 | Visual refresh in the "Studio" direction with plain CSS; Tailwind not adopted (the goal was the look, not the tooling). Comfortable 28 px rows, blue accent, redrawn icons | 3.2, 5.8 |
 
 ---
 

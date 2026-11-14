@@ -938,9 +938,11 @@ type alias Mods =
 -- CONSTANTS
 
 
+{-| Comfortable rows (REQ-018); must match `.row` in styles.css.
+-}
 rowHeight : Float
 rowHeight =
-    24
+    28
 
 
 headerHeight : Float

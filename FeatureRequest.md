@@ -23,7 +23,6 @@
 | ID      | Name                                              | Area                | Description                                                  | Priority | Status   | Update Cycle | Comment       |
 | ------- | ------------------------------------------------- | ------------------- | ------------------------------------------------------------ | -------- | -------- | ------------ | ------------- |
 | REQ-007 | Bookmark Reordering                               | Bookmarks           | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low      | proposal | c9           | 02Nov26 new   |
-| REQ-018 | UI Style                                          | Look and Feel       | Use Tailwind css style sheets to style the application components | Normal   | New      | c3           | 14Nov26 Added |
 | REQ-021 | Topic View                                        | Left Side View      | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" Section Below | Normal   | proposal | c9           | 14Nov26 Added |
 | REQ-022 |                                                   |                     |                                                              |          |          |              |               |
 | REQ-023 |                                                   |                     |                                                              |          |          |              |               |
@@ -62,8 +61,19 @@ This section is still a work in progress.
 | REQ-017 | Bookmark icons not showing | Bookmarks Bar | In the bookmark bar groups the icons is not showing. | Normal | c3 | 14Nov26 Added. 14Nov26 Built: FR-BB-01: group drop-downs show bookmark icons. |
 | REQ-019 | Open in VSCode Error | Command | Open in VSCode is not working, it gives an error.  "Could not open VS Code: %1 is not a valid Win32 application. (os error 193)" | Normal | c3 | 14Nov26 Added. 14Nov26 Built: FR-OPEN-06: on Windows only .exe/.cmd/.bat/.com are started (VS Code's bin\code script was picked). |
 | REQ-020 | Logging Errors | Log File | Errors is not logged in the log file. | Normal | c3 | 14Nov26 Added. 14Nov26 Built: NFR-MNT-03: command errors, listing errors and job errors go to the log. |
+| REQ-018 | UI Style (visual refresh) | Look and Feel | Use Tailwind css style sheets to style the application components | Normal | c3 | 14Nov26 Added. 14Nov26 Decided: a visual refresh, not Tailwind. Built in the "Studio" direction: dark frame and flat tabs, blue accent, 28 px rows, redrawn icons (see details below). |
 
 ## Details
+
+### REQ-018 UI Style (visual refresh)
+
+14Nov26: the aim is a more modern look; Tailwind itself is not needed. Three directions were mocked up (Fluent, Studio, Soft) and **Studio** was chosen:
+
+- A dark frame (menus, toolbar, Bookmark Bar, address bar, sidebar) around the file list, light or dark with the theme.
+- Flat tabs with an accent line on the active tab.
+- Blue accent: the bright blue from the Fluent dark mock-up on dark surfaces, a deeper blue on light ones; blue status bar.
+- Comfortable 28 px rows.
+- Redrawn icons: two-tone file and folder icons, line icons for the toolbar.
 
 ### REQ-004 Favorite Sidebar view update
 
@@ -83,3 +93,4 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **03Nov26 REQ-010 tested on Windows**: system icons load.
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
+- **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
