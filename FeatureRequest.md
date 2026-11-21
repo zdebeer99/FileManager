@@ -1,4 +1,4 @@
-# Feature Requests
+# File Catalog Feature Requests
 2026-11-02
 
  Update Cycle: c3
@@ -20,21 +20,46 @@
 
 ## Open requests
 
-| ID      | Name                                              | Area                | Description                                                  | Priority | Status   | Update Cycle | Comment       |
-| ------- | ------------------------------------------------- | ------------------- | ------------------------------------------------------------ | -------- | -------- | ------------ | ------------- |
-| REQ-007 | Bookmark Reordering                               | Bookmarks           | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Low      | proposal | c9           | 02Nov26 new   |
-| REQ-021 | Topic View                                        | Left Side View      | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" Section Below | Normal   | proposal | c9           | 14Nov26 Added |
-| REQ-022 |                                                   |                     |                                                              |          |          |              |               |
-| REQ-023 |                                                   |                     |                                                              |          |          |              |               |
-| REQ-024 |                                                   |                     |                                                              |          |          |              |               |
+
+
+**Quick Requests**
+
+- Show the file type column by default
+- Remove the Save view button, it's not realy used at this stage.
+- Make the toolbar icons/buttons larger
+- 
+
+**Request table**
+
+| ID      | Name                | Area           | Description                                                  | Priority | Status    | Update Cycle | Comment       |
+| ------- | ------------------- | -------------- | ------------------------------------------------------------ | -------- | --------- | ------------ | ------------- |
+| REQ-007 | Bookmark Reordering | Bookmarks      | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal   | implement | c3           | 02Nov26 new   |
+| REQ-021 | Topic View          | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" Section Below | Normal   | implement | c3           | 14Nov26 Added |
+| REQ-022 | Export file names   | File View      | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal   | implement | c3           | 21Nov26 added |
+| REQ-023 |                     |                |                                                              |          |           |              |               |
+| REQ-024 |                     |                |                                                              |          |           |              |               |
+
+
 
 ### REQ-021 Topic View
 
 2026-11-14
 
+This is very similar behavior than grouped tab supported in chrome.
 
 
-This section is still a work in progress.
+
+- The topic view is a tap on the left side panel, next to bookmark tab.
+- a Topics is a title and short description and a list of folders that is related to each other. The list is build up by the user by adding a folder to a topic. when any of the folders in a topic is opened.
+- The main or start view show the topics title defined, and a `+` to add a new topic.
+- when you click on the topic the topic is opened showing the title at the top, description below and the list of folders, be default the top folder is open in the active tab.
+- in the topic open view you can jump between different folders, delete folders from the topic, delete the topic, change the topic name, and description or navigate back to the main topic view.
+- topic should be searchable and the order can be changed by dragiing them up or down.
+- you can archive or delete a topic, archiving will whow them in a archiving group below all the normal topics. that is hidden by default.
+
+
+
+Great enjoy developing.
 
 
 
