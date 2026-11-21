@@ -1,7 +1,7 @@
 # File Catalog Feature Requests
 2026-11-02
 
- Update Cycle: c3
+ Update Cycle: c4
 
 ## How to use this file
 
@@ -28,10 +28,21 @@
 
 **Request table**
 
-| ID      | Name                | Area           | Description                                                  | Priority | Status    | Update Cycle | Comment       |
-| ------- | ------------------- | -------------- | ------------------------------------------------------------ | -------- | --------- | ------------ | ------------- |
-| REQ-023 |                     |                |                                                              |          |           |              |               |
-| REQ-024 |                     |                |                                                              |          |           |              |               |
+| ID      | Name                | Area            | Description     | Priority | Status | Update Cycle | Comment       |
+| ------- | ------------------- | --------------- | --------------- | -------- | ------ | ------------ | ------------- |
+| REQ-023 | Topics Improvements | Topics Side Bar | See the Req-023 | normal   | new    | c4           | 21Nov26 added |
+| REQ-024 |                     |                 |                 |          |        |              |               |
+| REQ-025 |                     |                 |                 |          |        |              |               |
+| REQ-026 |                     |                 |                 |          |        |              |               |
+| REQ-027 |                     |                 |                 |          |        |              |               |
+| REQ-028 |                     |                 |                 |          |        |              |               |
+
+#### REQ-023 Topics Improvements
+
+- The three button at the bottom of the folders ![image-20261121210836923](./md-FeatureRequest/image-20261121210836923.png) can be removed and added into the dialog window when clicked on the pen icon to edit the topic name and description.
+- The folder name must be editable, you can use the edit icon next to each folder name to open a similiar dialog for changing the folder path, folder name, delete. you can reuse the dialog and functionaltiyt from the bookmarks.
+- reordering the folders in the topic is not working, please fix.
+- when a folder is open thats added in a topic, also open that topic, currently the topic is only selected.
 
 
 
