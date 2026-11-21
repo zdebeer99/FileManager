@@ -8,7 +8,7 @@ use std::io;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table};
+use toml_edit::{Array, ArrayOfTables, DocumentMut, InlineTable, Item, Table, Value};
 
 use crate::paths::{normalize, write_atomic, AppPaths};
 
@@ -18,7 +18,7 @@ const NEW_FILE: &str = "# File Catalog topics. Safe to edit by hand; changes app
 # [[topic]]
 # title       = \"Acme renewal\"
 # description = \"Contract renewal 2026\"
-# folders     = ['C:\\Vendors\\Acme', 'C:\\Projects\\Acme renewal']
+# folders     = ['C:\\Vendors\\Acme', { path = 'C:\\Projects\\Acme renewal', name = \"Project\" }]
 # archived    = false
 
 ";
@@ -30,8 +30,16 @@ pub struct Topic {
     pub index: usize,
     pub title: String,
     pub description: String,
-    pub folders: Vec<String>,
+    pub folders: Vec<TopicFolder>,
     pub archived: bool,
+}
+
+/// A folder in a topic: its path and, optionally, the name shown for it
+/// instead of the folder's own name (REQ-023).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct TopicFolder {
+    pub path: String,
+    pub name: String,
 }
 
 #[derive(Serialize, Debug, Default)]
@@ -75,6 +83,19 @@ pub enum Edit {
         index: usize,
         path: String,
     },
+    /// Changes one folder's path and shown name (REQ-023). An empty name shows the folder's own name.
+    UpdateFolder {
+        index: usize,
+        path: String,
+        new_path: String,
+        name: String,
+    },
+    /// Drag and drop: put a folder before another folder of the topic, or at the end (REQ-023).
+    MoveFolder {
+        index: usize,
+        path: String,
+        before: Option<String>,
+    },
 }
 
 pub fn load(paths: &AppPaths) -> Topics {
@@ -99,7 +120,19 @@ pub fn load(paths: &AppPaths) -> Topics {
         let folders = entry
             .get("folders")
             .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|p| p.as_str()).map(expand_home).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|f| match f {
+                        toml::Value::String(path) => Some((path.as_str(), "")),
+                        toml::Value::Table(t) => Some((
+                            t.get("path").and_then(|p| p.as_str())?,
+                            t.get("name").and_then(|n| n.as_str()).unwrap_or_default(),
+                        )),
+                        _ => None,
+                    })
+                    .map(|(path, name)| TopicFolder { path: expand_home(path), name: name.trim().to_string() })
+                    .collect()
+            })
             .unwrap_or_default();
         result.topics.push(Topic {
             index,
@@ -130,7 +163,7 @@ pub fn apply(paths: &AppPaths, edit: Edit) -> Result<(), String> {
             let mut entry = Table::new();
             entry["title"] = toml_edit::value(title.trim());
             entry["description"] = toml_edit::value(description.trim());
-            entry["folders"] = toml_edit::value(folder_array(&unique_folders(&[], &folders)));
+            entry["folders"] = toml_edit::value(folder_array(&unique_folders(Vec::new(), &folders)));
             entry["archived"] = toml_edit::value(false);
             topic_tables(&mut doc).push(entry);
         }
@@ -182,14 +215,40 @@ pub fn apply(paths: &AppPaths, edit: Edit) -> Result<(), String> {
             if wanted.is_empty() {
                 return Err("Only folders can be added to a topic.".into());
             }
-            entry["folders"] = toml_edit::value(folder_array(&unique_folders(&current, &wanted)));
+            entry["folders"] = toml_edit::value(folder_array(&unique_folders(current, &wanted)));
         }
         Edit::RemoveFolder { index, path } => {
             let entry = topic_tables(&mut doc).get_mut(index).ok_or_else(missing)?;
-            let key = normalize(&path);
-            let kept: Vec<String> =
-                folders_of(entry).into_iter().filter(|f| normalize(&expand_home(f)) != key).collect();
+            let kept: Vec<Folder> = folders_of(entry).into_iter().filter(|f| !f.is(&path)).collect();
             entry["folders"] = toml_edit::value(folder_array(&kept));
+        }
+        Edit::UpdateFolder { index, path, new_path, name } => {
+            let entry = topic_tables(&mut doc).get_mut(index).ok_or_else(missing)?;
+            let new_path = new_path.trim();
+            if new_path.is_empty() {
+                return Err("Enter the folder's path.".into());
+            }
+            let new_path = normalize(&expand_home(new_path));
+            let mut folders = folders_of(entry);
+            let at = folders.iter().position(|f| f.is(&path)).ok_or("That folder is no longer in the topic.")?;
+            if folders.iter().enumerate().any(|(i, f)| i != at && f.is(&new_path)) {
+                return Err("That folder is already in the topic.".into());
+            }
+            // Keep the user's spelling (for example with `~`) when the path did not change.
+            if !folders[at].is(&new_path) {
+                folders[at].path = new_path;
+            }
+            folders[at].name = name.trim().to_string();
+            entry["folders"] = toml_edit::value(folder_array(&folders));
+        }
+        Edit::MoveFolder { index, path, before } => {
+            let entry = topic_tables(&mut doc).get_mut(index).ok_or_else(missing)?;
+            let mut folders = folders_of(entry);
+            let from = folders.iter().position(|f| f.is(&path)).ok_or("That folder is no longer in the topic.")?;
+            let moved = folders.remove(from);
+            let to = before.and_then(|b| folders.iter().position(|f| f.is(&b))).unwrap_or(folders.len());
+            folders.insert(to, moved);
+            entry["folders"] = toml_edit::value(folder_array(&folders));
         }
     }
 
@@ -207,28 +266,69 @@ fn topic_tables(doc: &mut DocumentMut) -> &mut ArrayOfTables {
     doc["topic"].as_array_of_tables_mut().expect("just created")
 }
 
-fn folders_of(entry: &Table) -> Vec<String> {
-    entry
-        .get("folders")
-        .and_then(Item::as_array)
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_default()
+/// A folder as written in the file: the path keeps the user's spelling (`~`).
+#[derive(Clone, Debug)]
+struct Folder {
+    path: String,
+    name: String,
+}
+
+impl Folder {
+    fn is(&self, path: &str) -> bool {
+        same_path(&normalize(&expand_home(&self.path)), &normalize(&expand_home(path)))
+    }
+}
+
+/// Paths compare without case on Windows.
+fn same_path(a: &str, b: &str) -> bool {
+    if cfg!(windows) {
+        a.eq_ignore_ascii_case(b) || a.to_lowercase() == b.to_lowercase()
+    } else {
+        a == b
+    }
+}
+
+fn folders_of(entry: &Table) -> Vec<Folder> {
+    let Some(array) = entry.get("folders").and_then(Item::as_array) else { return Vec::new() };
+    array
+        .iter()
+        .filter_map(|v| match v {
+            Value::String(s) => Some(Folder { path: s.value().clone(), name: String::new() }),
+            Value::InlineTable(t) => Some(Folder {
+                path: t.get("path")?.as_str()?.to_string(),
+                name: t.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// `current` followed by the `added` folders it does not have yet.
-fn unique_folders(current: &[String], added: &[String]) -> Vec<String> {
-    let mut result: Vec<String> = current.to_vec();
+fn unique_folders(mut current: Vec<Folder>, added: &[String]) -> Vec<Folder> {
     for folder in added {
-        let key = normalize(folder);
-        if !result.iter().any(|f| normalize(&expand_home(f)) == key) {
-            result.push(key);
+        if !current.iter().any(|f| f.is(folder)) {
+            current.push(Folder { path: normalize(folder), name: String::new() });
         }
     }
-    result
+    current
 }
 
-fn folder_array(folders: &[String]) -> Array {
-    folders.iter().map(String::as_str).collect()
+/// A folder without a name is written as a plain path; one with a name as
+/// `{ path = '…', name = "…" }`.
+fn folder_array(folders: &[Folder]) -> Array {
+    folders
+        .iter()
+        .map(|f| -> Value {
+            if f.name.is_empty() {
+                f.path.as_str().into()
+            } else {
+                let mut table = InlineTable::new();
+                table.insert("path", f.path.as_str().into());
+                table.insert("name", f.name.as_str().into());
+                table.into()
+            }
+        })
+        .collect()
 }
 
 fn expand_home(path: &str) -> String {
@@ -264,7 +364,8 @@ mod tests {
         apply(&paths, Edit::AddFolders { index: 1, paths: vec![b.clone(), b.clone(), a.clone()] }).unwrap();
         assert!(apply(&paths, Edit::AddFolders { index: 1, paths: vec![file.to_string_lossy().into()] }).is_err());
         let loaded = load(&paths);
-        assert_eq!(loaded.topics[1].folders, [normalize(&b), normalize(&a)]);
+        let paths_of = |t: &Topic| t.folders.iter().map(|f| f.path.clone()).collect::<Vec<_>>();
+        assert_eq!(paths_of(&loaded.topics[1]), [normalize(&b), normalize(&a)]);
 
         apply(&paths, Edit::RemoveFolder { index: 1, path: a.clone() }).unwrap();
         apply(&paths, Edit::Update { index: 0, title: "First".into(), description: "edited".into() }).unwrap();
@@ -273,13 +374,64 @@ mod tests {
         let loaded = load(&paths);
         let titles: Vec<&str> = loaded.topics.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(titles, ["Two", "First"]);
-        assert_eq!(loaded.topics[0].folders, [normalize(&b)]);
+        assert_eq!(paths_of(&loaded.topics[0]), [normalize(&b)]);
         assert!(loaded.topics[1].archived);
         assert_eq!(loaded.topics[1].description, "edited");
 
         apply(&paths, Edit::Remove { index: 0 }).unwrap();
         assert_eq!(load(&paths).topics.len(), 1);
         assert!(apply(&paths, Edit::Remove { index: 5 }).is_err());
+    }
+
+    #[test]
+    fn folders_are_renamed_repointed_and_reordered() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        let folder = |name: &str| {
+            let p = dir.path().join(name);
+            fs::create_dir_all(&p).unwrap();
+            normalize(&p.to_string_lossy())
+        };
+        let (a, b, c, d) = (folder("A"), folder("B"), folder("C"), folder("D"));
+        apply(
+            &paths,
+            Edit::Add { title: "T".into(), description: String::new(), folders: vec![a.clone(), b.clone(), c.clone()] },
+        )
+        .unwrap();
+        let list = |p: &AppPaths| load(p).topics[0].folders.clone();
+
+        // A shown name is written as an inline table and read back.
+        apply(
+            &paths,
+            Edit::UpdateFolder { index: 0, path: b.clone(), new_path: b.clone(), name: " Contracts ".into() },
+        )
+        .unwrap();
+        assert!(fs::read_to_string(paths.topics_file()).unwrap().contains("name = \"Contracts\""));
+        assert_eq!(list(&paths)[1], TopicFolder { path: b.clone(), name: "Contracts".into() });
+
+        // A new path keeps the name; a path already in the topic is refused.
+        apply(&paths, Edit::UpdateFolder { index: 0, path: b.clone(), new_path: d.clone(), name: "Contracts".into() })
+            .unwrap();
+        assert_eq!(list(&paths)[1].path, d);
+        assert!(apply(
+            &paths,
+            Edit::UpdateFolder { index: 0, path: d.clone(), new_path: a.clone(), name: String::new() }
+        )
+        .is_err());
+
+        // Moving before another folder, and to the end.
+        apply(&paths, Edit::MoveFolder { index: 0, path: c.clone(), before: Some(a.clone()) }).unwrap();
+        let order = |p: &AppPaths| list(p).into_iter().map(|f| f.path).collect::<Vec<_>>();
+        assert_eq!(order(&paths), [c.clone(), a.clone(), d.clone()]);
+        apply(&paths, Edit::MoveFolder { index: 0, path: c.clone(), before: None }).unwrap();
+        assert_eq!(order(&paths), [a.clone(), d.clone(), c.clone()]);
+
+        // Clearing the name writes a plain path again; removing works on named folders.
+        apply(&paths, Edit::UpdateFolder { index: 0, path: d.clone(), new_path: d.clone(), name: String::new() })
+            .unwrap();
+        assert!(!fs::read_to_string(paths.topics_file()).unwrap().contains("name = \"Contracts\""));
+        apply(&paths, Edit::RemoveFolder { index: 0, path: d.clone() }).unwrap();
+        assert_eq!(order(&paths), [a, c]);
     }
 
     #[test]

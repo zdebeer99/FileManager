@@ -1,4 +1,4 @@
-module Path exposing (Crumb, crumbs, name, parent)
+module Path exposing (Crumb, crumbs, isInside, name, parent, samePath)
 
 {-| Paths are kept as the strings the backend uses: `C:\Vendors\Acme`,
 `\\server\share\Docs` or `/home/user/Docs`, with no trailing separator.
@@ -78,3 +78,39 @@ name sep path =
         |> List.head
         |> Maybe.map .label
         |> Maybe.withDefault path
+
+
+{-| Whether two paths name the same folder. Windows paths ignore case.
+-}
+samePath : String -> String -> String -> Bool
+samePath sep a b =
+    if sep == "\\" then
+        String.toLower a == String.toLower b
+
+    else
+        a == b
+
+
+{-| Whether `path` is `folder` or inside it.
+-}
+isInside : String -> String -> String -> Bool
+isInside sep folder path =
+    let
+        fold =
+            if sep == "\\" then
+                String.toLower
+
+            else
+                identity
+
+        f =
+            fold folder
+
+        withSep =
+            if String.endsWith sep f then
+                f
+
+            else
+                f ++ sep
+    in
+    fold path == f || String.startsWith withSep (fold path)

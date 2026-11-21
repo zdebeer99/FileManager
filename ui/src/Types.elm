@@ -213,6 +213,7 @@ type Dialog
     | ShortcutsDialog ShortcutsState
     | ToolbarDialog ToolbarForm
     | TopicDialog TopicForm
+    | TopicFolderDialog TopicFolderForm
 
 
 {-| New Topic and Edit Topic (REQ-021). A new topic starts with `folders`.
@@ -222,6 +223,18 @@ type alias TopicForm =
     , title : String
     , description : String
     , folders : List String
+    , archived : Bool
+    , error : Maybe String
+    }
+
+
+{-| Editing one folder of a topic (REQ-023): the name shown for it and its path.
+-}
+type alias TopicFolderForm =
+    { topic : Int
+    , path : String
+    , newPath : String
+    , name : String
     , error : Maybe String
     }
 
@@ -482,8 +495,16 @@ type alias Topic =
     { index : Int
     , title : String
     , description : String
-    , folders : List String
+    , folders : List TopicFolder
     , archived : Bool
+    }
+
+
+{-| A folder in a topic, with the name shown for it ("" shows the folder's own name).
+-}
+type alias TopicFolder =
+    { path : String
+    , name : String
     }
 
 
@@ -635,6 +656,8 @@ type Drag
     | MoveBookmark { index : Int, name : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool, over : Maybe BookmarkDrop }
       -- Reordering topics (REQ-021).
     | MoveTopic { index : Int, title : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
+      -- Reordering the folders of an open topic (REQ-023).
+    | MoveTopicFolder { topic : Int, path : String, label : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
 
 
 type Region
@@ -834,6 +857,12 @@ type Msg
     | DeleteTopic Int
     | RemoveTopic Int
     | TopicMouseDown Int String Float Float
+    | TopicFolderMouseDown Int String String Float Float
+    | EditTopicFolder Int TopicFolder
+    | TopicFolderPath String
+    | TopicFolderName String
+    | TopicFolderSubmit
+    | TopicFolderRemove
     | ToggleBookmarkGroup String
     | BookmarkMouseDown Int String Float Float
     | BookmarkDragOver (Maybe BookmarkDrop)

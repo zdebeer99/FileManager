@@ -7,6 +7,7 @@ import Html exposing (Html, button, div, input, label, span, text)
 import Html.Attributes exposing (attribute, class, classList, id, spellcheck, value)
 import Html.Events exposing (onBlur, onClick, onFocus, onInput, preventDefaultOn)
 import Json.Decode as D
+import Json.Encode
 import Text
 import Types exposing (..)
 import View.Common exposing (field, inputKeys, viewIf)
@@ -31,6 +32,9 @@ viewDialog model =
 
         Just (TopicDialog form) ->
             viewTopicDialog form
+
+        Just (TopicFolderDialog form) ->
+            viewTopicFolderDialog form
 
         Just (ConfirmDialog confirm) ->
             div [ class "overlay" ]
@@ -273,8 +277,69 @@ viewTopicDialog form =
                 Nothing ->
                     text ""
             , div [ class "dialog-actions" ]
-                [ button [ onClick DialogCancel ] [ text Text.cancel ]
-                , button [ class "primary", onClick TopicSubmit ] [ text Text.save ]
+                ((case form.index of
+                    -- Archive and Delete live here, not under the folders (REQ-023).
+                    Just index ->
+                        [ button [ class "danger", onClick (DeleteTopic index) ] [ text Text.deleteTopic ]
+                        , button
+                            [ onClick (TopicEditOp [ ( "op", Json.Encode.string "archive" ), ( "index", Json.Encode.int index ), ( "archived", Json.Encode.bool (not form.archived) ) ]) ]
+                            [ text
+                                (if form.archived then
+                                    Text.unarchiveTopic
+
+                                 else
+                                    Text.archiveTopic
+                                )
+                            ]
+                        , span [ class "dialog-spacer" ] []
+                        ]
+
+                    Nothing ->
+                        []
+                 )
+                    ++ [ button [ onClick DialogCancel ] [ text Text.cancel ]
+                       , button [ class "primary", onClick TopicSubmit ] [ text Text.save ]
+                       ]
+                )
+            ]
+        ]
+
+
+{-| One folder of a topic (REQ-023): the name shown for it, its path, and
+Remove from Topic. Like the bookmark dialog; the folder itself is not renamed.
+-}
+viewTopicFolderDialog : TopicFolderForm -> Html Msg
+viewTopicFolderDialog form =
+    div [ class "overlay" ]
+        [ div
+            [ class "dialog"
+            , attribute "role" "dialog"
+            , Html.Events.custom "keydown"
+                (inputKeys [ "Enter", "Escape" ]
+                    (\key ->
+                        if key == "Enter" then
+                            TopicFolderSubmit
+
+                        else
+                            DialogCancel
+                    )
+                )
+            ]
+            [ div [ class "dialog-title" ] [ text Text.editTopicFolderTitle ]
+            , field Text.name dialogFirstInputId form.name TopicFolderName
+            , field Text.topicFolderPath "dialog-target" form.newPath TopicFolderPath
+            , div [ class "hint" ] [ text Text.topicFolderHint ]
+            , case form.error of
+                Just error ->
+                    div [ class "dialog-error" ] [ text error ]
+
+                Nothing ->
+                    text ""
+            , div [ class "dialog-actions" ]
+                [ button [ class "danger", onClick TopicFolderRemove ] [ text Text.removeFromTopic ]
+                , span [ class "dialog-spacer" ] []
+                , button [ onClick DialogCancel ] [ text Text.cancel ]
+                , button [ class "primary", onClick TopicFolderSubmit ] [ text Text.save ]
                 ]
             ]
         ]

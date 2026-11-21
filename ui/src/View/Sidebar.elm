@@ -550,36 +550,6 @@ viewTopics model tab =
             viewTopicList model tab
 
 
-{-| Whether `path` is `folder` or inside it (Windows paths ignore case).
--}
-isInFolder : String -> String -> String -> Bool
-isInFolder sep folder path =
-    let
-        fold =
-            if sep == "\\" then
-                String.toLower
-
-            else
-                identity
-
-        f =
-            fold folder
-
-        p =
-            fold path
-    in
-    p
-        == f
-        || String.startsWith
-            (if String.endsWith sep f then
-                f
-
-             else
-                f ++ sep
-            )
-            p
-
-
 topicEdit : String -> Topic -> List ( String, Json.Encode.Value ) -> Msg
 topicEdit op topic extra =
     TopicEditOp (( "op", Json.Encode.string op ) :: ( "index", Json.Encode.int topic.index ) :: extra)
@@ -618,7 +588,8 @@ viewTopicList model tab =
         matches topic =
             search
                 == ""
-                || List.any (\t -> String.contains search (String.toLower t)) (topic.title :: topic.description :: topic.folders)
+                || List.any (\t -> String.contains search (String.toLower t))
+                    (topic.title :: topic.description :: List.concatMap (\f -> [ f.path, f.name ]) topic.folders)
 
         matching =
             List.filter matches model.topics
@@ -660,7 +631,7 @@ viewTopicList model tab =
         row topic =
             button
                 ([ class "side-item topic-item"
-                 , classList [ ( "current", List.any (\f -> isInFolder model.sep f tab.path) topic.folders ) ]
+                 , classList [ ( "current", List.any (\f -> Path.isInside model.sep f.path tab.path) topic.folders ) ]
                  , onClick (OpenTopic topic.index)
                  , contextMenu (entries topic)
                  , title
@@ -761,36 +732,82 @@ viewTopicList model tab =
     ]
 
 
-{-| An open topic: its title and description, its folders (click to open
-one in the active tab), and Edit, Archive and Delete.
+{-| An open topic (REQ-021, REQ-023): its title and description, and its
+folders. Click a folder to open it in the active tab, drag it up or down to
+reorder, or use ✎ to change its name or path. ✎ in the header edits, archives
+or deletes the topic.
 -}
 viewOpenTopic : Model -> Tab -> Topic -> List (Html Msg)
 viewOpenTopic model tab topic =
     let
-        action label msg =
-            Action { label = label, key = "", msg = Just msg, checked = Nothing }
+        action entryLabel msg =
+            Action { label = entryLabel, key = "", msg = Just msg, checked = Nothing }
 
         hasOpen =
-            List.any (\f -> isInFolder model.sep f tab.path && String.length f == String.length tab.path) topic.folders
+            List.any (\f -> Path.samePath model.sep f.path tab.path) topic.folders
 
-        folderRow path =
-            button
-                ([ class "side-item"
-                 , classList [ ( "current", isInFolder model.sep path tab.path ) ]
-                 , onClick (NavigateTo path)
-                 , on "auxclick" (middleClick (NavigateNewTab path))
-                 , contextMenu
-                    (folderEntries model path
-                        ++ [ Separator, action Text.removeFromTopic (topicEdit "removeFolder" topic [ ( "path", Json.Encode.string path ) ]) ]
-                    )
-                 , title path
-                 ]
-                    ++ dropTarget model (DropFolder path) path
+        shownName folder =
+            if folder.name == "" then
+                Path.name model.sep folder.path
+
+            else
+                folder.name
+
+        dragSource folder =
+            on "mousedown"
+                (D.field "button" D.int
+                    |> D.andThen
+                        (\b ->
+                            if b == 0 then
+                                D.map2 (TopicFolderMouseDown topic.index folder.path (shownName folder)) (D.field "clientX" D.float) (D.field "clientY" D.float)
+
+                            else
+                                D.fail "not the left button"
+                        )
                 )
-                [ viewFolderIcon model path, span [ class "label" ] [ text (Path.name model.sep path) ] ]
+
+        folderRow folder =
+            div
+                ([ class "side-item topic-folder"
+                 , classList [ ( "current", Path.samePath model.sep folder.path tab.path ) ]
+                 , onClick (NavigateTo folder.path)
+                 , on "auxclick" (middleClick (NavigateNewTab folder.path))
+                 , contextMenu
+                    (folderEntries model folder.path
+                        ++ [ Separator
+                           , action Text.editTopicFolder (EditTopicFolder topic.index folder)
+                           , action Text.removeFromTopic (topicEdit "removeFolder" topic [ ( "path", Json.Encode.string folder.path ) ])
+                           ]
+                    )
+                 , title folder.path
+                 , dragSource folder
+                 , attribute "data-topic-drop" folder.path
+                 ]
+                    ++ dropTarget model (DropFolder folder.path) folder.path
+                )
+                [ viewFolderIcon model folder.path
+                , span [ class "label" ] [ text (shownName folder) ]
+                , button
+                    [ class "topic-folder-edit"
+                    , stopPropagationOn "click" (D.succeed ( EditTopicFolder topic.index folder, True ))
+                    , stopPropagationOn "mousedown" (D.succeed ( NoOp, True ))
+                    , title Text.editTopicFolder
+                    , attribute "aria-label" Text.editTopicFolder
+                    , tabindex -1
+                    ]
+                    [ text "✎" ]
+                ]
 
         topicDrop =
             dropTarget model (DropTopic topic.index) ("topic:" ++ String.fromInt topic.index)
+
+        draggingFolder =
+            case model.drag of
+                Just (MoveTopicFolder d) ->
+                    d.moved
+
+                _ ->
+                    False
     in
     [ div ([ class "fav-header" ] ++ topicDrop)
         [ button [ class "fav-up", onClick CloseTopic, title Text.backToTopics, attribute "aria-label" Text.backToTopics ] [ text "‹" ]
@@ -802,30 +819,18 @@ viewOpenTopic model tab topic =
 
       else
         div [ class "topic-description" ] [ text topic.description ]
+    , div [ classList [ ( "topics", True ), ( "topic-dragging", draggingFolder ) ] ]
+        ((if List.isEmpty topic.folders then
+            [ div ([ class "sidebar-empty" ] ++ topicDrop) [ text Text.topicNoFolders ] ]
+
+          else
+            List.map folderRow topic.folders
+         )
+            ++ [ if tab.search == Nothing && not hasOpen then
+                    button [ class "side-add topic-end", onClick (addFolderOp topic tab.path), attribute "data-topic-drop" "end" ] [ text Text.addOpenFolder ]
+
+                 else
+                    div [ class "topic-end topic-end-space", attribute "data-topic-drop" "end" ] []
+               ]
+        )
     ]
-        ++ (if List.isEmpty topic.folders then
-                [ div ([ class "sidebar-empty" ] ++ topicDrop) [ text Text.topicNoFolders ] ]
-
-            else
-                List.map folderRow topic.folders
-           )
-        ++ (if tab.search == Nothing && not hasOpen then
-                [ button [ class "side-add", onClick (addFolderOp topic tab.path) ] [ text Text.addOpenFolder ] ]
-
-            else
-                []
-           )
-        ++ [ div [ class "topic-actions" ]
-                [ button [ onClick (EditTopic (Just topic.index) []) ] [ text Text.edit ]
-                , button [ onClick (topicEdit "archive" topic [ ( "archived", Json.Encode.bool (not topic.archived) ) ]) ]
-                    [ text
-                        (if topic.archived then
-                            Text.unarchiveTopic
-
-                         else
-                            Text.archiveTopic
-                        )
-                    ]
-                , button [ class "danger", onClick (DeleteTopic topic.index) ] [ text Text.deleteTopic ]
-                ]
-           ]

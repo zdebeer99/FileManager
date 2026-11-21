@@ -1791,3 +1791,28 @@ topicFolderCount count =
 
     else
         String.fromInt count ++ " folders"
+
+
+editTopicFolder : String
+editTopicFolder =
+    "Edit Folder…"
+
+
+editTopicFolderTitle : String
+editTopicFolderTitle =
+    "Edit folder in topic"
+
+
+topicFolderPath : String
+topicFolderPath =
+    "Folder"
+
+
+topicFolderHint : String
+topicFolderHint =
+    "The name is only shown in this topic; leave it empty to show the folder's own name. The folder itself is not renamed."
+
+
+topicFolderPathNeeded : String
+topicFolderPathNeeded =
+    "Enter the folder's path."

@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycles **c1**, **c2** and **c3** are built on top of it and not yet released (Sections 11.2 to 11.5). |
-| Changes | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
+| Status | 0.1.0 released. Update cycles **c1** to **c4** are built on top of it and not yet released (Sections 11.2 to 11.6). |
+| Changes | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
+| | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
 | | c3 (unreleased, 2026-11-14): Create Shortcut (FR-NEW-06); folder colours follow renamed and moved folders (FR-FCOL-03); Favourites drops anywhere on the file list copy, and Cut/Copy in its menus (FR-FAV-03); icons in Bookmark Bar groups (FR-BB-01); errors written to the log (NFR-MNT-03); fixes for the command palette width and Open with VS Code on Windows (FR-OPEN-06). |
 | | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5); Open with a text editor (FR-OPEN-06, `[editor]` 8.3); menus kept on screen (FR-MENU-02); tab colours (FR-TAB-06). |
 | | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
@@ -468,7 +469,9 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 A **topic** is a title, a short description and a list of related folders, for example every folder that belongs to one project or one contract, wherever the folders are (REQ-021). It works like a group of browser tabs.
 
 - **FR-TOP-01** The sidebar's **Topics** view (`Ctrl+Shift+4`, command `view.sidebarMode.topics`) lists the topics in the user's order, with a search box (title, description and folder paths), the number of folders in each, and **+ New Topic**. Topics that contain the open folder, or a folder above it, are marked. Archived topics are in an *Archived* group below the others, folded away until its heading is clicked (shown open while searching).
-- **FR-TOP-02** Clicking a topic opens it: the title at the top with *Back* (‹) to the list and ✎ to edit, the description below, and the folders. Opening a topic also opens its first folder in the active tab. Clicking a folder opens it in the active tab; middle-click opens a new tab. The open view also offers *+ Add the open folder*, *Edit…* (title and description), *Archive* / *Unarchive* and *Delete…* (asks first; only the topic is deleted, never the folders). A folder's right-click menu there adds *Remove from Topic*.
+- **FR-TOP-02** Clicking a topic opens it: the title at the top with *Back* (‹) to the list and ✎ to edit, the description below, and the folders. Opening a topic also opens its first folder in the active tab. Clicking a folder opens it in the active tab; middle-click opens a new tab. The open view also offers *+ Add the open folder*. ✎ in the header opens the topic dialog: title, description, *Archive* / *Unarchive* and *Delete…* (asks first; only the topic is deleted, never the folders) (REQ-023).
+- **FR-TOP-06** Each folder in an open topic has ✎ (shown on hover) and *Edit Folder…* in its right-click menu (REQ-023). The dialog, like the bookmark dialog, changes the **name** shown for the folder in this topic (empty: the folder's own name; the folder itself is never renamed) and its **path**, and offers *Remove from Topic*. A path that is already in the topic is refused. The folders of an open topic are reordered by dragging them up or down; dropping below the last folder moves one to the end.
+- **FR-TOP-07** When the active tab goes to a folder that belongs to a topic (the folder itself or a folder inside it), that topic is opened in the Topics view (REQ-023). The open topic stays open when it has the folder; otherwise a topic with exactly that folder is preferred to one with a folder above it, and topics that are not archived to archived ones. *Back* (‹) shows the list until the next folder change.
 - **FR-TOP-03** Folders are added with **Add to Topic ▸** in the right-click menu of folders (file list, empty space for the current folder, folder tree, Favourites), which lists the topics that are not archived and *New Topic…* (the new topic starts with those folders), or by dragging folders, from the file list or from other apps, onto a topic. Files are skipped, and a folder is never added twice.
 - **FR-TOP-04** Topics are reordered by dragging them up or down. A topic's right-click menu offers Open, Edit…, Add the open folder, Archive / Unarchive and Delete….
 - **FR-TOP-05** Topics are stored only in `topics.toml` in the app settings folder (Section 8.8), never in the folders. The file can be edited by hand and is reloaded when it changes.
@@ -847,11 +850,11 @@ An unknown colour is skipped and reported; a file with errors is never overwritt
 [[topic]]
 title       = "Acme renewal"
 description = "Contract renewal 2026"
-folders     = ['C:\Vendors\Acme', 'C:\Projects\Acme renewal', '~\Documents\Meetings\Acme']
+folders     = ['C:\Vendors\Acme', { path = 'C:\Projects\Acme renewal', name = "Project" }, '~\Documents\Meetings\Acme']
 archived    = false
 ```
 
-Topics are listed in file order. A topic without a title is shown as *Topic 1*, *Topic 2*…. A file with errors is reported and never overwritten (NFR-REL-03); each change keeps the previous file as `topics.toml.bak`.
+A folder is a path, or `{ path = '…', name = "…" }` when it has a name of its own in that topic (FR-TOP-06). Topics are listed in file order. A topic without a title is shown as *Topic 1*, *Topic 2*…. A file with errors is reported and never overwritten (NFR-REL-03); each change keeps the previous file as `topics.toml.bak`.
 
 ---
 
@@ -963,6 +966,14 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 - A topic keeps folder paths only: a folder that is renamed or moved (in File Catalog or elsewhere) stays listed under its old path until it is removed from the topic.
 - All three features were checked with unit tests (Rust) and in a browser with a stand-in backend; the save dialog and the drags need a test in the app on Windows and Linux.
 
+
+### 11.6 Update cycle c4 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-023 Topics improvements | FR-TOP-02 (Archive and Delete moved into the topic dialog), FR-TOP-06 (edit a folder's name and path; reorder folders by dragging), FR-TOP-07 (opening a folder opens its topic), 8.8 |
+
+**Known limits:** checked with unit tests (Rust) and in a browser with a stand-in backend; the drags need a test in the app on Windows and Linux.
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -1055,6 +1066,7 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-21 | Type column shown by default; Save View taken out of the default toolbar (kept in the View menu and on `Ctrl+S`); larger toolbar buttons | FR-CC-01, FR-TB-04 |
 | 2026-11-21 | Topics (REQ-021) kept in `topics.toml` in the app settings folder, as a fourth sidebar view; opening a topic opens its first folder in the active tab; folders added with *Add to Topic ▸* or by dragging; archived topics folded away by default | 6.4.6, 8.8 |
 | 2026-11-21 | Export File List writes visible names only, in screen order, not recursive, as a `.txt` chosen in a save dialog | FR-OPEN-07 |
+| 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
 
 ---
 

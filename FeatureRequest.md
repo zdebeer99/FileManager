@@ -30,21 +30,11 @@
 
 | ID      | Name                | Area            | Description     | Priority | Status | Update Cycle | Comment       |
 | ------- | ------------------- | --------------- | --------------- | -------- | ------ | ------------ | ------------- |
-| REQ-023 | Topics Improvements | Topics Side Bar | See the Req-023 | normal   | new    | c4           | 21Nov26 added |
 | REQ-024 |                     |                 |                 |          |        |              |               |
 | REQ-025 |                     |                 |                 |          |        |              |               |
 | REQ-026 |                     |                 |                 |          |        |              |               |
 | REQ-027 |                     |                 |                 |          |        |              |               |
 | REQ-028 |                     |                 |                 |          |        |              |               |
-
-#### REQ-023 Topics Improvements
-
-- The three button at the bottom of the folders ![image-20261121210836923](./md-FeatureRequest/image-20261121210836923.png) can be removed and added into the dialog window when clicked on the pen icon to edit the topic name and description.
-- The folder name must be editable, you can use the edit icon next to each folder name to open a similiar dialog for changing the folder path, folder name, delete. you can reuse the dialog and functionaltiyt from the bookmarks.
-- reordering the folders in the topic is not working, please fix.
-- when a folder is open thats added in a topic, also open that topic, currently the topic is only selected.
-
-
 
 ## Done
 
@@ -71,10 +61,20 @@
 | REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal | c3 | 02Nov26 new. 21Nov26 Built: FR-BM-07: drag in the sidebar and on the Bookmark Bar; drop on a bookmark (before it) or a group (end of it). |
 | REQ-021 | Topic View | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" below. | Normal | c3 | 14Nov26 Added. 21Nov26 Built: spec 6.4.6 (FR-TOP-01 to 05), topics.toml (8.8): fourth sidebar view, Add to Topic in folder menus, drag folders onto a topic. |
 | REQ-022 | Export file names | File View | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal | c3 | 21Nov26 added. 21Nov26 Built: FR-OPEN-07: Export File List… (right-click on empty space, File menu, palette); the names shown, one per line, in a .txt you choose. |
+| REQ-023 | Topics Improvements | Topics Side Bar | See "REQ-023 Topics Improvements" below. | Normal | c4 | 21Nov26 added. 21Nov26 Built: FR-TOP-02 (Archive and Delete in the ✎ topic dialog), FR-TOP-06 (✎ per folder: name shown and path, Remove from Topic; drag folders to reorder), FR-TOP-07 (opening a folder opens its topic). |
 | — | Quick requests | General | Show the Type column by default; remove the Save View button; larger toolbar buttons. | Normal | c3 | 21Nov26 Built: FR-CC-01 (Type column), FR-TB-04 (Save View out of the default toolbar, 36 × 34 px buttons). |
 | REQ-018 | UI Style (visual refresh) | Look and Feel | Use Tailwind css style sheets to style the application components | Normal | c3 | 14Nov26 Added. 14Nov26 Decided: a visual refresh, not Tailwind. Built in the "Studio" direction: dark frame and flat tabs, blue accent, 28 px rows, redrawn icons (see details below). |
 
 ## Details
+
+### REQ-023 Topics Improvements
+
+- The three button at the bottom of the folders ![image-20261121210836923](./md-FeatureRequest/image-20261121210836923.png) can be removed and added into the dialog window when clicked on the pen icon to edit the topic name and description.
+- The folder name must be editable, you can use the edit icon next to each folder name to open a similiar dialog for changing the folder path, folder name, delete. you can reuse the dialog and functionaltiyt from the bookmarks.
+- reordering the folders in the topic is not working, please fix.
+- when a folder is open thats added in a topic, also open that topic, currently the topic is only selected.
+
+21Nov26 built. The folder name is a label shown in the topic only; the folder on disk is not renamed (spec FR-TOP-06).
 
 ### REQ-021 Topic View
 
@@ -125,4 +125,5 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
+- **21Nov26 c4 built** on branch `dev`: REQ-023 Topics improvements. Reordering folders had not been built in REQ-021; it is now. See spec section 11.6.
 - **21Nov26 c3 second part built** on branch `dev`: quick requests (Type column by default, Save View out of the default toolbar, larger toolbar buttons), REQ-007 bookmark dragging, REQ-021 Topics, REQ-022 Export File List. See spec section 11.5. Choices made for REQ-021: topics live in `topics.toml` in the app settings folder; opening a topic opens its first folder in the active tab; topics with the open folder in them are marked.

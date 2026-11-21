@@ -37,7 +37,7 @@ main : Program () Model Msg
 main =
     Browser.element
         { init = init
-        , update = \msg model -> update msg model |> andThen ensureIcons
+        , update = \msg model -> update msg model |> followTopic model |> andThen ensureIcons
         , view = View.App.view
         , subscriptions = subscriptions
         }
@@ -859,7 +859,7 @@ update msg model =
 
         -- Topics (REQ-021)
         TopicEditOp fields ->
-            request "topics_edit" (E.object [ ( "edit", E.object fields ) ]) False ReqTopicEdit { model | popup = Nothing }
+            request "topics_edit" (E.object [ ( "edit", E.object fields ) ]) False ReqTopicEdit { model | popup = Nothing, dialog = Nothing }
 
         TopicSearch text ->
             ( { model | topicSearch = text }, Cmd.none )
@@ -872,7 +872,7 @@ update msg model =
             in
             case findTopic index model |> Maybe.andThen (.folders >> List.head) of
                 Just first ->
-                    update (NavigateTo first) opened
+                    update (NavigateTo first.path) opened
 
                 Nothing ->
                     ( opened, Cmd.none )
@@ -896,6 +896,7 @@ update msg model =
                             , title = Maybe.map .title existing |> Maybe.withDefault ""
                             , description = Maybe.map .description existing |> Maybe.withDefault ""
                             , folders = folders
+                            , archived = Maybe.map .archived existing |> Maybe.withDefault False
                             , error = Nothing
                             }
                         )
@@ -966,6 +967,55 @@ update msg model =
 
         TopicMouseDown index topicTitle x y ->
             ( { model | drag = Just (MoveTopic { index = index, title = topicTitle, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
+
+        TopicFolderMouseDown topic path label x y ->
+            ( { model | drag = Just (MoveTopicFolder { topic = topic, path = path, label = label, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
+
+        EditTopicFolder topic folder ->
+            ( { model
+                | dialog = Just (TopicFolderDialog { topic = topic, path = folder.path, newPath = folder.path, name = folder.name, error = Nothing })
+                , popup = Nothing
+                , menuBar = Nothing
+              }
+            , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+            )
+
+        TopicFolderPath text ->
+            ( updateTopicFolderForm (\f -> { f | newPath = text, error = Nothing }) model, Cmd.none )
+
+        TopicFolderName text ->
+            ( updateTopicFolderForm (\f -> { f | name = text }) model, Cmd.none )
+
+        TopicFolderSubmit ->
+            case model.dialog of
+                Just (TopicFolderDialog form) ->
+                    if String.trim form.newPath == "" then
+                        ( updateTopicFolderForm (\f -> { f | error = Just Text.topicFolderPathNeeded }) model, Cmd.none )
+
+                    else
+                        update
+                            (TopicEditOp
+                                [ ( "op", E.string "updateFolder" )
+                                , ( "index", E.int form.topic )
+                                , ( "path", E.string form.path )
+                                , ( "newPath", E.string (String.trim form.newPath) )
+                                , ( "name", E.string (String.trim form.name) )
+                                ]
+                            )
+                            model
+                            |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
+
+        TopicFolderRemove ->
+            case model.dialog of
+                Just (TopicFolderDialog form) ->
+                    update (TopicEditOp [ ( "op", E.string "removeFolder" ), ( "index", E.int form.topic ), ( "path", E.string form.path ) ]) model
+                        |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
 
         TabMouseDown tabId x ->
             ( { model | drag = Just (MoveTab { tabId = tabId, startX = x, moved = False, over = Nothing }) }, Cmd.none )
@@ -2911,6 +2961,9 @@ mouseMove x y model =
         Just (MoveTopic d) ->
             ( { model | drag = Just (MoveTopic { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
 
+        Just (MoveTopicFolder d) ->
+            ( { model | drag = Just (MoveTopicFolder { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
         Just (ResizeSidebar d) ->
             let
                 delta =
@@ -3016,6 +3069,33 @@ mouseUp mods model =
                                 [ ( "op", E.string "moveTo" )
                                 , ( "index", E.int d.index )
                                 , ( "before", Maybe.map E.int before |> Maybe.withDefault E.null )
+                                ]
+                            )
+                            done
+
+                _ ->
+                    ( done, Cmd.none )
+
+        Just (MoveTopicFolder d) ->
+            -- In an open topic, `data-topic-drop` holds a folder's path, or "end".
+            case ( d.moved, mods.topicUnder ) of
+                ( True, Just under ) ->
+                    if under == d.path then
+                        ( done, Cmd.none )
+
+                    else
+                        update
+                            (TopicEditOp
+                                [ ( "op", E.string "moveFolder" )
+                                , ( "index", E.int d.topic )
+                                , ( "path", E.string d.path )
+                                , ( "before"
+                                  , if under == "end" then
+                                        E.null
+
+                                    else
+                                        E.string under
+                                  )
                                 ]
                             )
                             done
@@ -4297,6 +4377,77 @@ dropTargetOf value =
 findTopic : Int -> Model -> Maybe Topic
 findTopic index model =
     List.filter (\t -> t.index == index) model.topics |> List.head
+
+
+updateTopicFolderForm : (TopicFolderForm -> TopicFolderForm) -> Model -> Model
+updateTopicFolderForm f model =
+    case model.dialog of
+        Just (TopicFolderDialog form) ->
+            { model | dialog = Just (TopicFolderDialog (f form)) }
+
+        _ ->
+            model
+
+
+{-| When the active tab moves to a folder that belongs to a topic, open that
+topic in the Topics view (REQ-023). The open topic stays when it has the
+folder; otherwise a topic with exactly that folder wins over one with a
+folder above it, and topics that are not archived over archived ones.
+-}
+followTopic : Model -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+followTopic before ( model, cmd ) =
+    let
+        pathOf m =
+            activeTab m
+                |> Maybe.andThen
+                    (\tab ->
+                        if tab.search == Nothing then
+                            Just tab.path
+
+                        else
+                            Nothing
+                    )
+    in
+    case pathOf model of
+        Just path ->
+            if pathOf before == Just path then
+                ( model, cmd )
+
+            else
+                let
+                    has exact topic =
+                        List.any
+                            (\f ->
+                                if exact then
+                                    Path.samePath model.sep f.path path
+
+                                else
+                                    Path.isInside model.sep f.path path
+                            )
+                            topic.folders
+
+                    keep =
+                        Maybe.andThen (\i -> findTopic i model) model.openTopic
+                            |> Maybe.map (has False)
+                            |> Maybe.withDefault False
+
+                    ( archived, active ) =
+                        List.partition .archived model.topics
+
+                    found =
+                        [ List.filter (has True) active, List.filter (has True) archived, List.filter (has False) active, List.filter (has False) archived ]
+                            |> List.concat
+                            |> List.head
+                in
+                case ( keep, found ) of
+                    ( False, Just topic ) ->
+                        ( { model | openTopic = Just topic.index }, cmd )
+
+                    _ ->
+                        ( model, cmd )
+
+        Nothing ->
+            ( model, cmd )
 
 
 updateTopicForm : (TopicForm -> TopicForm) -> Model -> Model
@@ -5810,7 +5961,7 @@ topicsDecoder =
                     (D.field "index" D.int)
                     (D.field "title" D.string)
                     (D.field "description" D.string)
-                    (D.field "folders" (D.list D.string))
+                    (D.field "folders" (D.list (D.map2 TopicFolder (D.field "path" D.string) (D.field "name" D.string))))
                     (D.field "archived" D.bool)
                 )
             )
