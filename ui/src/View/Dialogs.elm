@@ -29,6 +29,9 @@ viewDialog model =
         Just (ToolbarDialog form) ->
             viewToolbarDialog model form
 
+        Just (TopicDialog form) ->
+            viewTopicDialog form
+
         Just (ConfirmDialog confirm) ->
             div [ class "overlay" ]
                 [ div [ class "dialog", attribute "role" "alertdialog" ]
@@ -228,4 +231,50 @@ viewNewItemDialog form =
                         ]
                    ]
             )
+        ]
+
+
+{-| New Topic and Edit Topic (REQ-021).
+-}
+viewTopicDialog : TopicForm -> Html Msg
+viewTopicDialog form =
+    div [ class "overlay" ]
+        [ div
+            [ class "dialog"
+            , attribute "role" "dialog"
+            , Html.Events.custom "keydown"
+                (inputKeys [ "Enter", "Escape" ]
+                    (\key ->
+                        if key == "Enter" then
+                            TopicSubmit
+
+                        else
+                            DialogCancel
+                    )
+                )
+            ]
+            [ div [ class "dialog-title" ]
+                [ text
+                    (if form.index == Nothing then
+                        Text.newTopicTitle
+
+                     else
+                        Text.editTopicTitle
+                    )
+                ]
+            , field Text.topicTitleField dialogFirstInputId form.title TopicTitle
+            , field Text.topicDescriptionField "dialog-target" form.description TopicDescription
+            , viewIf (form.index == Nothing && not (List.isEmpty form.folders))
+                (div [ class "hint" ] [ text (Text.topicStartsWith (List.length form.folders)) ])
+            , case form.error of
+                Just error ->
+                    div [ class "dialog-error" ] [ text error ]
+
+                Nothing ->
+                    text ""
+            , div [ class "dialog-actions" ]
+                [ button [ onClick DialogCancel ] [ text Text.cancel ]
+                , button [ class "primary", onClick TopicSubmit ] [ text Text.save ]
+                ]
+            ]
         ]

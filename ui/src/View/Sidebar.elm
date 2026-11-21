@@ -1,6 +1,6 @@
 module View.Sidebar exposing (treeRows, viewSidebar)
 
-{-| The sidebar (spec 5.7): folder tree, Favourites (with browsing inside a favourite, FR-FAV-03) and Bookmarks.
+{-| The sidebar (spec 5.7): folder tree, Favourites (with browsing inside a favourite, FR-FAV-03), Bookmarks and Topics (REQ-021).
 -}
 
 import Dict
@@ -16,7 +16,7 @@ import Set
 import Text
 import Types exposing (..)
 import View.BookmarkBar exposing (bookmarkEntries)
-import View.Common exposing (contextMenu, dropTarget, middleClick, px)
+import View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, middleClick, px)
 import View.Icons exposing (viewBookmarkIcon, viewFolderIcon, viewIcon)
 
 
@@ -55,6 +55,7 @@ viewSidebar model tab =
             [ modeButton TreeMode "tree" Text.treeMode
             , modeButton FavouritesMode "star" Text.favouritesMode
             , modeButton BookmarksMode "bookmark" Text.bookmarksMode
+            , modeButton TopicsMode "topic" Text.topicsMode
             ]
         , div [ id sidebarBodyId, class "sidebar-body" ]
             (case mode of
@@ -66,6 +67,9 @@ viewSidebar model tab =
 
                 BookmarksMode ->
                     viewBookmarksPanel model
+
+                TopicsMode ->
+                    viewTopics model tab
             )
         ]
 
@@ -194,6 +198,7 @@ folderEntries model path =
              else
                 action Text.pin (fav "addFavourite")
            , Menu.colourEntries model [ path ]
+           , Menu.topicEntries model [ path ]
            ]
 
 
@@ -430,42 +435,51 @@ viewBookmarksPanel model =
 
         viewBookmark depth b =
             button
-                [ class "side-item"
-                , classList [ ( "missing", not b.exists ) ]
-                , indent depth
-                , on "click" (D.map (\ctrl -> OpenBookmark b (ctrl && b.kind == "folder")) (D.field "ctrlKey" D.bool))
-                , on "auxclick" (middleClick (OpenBookmark b (b.kind == "folder")))
-                , contextMenu (bookmarkEntries b)
-                , title b.target
-                ]
+                ([ class "side-item"
+                 , classList [ ( "missing", not b.exists ) ]
+                 , indent depth
+                 , on "click" (D.map (\ctrl -> OpenBookmark b (ctrl && b.kind == "folder")) (D.field "ctrlKey" D.bool))
+                 , on "auxclick" (middleClick (OpenBookmark b (b.kind == "folder")))
+                 , contextMenu (bookmarkEntries b)
+                 , title b.target
+                 , bookmarkDragSource b
+                 ]
+                    ++ bookmarkDropTarget model (BeforeBookmark b.index b.group)
+                )
                 [ span [ class "twisty" ] [], viewBookmarkIcon model b, span [ class "label" ] [ text b.name ] ]
 
         -- A group heading that folds its bookmarks and sub-groups away (spec 5.7).
         -- While searching, every group is shown open so no match is hidden.
-        viewGroup depth key label contents =
+        viewGroup depth group label contents =
             let
+                key =
+                    String.join "/" group
+
                 folded =
                     search == "" && Set.member key model.foldedGroups
             in
             button
-                [ class "side-group"
-                , indent depth
-                , onClick (ToggleBookmarkGroup key)
-                , attribute "aria-expanded"
+                ([ class "side-group"
+                 , indent depth
+                 , onClick (ToggleBookmarkGroup key)
+                 , attribute "aria-expanded"
                     (if folded then
                         "false"
 
                      else
                         "true"
                     )
-                , title
+                 , title
                     (if folded then
                         Text.unfoldGroup
 
                      else
                         Text.foldGroup
                     )
-                ]
+                 ]
+                    -- Dropping a bookmark on a group heading moves it into the group (REQ-007).
+                    ++ bookmarkDropTarget model (IntoGroup group)
+                )
                 [ span [ class "twisty" ]
                     [ text
                         (if folded then
@@ -486,7 +500,7 @@ viewBookmarksPanel model =
 
         viewGroupTree depth group =
             viewGroup depth
-                (String.join "/" group)
+                group
                 (case group of
                     [ "bar" ] ->
                         Text.bookmarkBar
@@ -517,6 +531,301 @@ viewBookmarksPanel model =
                             []
 
                         else
-                            viewGroup 0 "" Text.otherBookmarks (List.map (viewBookmark 1) ungrouped)
+                            viewGroup 0 [] Text.otherBookmarks (List.map (viewBookmark 1) ungrouped)
                        )
            )
+
+
+
+-- TOPICS (REQ-021)
+
+
+viewTopics : Model -> Tab -> List (Html Msg)
+viewTopics model tab =
+    case Maybe.andThen (\i -> List.head (List.filter (\t -> t.index == i) model.topics)) model.openTopic of
+        Just topic ->
+            viewOpenTopic model tab topic
+
+        Nothing ->
+            viewTopicList model tab
+
+
+{-| Whether `path` is `folder` or inside it (Windows paths ignore case).
+-}
+isInFolder : String -> String -> String -> Bool
+isInFolder sep folder path =
+    let
+        fold =
+            if sep == "\\" then
+                String.toLower
+
+            else
+                identity
+
+        f =
+            fold folder
+
+        p =
+            fold path
+    in
+    p
+        == f
+        || String.startsWith
+            (if String.endsWith sep f then
+                f
+
+             else
+                f ++ sep
+            )
+            p
+
+
+topicEdit : String -> Topic -> List ( String, Json.Encode.Value ) -> Msg
+topicEdit op topic extra =
+    TopicEditOp (( "op", Json.Encode.string op ) :: ( "index", Json.Encode.int topic.index ) :: extra)
+
+
+addFolderOp : Topic -> String -> Msg
+addFolderOp topic path =
+    topicEdit "addFolders" topic [ ( "paths", Json.Encode.list Json.Encode.string [ path ] ) ]
+
+
+archiveAction : Topic -> MenuEntry
+archiveAction topic =
+    Action
+        { label =
+            if topic.archived then
+                Text.unarchiveTopic
+
+            else
+                Text.archiveTopic
+        , key = ""
+        , msg = Just (topicEdit "archive" topic [ ( "archived", Json.Encode.bool (not topic.archived) ) ])
+        , checked = Nothing
+        }
+
+
+{-| The list of topics: search, the topics in order (drag to reorder), New
+Topic, and the archived ones in a group that is folded away by default.
+Topics with the open folder in them are marked.
+-}
+viewTopicList : Model -> Tab -> List (Html Msg)
+viewTopicList model tab =
+    let
+        search =
+            String.toLower (String.trim model.topicSearch)
+
+        matches topic =
+            search
+                == ""
+                || List.any (\t -> String.contains search (String.toLower t)) (topic.title :: topic.description :: topic.folders)
+
+        matching =
+            List.filter matches model.topics
+
+        ( archived, active ) =
+            List.partition .archived matching
+
+        canAddOpen =
+            tab.search == Nothing
+
+        action label msg =
+            Action { label = label, key = "", msg = Just msg, checked = Nothing }
+
+        entries topic =
+            [ action Text.open (OpenTopic topic.index)
+            , action Text.edit (EditTopic (Just topic.index) [])
+            ]
+                ++ (if canAddOpen then
+                        [ action Text.addOpenFolder (addFolderOp topic tab.path) ]
+
+                    else
+                        []
+                   )
+                ++ [ Separator, archiveAction topic, action Text.deleteTopic (DeleteTopic topic.index) ]
+
+        dragSource topic =
+            on "mousedown"
+                (D.field "button" D.int
+                    |> D.andThen
+                        (\b ->
+                            if b == 0 then
+                                D.map2 (TopicMouseDown topic.index topic.title) (D.field "clientX" D.float) (D.field "clientY" D.float)
+
+                            else
+                                D.fail "not the left button"
+                        )
+                )
+
+        row topic =
+            button
+                ([ class "side-item topic-item"
+                 , classList [ ( "current", List.any (\f -> isInFolder model.sep f tab.path) topic.folders ) ]
+                 , onClick (OpenTopic topic.index)
+                 , contextMenu (entries topic)
+                 , title
+                    (if topic.description == "" then
+                        Text.topicFolderCount (List.length topic.folders)
+
+                     else
+                        topic.description
+                    )
+                 , dragSource topic
+                 , attribute "data-topic-drop" (String.fromInt topic.index)
+                 ]
+                    -- Dragging folders onto a topic adds them to it.
+                    ++ dropTarget model (DropTopic topic.index) ("topic:" ++ String.fromInt topic.index)
+                )
+                [ span [ class "icon topic" ] []
+                , span [ class "label" ] [ text topic.title ]
+                , span [ class "topic-count" ] [ text (String.fromInt (List.length topic.folders)) ]
+                ]
+
+        archivedShown =
+            model.archivedTopicsOpen || search /= ""
+
+        draggingTopic =
+            case model.drag of
+                Just (MoveTopic d) ->
+                    d.moved
+
+                _ ->
+                    False
+    in
+    [ div [ classList [ ( "topics", True ), ( "topic-dragging", draggingTopic ) ] ]
+        ([ input
+            [ class "side-search"
+            , placeholder Text.searchTopics
+            , value model.topicSearch
+            , onInput TopicSearch
+            , spellcheck False
+            ]
+            []
+         ]
+            ++ List.map (\w -> div [ class "sidebar-warning" ] [ text w ]) model.topicWarnings
+            ++ (if List.isEmpty model.topics then
+                    [ div [ class "sidebar-empty" ] [ text Text.noTopics ] ]
+
+                else
+                    List.map row active
+               )
+            ++ [ button
+                    [ class "side-add topic-end"
+                    , onClick
+                        (EditTopic Nothing
+                            (if canAddOpen then
+                                [ tab.path ]
+
+                             else
+                                []
+                            )
+                        )
+                    , attribute "data-topic-drop" "end"
+                    ]
+                    [ text Text.newTopicButton ]
+               ]
+            ++ (if List.isEmpty archived then
+                    []
+
+                else
+                    button
+                        [ class "side-group"
+                        , onClick ToggleArchivedTopics
+                        , attribute "aria-expanded"
+                            (if archivedShown then
+                                "true"
+
+                             else
+                                "false"
+                            )
+                        ]
+                        [ span [ class "twisty" ]
+                            [ text
+                                (if archivedShown then
+                                    "▾"
+
+                                 else
+                                    "▸"
+                                )
+                            ]
+                        , span [ class "label" ] [ text (Text.archivedTopics ++ " (" ++ String.fromInt (List.length archived) ++ ")") ]
+                        ]
+                        :: (if archivedShown then
+                                List.map row archived
+
+                            else
+                                []
+                           )
+               )
+        )
+    ]
+
+
+{-| An open topic: its title and description, its folders (click to open
+one in the active tab), and Edit, Archive and Delete.
+-}
+viewOpenTopic : Model -> Tab -> Topic -> List (Html Msg)
+viewOpenTopic model tab topic =
+    let
+        action label msg =
+            Action { label = label, key = "", msg = Just msg, checked = Nothing }
+
+        hasOpen =
+            List.any (\f -> isInFolder model.sep f tab.path && String.length f == String.length tab.path) topic.folders
+
+        folderRow path =
+            button
+                ([ class "side-item"
+                 , classList [ ( "current", isInFolder model.sep path tab.path ) ]
+                 , onClick (NavigateTo path)
+                 , on "auxclick" (middleClick (NavigateNewTab path))
+                 , contextMenu
+                    (folderEntries model path
+                        ++ [ Separator, action Text.removeFromTopic (topicEdit "removeFolder" topic [ ( "path", Json.Encode.string path ) ]) ]
+                    )
+                 , title path
+                 ]
+                    ++ dropTarget model (DropFolder path) path
+                )
+                [ viewFolderIcon model path, span [ class "label" ] [ text (Path.name model.sep path) ] ]
+
+        topicDrop =
+            dropTarget model (DropTopic topic.index) ("topic:" ++ String.fromInt topic.index)
+    in
+    [ div ([ class "fav-header" ] ++ topicDrop)
+        [ button [ class "fav-up", onClick CloseTopic, title Text.backToTopics, attribute "aria-label" Text.backToTopics ] [ text "‹" ]
+        , span [ class "fav-location", title topic.title ] [ text topic.title ]
+        , button [ class "fav-open", onClick (EditTopic (Just topic.index) []), title Text.editTopicTitle, attribute "aria-label" Text.editTopicTitle ] [ text "✎" ]
+        ]
+    , if topic.description == "" then
+        text ""
+
+      else
+        div [ class "topic-description" ] [ text topic.description ]
+    ]
+        ++ (if List.isEmpty topic.folders then
+                [ div ([ class "sidebar-empty" ] ++ topicDrop) [ text Text.topicNoFolders ] ]
+
+            else
+                List.map folderRow topic.folders
+           )
+        ++ (if tab.search == Nothing && not hasOpen then
+                [ button [ class "side-add", onClick (addFolderOp topic tab.path) ] [ text Text.addOpenFolder ] ]
+
+            else
+                []
+           )
+        ++ [ div [ class "topic-actions" ]
+                [ button [ onClick (EditTopic (Just topic.index) []) ] [ text Text.edit ]
+                , button [ onClick (topicEdit "archive" topic [ ( "archived", Json.Encode.bool (not topic.archived) ) ]) ]
+                    [ text
+                        (if topic.archived then
+                            Text.unarchiveTopic
+
+                         else
+                            Text.archiveTopic
+                        )
+                    ]
+                , button [ class "danger", onClick (DeleteTopic topic.index) ] [ text Text.deleteTopic ]
+                ]
+           ]

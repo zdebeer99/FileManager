@@ -10,7 +10,7 @@ import Json.Decode as D
 import Json.Encode
 import Text
 import Types exposing (..)
-import View.Common exposing (contextMenu, dropTarget, middleClick)
+import View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, middleClick)
 import View.Icons exposing (bookmarkMenuIcon, viewBookmarkIcon)
 
 
@@ -53,7 +53,7 @@ viewBookmarkBar model =
                 _ ->
                     False
     in
-    div (class "bookmarkbar" :: dropTarget model DropBookmarkBar "bookmark-bar")
+    div (class "bookmarkbar" :: dropTarget model DropBookmarkBar "bookmark-bar" ++ bookmarkDropTarget model (IntoGroup [ "bar" ]))
         (if List.isEmpty entries then
             [ span [ class "hint" ] [ text Text.bookmarkBarHint ] ]
 
@@ -66,8 +66,8 @@ viewBookmarkBar model =
 
                         BarGroup group members ->
                             button
-                                [ class "bm group"
-                                , stopPropagationOn "click"
+                                ([ class "bm group"
+                                 , stopPropagationOn "click"
                                     (D.map2
                                         (\x y ->
                                             ( ItemContextMenu
@@ -83,8 +83,11 @@ viewBookmarkBar model =
                                         (D.field "clientX" D.float)
                                         (D.field "clientY" D.float)
                                     )
-                                , tabindex -1
-                                ]
+                                 , tabindex -1
+                                 ]
+                                    -- Dropping a bookmark on a group moves it into the group (REQ-007).
+                                    ++ bookmarkDropTarget model (IntoGroup [ "bar", group ])
+                                )
                                 [ span [ class "icon folder" ] [], text (group ++ " ▾") ]
                 )
                 entries
@@ -94,14 +97,17 @@ viewBookmarkBar model =
 bookmarkButton : Model -> Bookmark -> Html Msg
 bookmarkButton model b =
     button
-        [ class "bm"
-        , classList [ ( "missing", not b.exists ) ]
-        , on "click" (D.map (\ctrl -> OpenBookmark b (ctrl && b.kind == "folder")) (D.field "ctrlKey" D.bool))
-        , on "auxclick" (middleClick (OpenBookmark b (b.kind == "folder")))
-        , contextMenu (bookmarkEntries b)
-        , title b.target
-        , tabindex -1
-        ]
+        ([ class "bm"
+         , classList [ ( "missing", not b.exists ) ]
+         , on "click" (D.map (\ctrl -> OpenBookmark b (ctrl && b.kind == "folder")) (D.field "ctrlKey" D.bool))
+         , on "auxclick" (middleClick (OpenBookmark b (b.kind == "folder")))
+         , contextMenu (bookmarkEntries b)
+         , title b.target
+         , tabindex -1
+         , bookmarkDragSource b
+         ]
+            ++ bookmarkDropTarget model (BeforeBookmark b.index b.group)
+        )
         [ viewBookmarkIcon model b, text b.name ]
 
 

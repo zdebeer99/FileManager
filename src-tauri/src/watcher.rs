@@ -104,6 +104,7 @@ fn event_loop(
     let settings_file = paths.settings_file();
     let bookmarks_file = paths.bookmarks_file();
     let colours_file = paths.colours_file();
+    let topics_file = paths.topics_file();
     let keybindings_file = paths.keybindings_file();
     let toolbar_file = paths.toolbar_file();
     while let Ok(first) = rx.recv() {
@@ -111,6 +112,7 @@ fn event_loop(
         let mut settings_dirty = false;
         let mut bookmarks_dirty = false;
         let mut colours_dirty = false;
+        let mut topics_dirty = false;
         let mut keybindings_dirty = false;
         let mut toolbar_dirty = false;
         let mut collect = |event: notify::Result<notify::Event>| {
@@ -127,6 +129,7 @@ fn event_loop(
                     bookmarks_dirty = true;
                 }
                 colours_dirty |= path == colours_file;
+                topics_dirty |= path == topics_file;
                 keybindings_dirty |= path == keybindings_file;
                 toolbar_dirty |= path == toolbar_file;
                 if watched.contains_key(&path) {
@@ -151,6 +154,10 @@ fn event_loop(
 
         if bookmarks_dirty {
             let _ = app.emit("bookmarks-changed", ());
+        }
+
+        if topics_dirty {
+            let _ = app.emit("topics-changed", ());
         }
 
         if colours_dirty {

@@ -181,11 +181,14 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 
 .toolbar button {
-  width: 30px;
-  height: 28px;
-  font-size: 16px;
+  width: 36px;
+  height: 34px;
+  font-size: 19px;
   line-height: 1;
 }
+
+/* Larger toolbar icons (quick request, 21 Nov 2026). */
+.toolbar .icon { width: 20px; height: 20px; }
 
 .toolbar .grow { flex: 1; }
 .toolbar.style-iconText button:not(.arrow),
@@ -1001,6 +1004,17 @@ button.primary:hover:not(:disabled) { background: var(--accent); filter: brightn
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 1h9v14L8 11.5 3.5 15z'/%3E%3C/svg%3E");
 }
 
+/* Topics (REQ-021): a stack of folders. */
+.icon.topic {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1 4h5l1.5 1.5H15V14H1zM3 1.5h4.5L9 3H3z'/%3E%3C/svg%3E");
+}
+.side-item .icon.topic { background-color: var(--text-muted); }
+.topic-count { margin-left: auto; padding-left: 6px; color: var(--text-muted); font-size: 11px; }
+.topic-description { padding: 2px 12px 6px; color: var(--text-muted); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.topic-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 10px; }
+.topic-actions button { padding: 2px 10px; }
+.topic-dragging .topic-item:hover, .topic-dragging .topic-end:hover { box-shadow: inset 0 2px 0 var(--accent); }
+
 /* File operations (M3) */
 
 .row.cut { opacity: 0.45; }
@@ -1657,3 +1671,9 @@ button.small { height: 24px; padding: 0 8px; font-size: 12px; }
 
 /* Comfortable rows show slightly larger icons. */
 .row .icon, .row .sysicon, .side-item .icon, .side-item .sysicon, .tree-row .icon, .tree-row .sysicon { width: 18px; height: 18px; }
+
+/* Dragging bookmarks (REQ-007): a line where it goes, or the group it joins. */
+.bm-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.bm.bm-drop-before { box-shadow: inset 2px 0 0 var(--chrome-accent); }
+.bm-drop-into { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bookmarkbar.bm-drop-into { outline-color: var(--chrome-accent); }

@@ -1,12 +1,13 @@
-module View.Common exposing (contextMenu, dropTarget, field, inputKeys, keepOnScreen, middleClick, px, viewIf)
+module View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, field, inputKeys, keepOnScreen, middleClick, px, viewIf)
 
 {-| Small helpers shared by the view components: optional elements, menus on right-click, middle-click, drop targets, sizes.
 -}
 
 import Html exposing (Html, input, label, span, text)
 import Html.Attributes exposing (attribute, class, classList, id, spellcheck, value)
-import Html.Events exposing (on, onInput, preventDefaultOn)
+import Html.Events exposing (on, onInput, preventDefaultOn, stopPropagationOn)
 import Json.Decode as D
+import Json.Encode
 import Types exposing (..)
 
 
@@ -92,3 +93,73 @@ dropTarget model target value =
     , on "mouseleave" (D.succeed (DragOver Nothing))
     , classList [ ( "drop-target", active ) ]
     ]
+
+
+{-| A bookmark that can be dragged (REQ-007): a left-button press starts a
+bookmark drag; a click without moving still opens it.
+-}
+bookmarkDragSource : Bookmark -> Html.Attribute Msg
+bookmarkDragSource b =
+    on "mousedown"
+        (D.field "button" D.int
+            |> D.andThen
+                (\button ->
+                    if button == 0 then
+                        D.map2 (BookmarkMouseDown b.index b.name) (D.field "clientX" D.float) (D.field "clientY" D.float)
+
+                    else
+                        D.fail "not the left button"
+                )
+        )
+
+
+{-| A place a dragged bookmark can be dropped (REQ-007). The `data-bm-drop`
+value decides the drop; hovering only draws the marker.
+-}
+bookmarkDropTarget : Model -> BookmarkDrop -> List (Html.Attribute Msg)
+bookmarkDropTarget model drop =
+    let
+        ( before, group ) =
+            case drop of
+                BeforeBookmark index g ->
+                    ( Json.Encode.int index, g )
+
+                IntoGroup g ->
+                    ( Json.Encode.null, g )
+
+        isBefore =
+            case drop of
+                BeforeBookmark _ _ ->
+                    True
+
+                IntoGroup _ ->
+                    False
+
+        active =
+            case model.drag of
+                Just (MoveBookmark d) ->
+                    d.moved && d.over == Just drop
+
+                _ ->
+                    False
+
+        dragging =
+            case model.drag of
+                Just (MoveBookmark _) ->
+                    True
+
+                _ ->
+                    False
+    in
+    [ attribute "data-bm-drop" (Json.Encode.encode 0 (Json.Encode.object [ ( "before", before ), ( "group", Json.Encode.list Json.Encode.string group ) ]))
+    , classList
+        [ ( "bm-drop-before", active && isBefore )
+        , ( "bm-drop-into", active && not isBefore )
+        ]
+    ]
+        ++ (if dragging then
+                [ stopPropagationOn "mouseover" (D.succeed ( BookmarkDragOver (Just drop), True )) ]
+
+            else
+                []
+           )

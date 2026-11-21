@@ -24,43 +24,14 @@
 
 **Quick Requests**
 
-- Show the file type column by default
-- Remove the Save view button, it's not realy used at this stage.
-- Make the toolbar icons/buttons larger
 - 
 
 **Request table**
 
 | ID      | Name                | Area           | Description                                                  | Priority | Status    | Update Cycle | Comment       |
 | ------- | ------------------- | -------------- | ------------------------------------------------------------ | -------- | --------- | ------------ | ------------- |
-| REQ-007 | Bookmark Reordering | Bookmarks      | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal   | implement | c3           | 02Nov26 new   |
-| REQ-021 | Topic View          | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" Section Below | Normal   | implement | c3           | 14Nov26 Added |
-| REQ-022 | Export file names   | File View      | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal   | implement | c3           | 21Nov26 added |
 | REQ-023 |                     |                |                                                              |          |           |              |               |
 | REQ-024 |                     |                |                                                              |          |           |              |               |
-
-
-
-### REQ-021 Topic View
-
-2026-11-14
-
-This is very similar behavior than grouped tab supported in chrome.
-
-
-
-- The topic view is a tap on the left side panel, next to bookmark tab.
-- a Topics is a title and short description and a list of folders that is related to each other. The list is build up by the user by adding a folder to a topic. when any of the folders in a topic is opened.
-- The main or start view show the topics title defined, and a `+` to add a new topic.
-- when you click on the topic the topic is opened showing the title at the top, description below and the list of folders, be default the top folder is open in the active tab.
-- in the topic open view you can jump between different folders, delete folders from the topic, delete the topic, change the topic name, and description or navigate back to the main topic view.
-- topic should be searchable and the order can be changed by dragiing them up or down.
-- you can archive or delete a topic, archiving will whow them in a archiving group below all the normal topics. that is hidden by default.
-
-
-
-Great enjoy developing.
-
 
 
 
@@ -86,9 +57,33 @@ Great enjoy developing.
 | REQ-017 | Bookmark icons not showing | Bookmarks Bar | In the bookmark bar groups the icons is not showing. | Normal | c3 | 14Nov26 Added. 14Nov26 Built: FR-BB-01: group drop-downs show bookmark icons. |
 | REQ-019 | Open in VSCode Error | Command | Open in VSCode is not working, it gives an error.  "Could not open VS Code: %1 is not a valid Win32 application. (os error 193)" | Normal | c3 | 14Nov26 Added. 14Nov26 Built: FR-OPEN-06: on Windows only .exe/.cmd/.bat/.com are started (VS Code's bin\code script was picked). |
 | REQ-020 | Logging Errors | Log File | Errors is not logged in the log file. | Normal | c3 | 14Nov26 Added. 14Nov26 Built: NFR-MNT-03: command errors, listing errors and job errors go to the log. |
+| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal | c3 | 02Nov26 new. 21Nov26 Built: FR-BM-07: drag in the sidebar and on the Bookmark Bar; drop on a bookmark (before it) or a group (end of it). |
+| REQ-021 | Topic View | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" below. | Normal | c3 | 14Nov26 Added. 21Nov26 Built: spec 6.4.6 (FR-TOP-01 to 05), topics.toml (8.8): fourth sidebar view, Add to Topic in folder menus, drag folders onto a topic. |
+| REQ-022 | Export file names | File View | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal | c3 | 21Nov26 added. 21Nov26 Built: FR-OPEN-07: Export File List… (right-click on empty space, File menu, palette); the names shown, one per line, in a .txt you choose. |
+| — | Quick requests | General | Show the Type column by default; remove the Save View button; larger toolbar buttons. | Normal | c3 | 21Nov26 Built: FR-CC-01 (Type column), FR-TB-04 (Save View out of the default toolbar, 36 × 34 px buttons). |
 | REQ-018 | UI Style (visual refresh) | Look and Feel | Use Tailwind css style sheets to style the application components | Normal | c3 | 14Nov26 Added. 14Nov26 Decided: a visual refresh, not Tailwind. Built in the "Studio" direction: dark frame and flat tabs, blue accent, 28 px rows, redrawn icons (see details below). |
 
 ## Details
+
+### REQ-021 Topic View
+
+2026-11-14 (built 21Nov26, see the Done table)
+
+This is very similar behavior than grouped tab supported in chrome.
+
+
+
+- The topic view is a tap on the left side panel, next to bookmark tab.
+- a Topics is a title and short description and a list of folders that is related to each other. The list is build up by the user by adding a folder to a topic. when any of the folders in a topic is opened.
+- The main or start view show the topics title defined, and a `+` to add a new topic.
+- when you click on the topic the topic is opened showing the title at the top, description below and the list of folders, be default the top folder is open in the active tab.
+- in the topic open view you can jump between different folders, delete folders from the topic, delete the topic, change the topic name, and description or navigate back to the main topic view.
+- topic should be searchable and the order can be changed by dragiing them up or down.
+- you can archive or delete a topic, archiving will whow them in a archiving group below all the normal topics. that is hidden by default.
+
+
+
+Great enjoy developing.
 
 ### REQ-018 UI Style (visual refresh)
 
@@ -119,3 +114,4 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
+- **21Nov26 c3 second part built** on branch `dev`: quick requests (Type column by default, Save View out of the default toolbar, larger toolbar buttons), REQ-007 bookmark dragging, REQ-021 Topics, REQ-022 Export File List. See spec section 11.5. Choices made for REQ-021: topics live in `topics.toml` in the app settings folder; opening a topic opens its first folder in the active tab; topics with the open folder in them are marked.

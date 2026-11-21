@@ -1,4 +1,4 @@
-module Menu exposing (Menu, colourEntries, columnEntries, menuHeight, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
+module Menu exposing (Menu, colourEntries, columnEntries, menuHeight, menus, selectable, templateEntries, topicEntries, viewDropdown, viewMenuBar)
 
 {-| The Menu Bar (FR-MENU-01): every command grouped in standard menus.
 Commands that later milestones add are shown disabled, so the menus
@@ -12,6 +12,7 @@ import Html exposing (Html, button, div, span, text)
 import Html.Attributes exposing (attribute, class, classList, disabled, style, tabindex, title)
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
 import Json.Decode as D
+import Json.Encode as E
 import Path
 import Text
 import Types exposing (..)
@@ -89,6 +90,7 @@ baseMenus model tab =
               else
                 cmd (Text.openFolderWith model.editorName) "" CmdOpenFolderInEditor
             , cmd "Show in File Manager" "" CmdReveal
+            , cmd Text.exportFileList "" CmdExportFileList
             , later "Properties" "Alt+Enter"
             , Separator
             , cmd "Close Tab" "Ctrl+W" CmdCloseTab
@@ -133,6 +135,7 @@ baseMenus model tab =
                 [ toggle "Folder Tree" "Ctrl+Shift+1" (sidebarMode == TreeMode) (CmdSidebarMode TreeMode)
                 , toggle "Favourites" "Ctrl+Shift+2" (sidebarMode == FavouritesMode) (CmdSidebarMode FavouritesMode)
                 , toggle "Bookmarks" "Ctrl+Shift+3" (sidebarMode == BookmarksMode) (CmdSidebarMode BookmarksMode)
+                , toggle "Topics" "Ctrl+Shift+4" (sidebarMode == TopicsMode) (CmdSidebarMode TopicsMode)
                 , Separator
                 , toggle "On the Left" "" (s.sidebarSide /= "right") (CmdSidebarSide "left")
                 , toggle "On the Right" "" (s.sidebarSide == "right") (CmdSidebarSide "right")
@@ -279,6 +282,34 @@ colourEntries model paths =
                     Nothing
     in
     Submenu Text.folderColour [ ColourPalette paths current ]
+
+
+{-| Add to Topic ▸ (REQ-021): the topics that are not archived, and New Topic….
+-}
+topicEntries : Model -> List String -> MenuEntry
+topicEntries model paths =
+    let
+        add topic =
+            Action
+                { label = topic.title
+                , key = ""
+                , msg = Just (TopicEditOp [ ( "op", E.string "addFolders" ), ( "index", E.int topic.index ), ( "paths", E.list E.string paths ) ])
+                , checked = Nothing
+                }
+
+        active =
+            List.filter (not << .archived) model.topics
+    in
+    Submenu Text.addToTopic
+        (List.map add active
+            ++ (if List.isEmpty active then
+                    []
+
+                else
+                    [ Separator ]
+               )
+            ++ [ Action { label = Text.newTopicMenu, key = "", msg = Just (EditTopic Nothing paths), checked = Nothing } ]
+        )
 
 
 {-| The column chooser, used by View › Columns and the header right-click menu.

@@ -28,6 +28,7 @@ use crate::session::{self, Session};
 use crate::settings::{self, Settings};
 use crate::templates;
 use crate::toolbar::{self, Toolbar};
+use crate::topics::{self, Topics};
 use crate::watcher::DirWatcher;
 
 pub struct AppState {
@@ -337,6 +338,45 @@ pub async fn session_save(state: State<'_, AppState>, session: Session) -> Resul
         .await?
 }
 
+/// Export File List (REQ-022, FR-OPEN-07): asks where to save, starting in
+/// the folder itself, then writes the names, one per line. Returns the file
+/// saved, or `None` when the user cancelled.
+#[tauri::command]
+pub async fn export_file_list(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder: String,
+    names: Vec<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dir = PathBuf::from(&folder);
+    let base = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Folder".into());
+    let suggested = format!("{base} - file list.txt");
+    let start = dir.clone();
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Export File List")
+            .set_directory(&start)
+            .set_file_name(suggested)
+            .add_filter("Text", &["txt"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(chosen) = chosen else { return Ok(None) };
+    let target = chosen.into_path().map_err(|e| e.to_string())?;
+    let text = fileops::file_list_text(&names);
+    let written = target.clone();
+    state
+        .pools
+        .run(&target.clone(), state.timeout(), move || {
+            paths::write_atomic(&written, text.as_bytes()).map_err(|e| fileops::describe(&e, &written))
+        })
+        .await??;
+    Ok(Some(target.to_string_lossy().into_owned()))
+}
+
 /// Writes an error that a command returned to the UI into the log file
 /// (REQ-020, NFR-MNT-03). The bridge calls it for every failed command.
 #[tauri::command]
@@ -423,6 +463,19 @@ pub async fn icons_get(
     let paths = state.paths.clone();
     let cache = state.icons.clone();
     state.pools.run(&paths.cache.clone(), Duration::from_secs(30), move || icons::get(&cache, &paths, keys)).await
+}
+
+/// Topics (REQ-021, spec 6.4.6).
+#[tauri::command]
+pub async fn topics_get(state: State<'_, AppState>) -> Result<Topics, String> {
+    let paths = state.paths.clone();
+    state.pools.run(&paths.config.clone(), state.timeout(), move || topics::load(&paths)).await
+}
+
+#[tauri::command]
+pub async fn topics_edit(state: State<'_, AppState>, edit: topics::Edit) -> Result<(), String> {
+    let paths = state.paths.clone();
+    state.pools.run(&paths.config.clone(), Duration::from_secs(10), move || topics::apply(&paths, edit)).await?
 }
 
 /// Moves folder colours along with renamed or moved folders (REQ-013).
