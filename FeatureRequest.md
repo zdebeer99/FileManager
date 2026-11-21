@@ -24,6 +24,7 @@
 
 **Quick Requests**
 
+- Fix - When changing the folder topic name, it does not change, the folder name stays the same.
 - 
 
 **Request table**
