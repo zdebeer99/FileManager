@@ -588,6 +588,16 @@ undo =
     "Undo"
 
 
+exportFileList : String
+exportFileList =
+    "Export File List…"
+
+
+fileListSaved : String -> String
+fileListSaved file =
+    "File list saved to " ++ file
+
+
 createShortcut : String
 createShortcut =
     "Create Shortcut"
@@ -1182,6 +1192,9 @@ commandName id =
         "folder.openInEditor" ->
             "Open Folder with Text Editor"
 
+        "file.exportList" ->
+            "Export File List…"
+
         "item.reveal" ->
             "Show in File Manager"
 
@@ -1211,6 +1224,9 @@ commandName id =
 
         "view.sidebarMode.bookmarks" ->
             "Sidebar: Bookmarks"
+
+        "view.sidebarMode.topics" ->
+            "Sidebar: Topics"
 
         "view.sidebarLeft" ->
             "Sidebar on the Left"
@@ -1648,3 +1664,130 @@ sizeFromHint =
 sizeToHint : String
 sizeToHint =
     "e.g. 10 MB"
+
+
+
+-- TOPICS (REQ-021)
+
+
+topicsMode : String
+topicsMode =
+    "Topics (Ctrl+Shift+4)"
+
+
+searchTopics : String
+searchTopics =
+    "Search topics"
+
+
+noTopics : String
+noTopics =
+    "No topics yet. A topic keeps related folders together, for example everything for one project."
+
+
+newTopicButton : String
+newTopicButton =
+    "+ New Topic"
+
+
+newTopicMenu : String
+newTopicMenu =
+    "New Topic…"
+
+
+addToTopic : String
+addToTopic =
+    "Add to Topic"
+
+
+archivedTopics : String
+archivedTopics =
+    "Archived"
+
+
+newTopicTitle : String
+newTopicTitle =
+    "New topic"
+
+
+editTopicTitle : String
+editTopicTitle =
+    "Edit topic"
+
+
+topicTitleField : String
+topicTitleField =
+    "Title"
+
+
+topicDescriptionField : String
+topicDescriptionField =
+    "Description"
+
+
+topicTitleNeeded : String
+topicTitleNeeded =
+    "Give the topic a title."
+
+
+topicStartsWith : Int -> String
+topicStartsWith count =
+    if count == 1 then
+        "The topic starts with the selected folder."
+
+    else
+        "The topic starts with the " ++ String.fromInt count ++ " selected folders."
+
+
+deleteTopicTitle : String -> String
+deleteTopicTitle title =
+    "Delete the topic \"" ++ title ++ "\"?"
+
+
+deleteTopicNote : String
+deleteTopicNote =
+    "Only the topic is deleted. Its folders and their files are not touched."
+
+
+deleteTopic : String
+deleteTopic =
+    "Delete…"
+
+
+archiveTopic : String
+archiveTopic =
+    "Archive"
+
+
+unarchiveTopic : String
+unarchiveTopic =
+    "Unarchive"
+
+
+backToTopics : String
+backToTopics =
+    "Back to all topics"
+
+
+topicNoFolders : String
+topicNoFolders =
+    "No folders yet. Add the open folder below, drop folders here, or use Add to Topic in a folder's right-click menu."
+
+
+addOpenFolder : String
+addOpenFolder =
+    "+ Add the open folder"
+
+
+removeFromTopic : String
+removeFromTopic =
+    "Remove from Topic"
+
+
+topicFolderCount : Int -> String
+topicFolderCount count =
+    if count == 1 then
+        "1 folder"
+
+    else
+        String.fromInt count ++ " folders"

@@ -138,7 +138,7 @@ impl Default for ViewSettings {
     fn default() -> Self {
         Self {
             mode: "details".into(),
-            columns: ["name", "modified", "created", "size", "sync"].map(String::from).to_vec(),
+            columns: ["name", "modified", "created", "size", "type", "sync"].map(String::from).to_vec(),
             sort: vec![SortKey::default()],
             folders_first: true,
             show_hidden: false,
@@ -252,7 +252,7 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 # sidebar     = { visible = true, side = "left", width = 260, mode = "tree" }   # mode: "tree" | "favourites" | "bookmarks"
 
 # [view.default]
-# columns      = ["name", "modified", "created", "size", "sync"]   # also: "type", "ext"
+# columns      = ["name", "modified", "created", "size", "type", "sync"]   # also: "ext", "accessed", "attributes", "linkTarget"
 # sort         = [{ column = "name", direction = "asc" }]
 # foldersFirst = true
 # showHidden   = false

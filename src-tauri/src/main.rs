@@ -20,6 +20,7 @@ mod session;
 mod settings;
 mod templates;
 mod toolbar;
+mod topics;
 mod watcher;
 
 use std::sync::OnceLock;
@@ -38,6 +39,7 @@ fn main() {
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "File Catalog starting");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::new(app_paths))
         .invoke_handler(tauri::generate_handler![
             commands::app_init,
@@ -50,6 +52,7 @@ fn main() {
             commands::session_save,
             commands::perf_mark,
             commands::log_error,
+            commands::export_file_list,
             commands::settings_set,
             commands::folder_view_get,
             commands::folder_view_save,
@@ -59,6 +62,8 @@ fn main() {
             commands::bookmarks_edit,
             commands::colours_get,
             commands::colours_set,
+            commands::topics_get,
+            commands::topics_edit,
             commands::icons_get,
             commands::editor_info,
             commands::open_in_editor,

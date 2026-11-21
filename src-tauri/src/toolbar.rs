@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::{self, write_atomic};
 
-/// The default toolbar; it includes Save View (FR-TB-04).
+/// The default toolbar (FR-TB-01). Save View is not on it any more; it is in
+/// the View menu and on Ctrl+S, and can be added back (FR-TB-04).
 pub const DEFAULT_ITEMS: &[&str] = &[
     "nav.back",
     "nav.forward",
@@ -27,8 +28,6 @@ pub const DEFAULT_ITEMS: &[&str] = &[
     "edit.copy",
     "edit.paste",
     "edit.delete",
-    "|",
-    "view.saveForFolder",
     "->",
     "find.open",
     "palette.open",
@@ -141,10 +140,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_file_gives_the_default_toolbar_with_save_view() {
+    fn missing_file_gives_the_default_toolbar_without_save_view() {
         let dir = tempfile::tempdir().unwrap();
         let toolbar = load(&dir.path().join("toolbar.toml"));
-        assert!(toolbar.items.contains(&"view.saveForFolder".to_string()));
+        assert!(toolbar.items.contains(&"edit.copy".to_string()));
+        assert!(!toolbar.items.contains(&"view.saveForFolder".to_string()));
         assert!(toolbar.warnings.is_empty());
     }
 

@@ -117,6 +117,8 @@ type Request
     | ReqFreeSpace String
     | ReqBookmarks
     | ReqBookmarkEdit
+    | ReqTopics
+    | ReqTopicEdit
     | ReqViewSaved Int String
     | ReqViewReset Int String
     | ReqOpenSettingsFile
@@ -137,6 +139,7 @@ type Request
     | ReqOpenReturnedFile
     | ReqLocate Bookmark
     | ReqColours
+    | ReqExported
     | ReqEditorInfo
     | ReqIcons
     | ReqFavList
@@ -209,6 +212,18 @@ type Dialog
     | ConfirmDialog Confirm
     | ShortcutsDialog ShortcutsState
     | ToolbarDialog ToolbarForm
+    | TopicDialog TopicForm
+
+
+{-| New Topic and Edit Topic (REQ-021). A new topic starts with `folders`.
+-}
+type alias TopicForm =
+    { index : Maybe Int
+    , title : String
+    , description : String
+    , folders : List String
+    , error : Maybe String
+    }
 
 
 {-| Help › Keyboard Shortcuts (FR-KEY-04).
@@ -305,6 +320,8 @@ type alias Template =
 type DropTarget
     = DropFolder String
     | DropBookmarkBar
+      -- A topic in the Topics view (REQ-021): dropped folders are added to it.
+    | DropTopic Int
 
 
 type alias DragState =
@@ -331,7 +348,21 @@ type alias DropMods =
 
     -- The `data-drop` value of the element under the pointer, if any.
     , under : Maybe String
+
+    -- The `data-bm-drop` value there: where a dragged bookmark goes (REQ-007).
+    , bookmarkUnder : Maybe String
+
+    -- The `data-topic-drop` value there: where a dragged topic goes (REQ-021).
+    , topicUnder : Maybe String
     }
+
+
+{-| Where a dragged bookmark is dropped (REQ-007): before another bookmark
+(taking its group), or at the end of a group.
+-}
+type BookmarkDrop
+    = BeforeBookmark Int (List String)
+    | IntoGroup (List String)
 
 
 type alias NewItemForm =
@@ -445,6 +476,17 @@ type alias BookmarkForm =
 -- SIDEBAR AND BOOKMARKS
 
 
+{-| A topic from topics.toml (REQ-021): related folders under one title.
+-}
+type alias Topic =
+    { index : Int
+    , title : String
+    , description : String
+    , folders : List String
+    , archived : Bool
+    }
+
+
 {-| The colours a folder can have (spec 6.4.5); the same names as colours.toml.
 -}
 folderColours : List String
@@ -556,6 +598,7 @@ type SidebarMode
     = TreeMode
     | FavouritesMode
     | BookmarksMode
+    | TopicsMode
 
 
 type alias Root =
@@ -588,6 +631,10 @@ type Drag
     | DragItems DragState
       -- Reordering tabs (FR-TAB-02): the dragged tab and the tab under the pointer.
     | MoveTab { tabId : Int, startX : Float, moved : Bool, over : Maybe Int }
+      -- Reordering bookmarks and moving them between groups (REQ-007).
+    | MoveBookmark { index : Int, name : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool, over : Maybe BookmarkDrop }
+      -- Reordering topics (REQ-021).
+    | MoveTopic { index : Int, title : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
 
 
 type Region
@@ -669,6 +716,14 @@ type alias Model =
 
     -- Bookmark groups folded in the sidebar (spec 5.7), as "bar/Legal".
     , foldedGroups : Set String
+
+    -- Topics (REQ-021): from topics.toml, the search text, the open topic
+    -- (by index) and whether the Archived group is shown.
+    , topics : List Topic
+    , topicWarnings : List String
+    , topicSearch : String
+    , openTopic : Maybe Int
+    , archivedTopicsOpen : Bool
     , clipboard : Maybe Clipboard
     , jobs : Dict Int JobStatus
     , jobsPanel : Bool
@@ -766,7 +821,22 @@ type Msg
     | SidebarResizeStart Float
     | ItemContextMenu (List MenuEntry) Float Float
     | BookmarkSearch String
+      -- Topics (REQ-021)
+    | TopicEditOp (List ( String, D.Value ))
+    | TopicSearch String
+    | OpenTopic Int
+    | CloseTopic
+    | ToggleArchivedTopics
+    | EditTopic (Maybe Int) (List String)
+    | TopicTitle String
+    | TopicDescription String
+    | TopicSubmit
+    | DeleteTopic Int
+    | RemoveTopic Int
+    | TopicMouseDown Int String Float Float
     | ToggleBookmarkGroup String
+    | BookmarkMouseDown Int String Float Float
+    | BookmarkDragOver (Maybe BookmarkDrop)
     | FavBrowseTo String String
     | FavUp
     | FavHome
@@ -909,6 +979,7 @@ type Command
     | CmdOpenTerminal
     | CmdOpenInEditor
     | CmdCreateShortcut
+    | CmdExportFileList
     | CmdOpenFolderInEditor
     | CmdReveal
     | CmdItemMenu
@@ -1017,6 +1088,9 @@ sidebarModeName mode =
         BookmarksMode ->
             "bookmarks"
 
+        TopicsMode ->
+            "topics"
+
 
 sidebarModeFromString : String -> SidebarMode
 sidebarModeFromString s =
@@ -1026,6 +1100,9 @@ sidebarModeFromString s =
 
         "bookmarks" ->
             BookmarksMode
+
+        "topics" ->
+            TopicsMode
 
         _ ->
             TreeMode

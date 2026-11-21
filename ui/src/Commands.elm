@@ -82,6 +82,7 @@ all =
     , Def "item.openInEditor" CmdOpenInEditor ".code"
     , Def "folder.openInEditor" CmdOpenFolderInEditor ".code"
     , Def "item.reveal" CmdReveal ".link-out"
+    , Def "file.exportList" CmdExportFileList ".save"
     , Def "item.contextMenu" CmdItemMenu "≡"
     , Def "view.saveForFolder" (CmdSaveView False) ".save"
     , Def "view.saveForSubfolders" (CmdSaveView True) ".save"
@@ -91,6 +92,7 @@ all =
     , Def "view.sidebarMode.tree" (CmdSidebarMode TreeMode) ".tree"
     , Def "view.sidebarMode.favourites" (CmdSidebarMode FavouritesMode) ".star"
     , Def "view.sidebarMode.bookmarks" (CmdSidebarMode BookmarksMode) ".bookmark"
+    , Def "view.sidebarMode.topics" (CmdSidebarMode TopicsMode) ".topic"
     , Def "view.sidebarLeft" (CmdSidebarSide "left") "◧"
     , Def "view.sidebarRight" (CmdSidebarSide "right") "◨"
     , Def "view.toggleMenuBar" (CmdToggleSetting "layout.menuBar") "☰"
@@ -225,6 +227,7 @@ defaults =
     , ( "Ctrl+Shift+1", "view.sidebarMode.tree", "global" )
     , ( "Ctrl+Shift+2", "view.sidebarMode.favourites", "global" )
     , ( "Ctrl+Shift+3", "view.sidebarMode.bookmarks", "global" )
+    , ( "Ctrl+Shift+4", "view.sidebarMode.topics", "global" )
     , ( "Ctrl+H", "view.toggleHidden", "global" )
     , ( "F6", "focus.nextRegion", "global" )
     , ( "Shift+F6", "focus.prevRegion", "global" )

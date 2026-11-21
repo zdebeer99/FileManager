@@ -396,6 +396,20 @@ syncGlyph sync =
 viewDragGhost : Model -> Html Msg
 viewDragGhost model =
     case model.drag of
+        Just (MoveBookmark d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.name ]
+
+            else
+                text ""
+
+        Just (MoveTopic d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.title ]
+
+            else
+                text ""
+
         Just (DragItems d) ->
             if d.moved then
                 div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ]
