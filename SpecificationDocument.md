@@ -6,7 +6,7 @@
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
 | Status | 0.1.0 released. Update cycles **c1** to **c6** are built on top of it and not yet released (Sections 11.2 to 11.8). |
-| Changes | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05). |
+| Changes | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01). |
 | | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
 | | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
 | | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
@@ -369,6 +369,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 | Online-only | ☁ | `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS` or `FILE_ATTRIBUTE_OFFLINE` |
 | Always keep on this device | ✔ (filled) | `FILE_ATTRIBUTE_PINNED` |
 | Available locally | ✔ (outline) | Other items in a sync folder |
+| In online drive | ☁ | No state from the attributes, but inside an online drive (6.4.7). Google Drive for desktop gives every file the same attributes (`Normal`), whether online-only or kept offline, and Explorer shows the same cloud on all of them, so File Catalog shows this instead of a blank (REQ-032). |
 | (blank) | | Not in a sync root |
 
 - **FR-SYNC-03** Reading sync status never triggers a file download (a "hydration").
@@ -1028,8 +1029,9 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | REQ-030 Open Favourites folders in the active tab | FR-FAV-05 |
 | REQ-031 Topic switcher | FR-TOP-08 |
 | REQ-033 No autocomplete in text boxes | NFR-UX-05 |
+| REQ-032 Google Drive sync status | FR-SYNC-01 (*In online drive*) |
 
-REQ-032 (Google Drive sync status) is not built yet: Google Drive for desktop does not mark online-only files the way OneDrive does, so the right signal must first be found on a real Google Drive (see FeatureRequest.md).
+REQ-032: checked on a real Google Drive (2026-11-22): every file reports `Normal` (0x80), online-only or not, and Explorer has no per-file status, only the same cloud overlay. Google Drive files therefore show *In online drive*; telling online-only and offline files apart would need Google's own API, which is not used.
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -1125,6 +1127,7 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
 | 2026-11-22 | Open With uses Windows' own dialog, and a list of apps from the desktop files on Linux; it moves in from section 12 (Properties stays there) | FR-OPEN-02 |
 | 2026-11-22 | Online drives are found from each provider's settings, the Windows sync-root registry and the default folders, and use the slow-path pool; sync states stay in section 12 | 6.4.7 |
+| 2026-11-22 | Google Drive files show *In online drive*: Google Drive for desktop reports no per-file state through attributes (checked: `Normal`, 0x80, for online-only and offline files), and Google's API is not used | FR-SYNC-01 |
 | 2026-11-22 | The Favourites view is grouped (Quick access, Pinned, Online drives, Drives, Network), foldable and reorderable; Quick access is read from the OS and read-only | FR-FAV-04 |
 
 ---

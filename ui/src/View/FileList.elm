@@ -391,6 +391,9 @@ syncGlyph sync =
         Item.SyncError ->
             "⚠"
 
+        Item.SyncInCloud ->
+            "☁"
+
 
 {-| The label that follows the pointer while dragging items.
 -}

@@ -40,7 +40,6 @@ thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
 
 | ID      | Name                | Area            | Description     | Priority | Status | Update Cycle | Comment       |
 | ------- | ------------------- | --------------- | --------------- | -------- | ------ | ------------ | ------------- |
-| REQ-032 | Google Drive sync status | File List | The sync status for Google Drive files is not showing in the Sync status column. | Normal | new | c6 | 22Nov26 added from the quick requests. Needs one check on a real Google Drive first: which attributes Google Drive gives an online-only file (see Log). |
 
 ## Done
 
@@ -67,6 +66,7 @@ thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
 | REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal | c3 | 02Nov26 new. 21Nov26 Built: FR-BM-07: drag in the sidebar and on the Bookmark Bar; drop on a bookmark (before it) or a group (end of it). |
 | REQ-021 | Topic View | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" below. | Normal | c3 | 14Nov26 Added. 21Nov26 Built: spec 6.4.6 (FR-TOP-01 to 05), topics.toml (8.8): fourth sidebar view, Add to Topic in folder menus, drag folders onto a topic. |
 | REQ-022 | Export file names | File View | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal | c3 | 21Nov26 added. 21Nov26 Built: FR-OPEN-07: Export File List… (right-click on empty space, File menu, palette); the names shown, one per line, in a .txt you choose. |
+| REQ-032 | Google Drive sync status | File List | The sync status for Google Drive files is not showing in the Sync status column. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Checked: Google Drive gives every file `Normal` (0x80) and Explorer shows no status. Built: FR-SYNC-01: files in an online drive with no state of their own show ☁ *In online drive*. |
 | REQ-030 | Favourites: open in the active tab | Side Bar | In the Favourites view, open a folder directly in the active tab: the ↗ button next to each folder, and Ctrl+Click. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-FAV-05. |
 | REQ-031 | Topic switcher | Topics Side Bar | In an open topic, the title is a drop-down with the top 7 topics, to switch quickly. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-TOP-08. |
 | REQ-033 | No autocomplete | General | No autocomplete when editing folder names, labels, paths and descriptions. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: NFR-UX-05: autocomplete="off" on every text box, and WebView2 autofill off on Windows. |
@@ -140,7 +140,7 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
-- **22Nov26 c6 built** on branch `dev`: REQ-030, REQ-031, REQ-033. See spec section 11.8. **REQ-032 waits for one check:** Google Drive for desktop doesn't mark online-only files with the attributes OneDrive uses, so File Catalog can't tell them apart yet. Run the PowerShell command in the session reply on one online-only and one offline file and add the output here.
+- **22Nov26 c6 built** on branch `dev`: REQ-030, REQ-031, REQ-033. See spec section 11.8. REQ-032 followed after a check on your Google Drive: every file reports `Normal` (0x80) and Explorer shows no status, so files in an online drive with no state of their own now show ☁ *In online drive*.
 - **22Nov26 c5 built** on branch `dev`: REQ-024 Open With, REQ-025 OS folder icons, REQ-026 bookmark folder icons, REQ-027 tab folder icons, REQ-028 online drives, REQ-029 Favourites groups (logged from the quick requests). See spec section 11.7. The Windows parts were checked by compiling for Windows and need a test in the app.
 - **22Nov26 Fixed (REQ-023)**: saving a folder's name or path in a topic did nothing. The backend expected the field `new_path` while the UI sends `newPath`, so every save failed; a test now reads each topic change exactly as the UI sends it.
 - **21Nov26 c4 built** on branch `dev`: REQ-023 Topics improvements. Reordering folders had not been built in REQ-021; it is now. See spec section 11.6.

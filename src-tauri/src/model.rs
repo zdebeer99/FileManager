@@ -28,6 +28,10 @@ pub enum SyncState {
     OnlineOnly,
     Syncing,
     Error,
+    /// In an online drive whose app reports no state per file, such as Google
+    /// Drive for desktop (REQ-032): shown as "In online drive", as Explorer
+    /// shows the same cloud on every such file.
+    InCloud,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -89,7 +93,10 @@ pub fn build(name: String, path: PathBuf, link_meta: &Metadata) -> Item {
 
     Item {
         hidden: platform::is_hidden(&name, link_meta),
-        sync: platform::sync_state(link_meta),
+        sync: match platform::sync_state(link_meta) {
+            SyncState::None if crate::cloud::provider_of(&path).is_some() => SyncState::InCloud,
+            state => state,
+        },
         name,
         path: path.to_string_lossy().into_owned(),
         kind,

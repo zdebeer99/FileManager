@@ -20,6 +20,8 @@ type Sync
     | SyncOnlineOnly
     | SyncSyncing
     | SyncError
+      -- In an online drive that reports no state per file, e.g. Google Drive (REQ-032).
+    | SyncInCloud
 
 
 type alias Item =
@@ -143,6 +145,9 @@ syncDecoder =
 
                     "error" ->
                         SyncError
+
+                    "inCloud" ->
+                        SyncInCloud
 
                     _ ->
                         SyncNone
@@ -328,6 +333,9 @@ syncRank sync =
         SyncError ->
             5
 
+        SyncInCloud ->
+            6
+
 
 syncLabel : Sync -> String
 syncLabel sync =
@@ -349,3 +357,6 @@ syncLabel sync =
 
         SyncError ->
             "Sync problem"
+
+        SyncInCloud ->
+            "In online drive"
