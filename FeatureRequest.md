@@ -24,8 +24,17 @@
 
 **Quick Requests**
 
-- Fix - When changing the folder topic name, it does not change, the folder name stays the same.
-- 
+
+
+- changing the folder name (label) in the topic view, still does nothing. when i click on the edit pen, and type a name on the name field in the dialog and click on save, the name does not change and opening the dialog window again show again the anme as empty.
+- Support OS folder icons, show folder icons for folders like downloads, pictures, and where the folder icon is set.
+- In the book marks support folder icons, like if the download folder is bookmark show the download folder icon.
+- In the Tab show the folder icon of the first parent that has a alternative icon, also show if this is a online folder like dropbox, onedrive, gdrive.
+- Support the following online drives, dropbox, onedrive, gdrive and proton drive.
+- On the favroutes side panel also show at the top the OS file explorer pin folders. one windows file exploerer it shows a Home, and Gallery, and below it it shows quickaccess folders, and below this you can have a group for drives, network drives, etc. Your pinned folders can be in group as well, the order of the groups can by changed and folded.
+- Add a "open with" action to allow opening file with the non default application.
+
+
 
 **Request table**
 
