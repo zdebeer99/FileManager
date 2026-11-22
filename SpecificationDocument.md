@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycles **c1** to **c4** are built on top of it and not yet released (Sections 11.2 to 11.6). |
-| Changes | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
+| Status | 0.1.0 released. Update cycles **c1** to **c5** are built on top of it and not yet released (Sections 11.2 to 11.7). |
+| Changes | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
+| | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
 | | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
 | | c3 (unreleased, 2026-11-14): Create Shortcut (FR-NEW-06); folder colours follow renamed and moved folders (FR-FCOL-03); Favourites drops anywhere on the file list copy, and Cut/Copy in its menus (FR-FAV-03); icons in Bookmark Bar groups (FR-BB-01); errors written to the log (NFR-MNT-03); fixes for the command palette width and Open with VS Code on Windows (FR-OPEN-06). |
 | | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5); Open with a text editor (FR-OPEN-06, `[editor]` 8.3); menus kept on screen (FR-MENU-02); tab colours (FR-TAB-06). |
@@ -187,7 +188,9 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `topics_get` / `topics_edit` | — / `{ edit: { op, … } }` (`add`, `update`, `remove`, `archive`, `moveTo`, `addFolders`, `removeFolder`) | topics, warnings |
 | `export_file_list` | `{ folder, names }` | the saved file's path, or `null` when the save dialog was cancelled |
 | `editor_info` / `open_in_editor` | — / `{ paths }` | the editor's name (empty when none was found) / — |
-| `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>` | key → `data:` URL, or `null` where there is no system icon |
+| `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>`, `dir:<path>` (a folder's own icon, FR-ICON-03) | key → `data:` URL, or `null` where there is no system icon |
+| `open_with` / `open_with_app` | `{ path }` / `{ path, app }` | Windows: shows the system dialog, `{ shown: true }`; Linux: `{ apps, others }` (id, name, default) / — (FR-OPEN-02) |
+| `quick_access` | — | the file manager's Quick access folders (name, path) (FR-FAV-04) |
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `undo_last` | — | `{ ok } \| { error }` |
 | `fs_rename` / `fs_create` | `{ path, newName }` / `{ parent, item: { kind, … } }` | new path |
@@ -277,7 +280,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 
 | Menu | Items |
 |---|---|
-| **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Export File List… (FR-OPEN-07), Close Tab, Exit |
+| **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open With… (FR-OPEN-02), Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Export File List… (FR-OPEN-07), Close Tab, Exit |
 | **Edit** | Undo, Cut, Copy, Paste, Paste as Shortcut, Duplicate, Create Shortcut, Copy Path, Copy Name, Rename, Delete, Delete Permanently, Select All, Invert Selection, Select None |
 | **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, Topics, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Refresh |
 | **Go** | Back, Forward, Up, Home, Go to Address, Recent Folders ▸, Favourites ▸, Pin This Folder to Favourites |
@@ -308,6 +311,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-TAB-02** New tab (`Ctrl+T`) opens the current folder; close (`Ctrl+W`, middle-click); reopen closed tab (`Ctrl+Shift+T`, last 20 kept); switch (`Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+1…9`); reorder by dragging; duplicate.
 - **FR-TAB-04** Open tabs and their locations are restored on start-up (setting `restoreTabs`).
 - **FR-TAB-05** Dropping files onto a tab copies or moves them into that tab's folder.
+- **FR-TAB-07** A tab shows the own icon (FR-ICON-03) of its folder, or of the nearest folder above it that has one, for example the Downloads icon in `Downloads\Invoices` (REQ-027). A tab inside an online drive also shows a small cloud in the drive's colour, with its name as a tooltip (6.4.7), unless the icon already is the drive's own. Plain folders show no icon.
 - **FR-TAB-06** A tab whose folder has a folder colour (6.4.5) shows that colour: a coloured line along its top and a light tint. Sub-folders of a coloured folder take its colour, so the tab keeps it while you browse inside; the nearest coloured folder above wins.
 
 ### 5.6 Address Bar
@@ -324,8 +328,8 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 
 | Mode | Content |
 |---|---|
-| **Tree** | Folder tree, starting from Favourites, Home, drives/volumes, network locations and cloud roots. It loads lazily, expands to follow the current folder, and supports keyboard navigation (arrows, `→` expand, `←` collapse, type-ahead). |
-| **Favourites** | A user-ordered list of pinned folders, reordered with *Move Up* / *Move Down*. *Pin to Favourites* is available from the right-click menu, the Go menu and the palette. Clicking a favourite shows its contents (FR-FAV-03). |
+| **Tree** | Folder tree, starting from Home, online drives (6.4.7), drives/volumes and network locations. It loads lazily, expands to follow the current folder, and supports keyboard navigation (arrows, `→` expand, `←` collapse, type-ahead). |
+| **Favourites** | Folders in groups (FR-FAV-04): *Quick access* (the file manager's own), *Pinned* (your favourites, reordered with *Move Up* / *Move Down*; *Pin to Favourites* is in the right-click menu, the Go menu and the palette), *Online drives*, *Drives* and *Network*. Clicking a folder shows its contents (FR-FAV-03). |
 | **Bookmarks** | All bookmarks in their groups, as a tree that can be folded (FR-BM-06), with search, edit and delete. Bookmarks can be dragged to reorder them (FR-BM-07). |
 | **Topics** | Topics: named groups of related folders (6.4.6). |
 
@@ -349,6 +353,10 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
   - Icons are loaded in the background for the rows on screen, the Favourites view and bookmarks, so the list never waits for them; built-in icons show until they arrive. They are cached (Section 4.5).
   - A file's own icon is never read from a network or removable drive or from an online-only cloud file, so reading it can't hang or download the file (spec 4.3, FR-SYNC-03); those files show their type's icon.
   - A folder with a colour keeps the built-in folder icon, so its colour shows (6.4.5).
+- **FR-ICON-03** Folders with an icon of their own show it, in system icon mode, wherever File Catalog shows the folder: the list, the folder tree, the Favourites and Topics views, bookmarks (sidebar and Bookmark Bar, REQ-026) and tabs (FR-TAB-07) (REQ-025):
+  - **Windows:** special folders (Downloads, Pictures, Documents, …), folders with a custom icon (`desktop.ini`) and online drives, as Explorer shows them. Only folders marked read-only or system are asked, which is how Windows marks such folders, so plain folders cost no extra work.
+  - **Linux:** the home folder and the standard folders from `~/.config/user-dirs.dirs` (`folder-download`, `folder-pictures`, …), and online drives (`folder-dropbox`…), from the icon theme.
+  - Never asked on network or removable drives (spec 4.3). A folder colour wins over the folder's own icon. Answers are kept in memory for the session.
 - **FR-CC-10** Empty and error states: *"This folder is empty"*, *"Access denied"*, *"Location not available"* (with a *Retry* button).
 
 #### 5.8.1 Sync status column
@@ -464,6 +472,11 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-FCOL-02** The folder's icon is shown in that colour everywhere File Catalog shows the folder (list, tree, Favourites).
 - **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour follows its folder, and the folders inside it, when File Catalog renames or moves the folder or undoes that (REQ-013). A folder renamed or moved by another program loses its colour, because only its path is known.
 
+- **FR-FAV-04** The Favourites view shows folders in groups (REQ-029). Each group heading folds or unfolds its group; headings are dragged up or down to change the order. Folded groups and the order are kept in `session.toml`. Empty groups are not shown, except *Pinned*.
+  - **Quick access:** Home, then the file manager's own list, read-only: on Windows, Explorer's Quick access (pinned and frequent folders); on Linux, the standard folders (Desktop, Documents, Downloads, Music, Pictures, Videos) and the GTK bookmarks shared by GNOME Files, Nemo, Caja and Thunar.
+  - **Pinned:** your favourites (FR-FAV-01, FR-FAV-02).
+  - **Online drives** (6.4.7), **Drives** (fixed and removable) and **Network**.
+
 #### 6.4.6 Topics
 
 A **topic** is a title, a short description and a list of related folders, for example every folder that belongs to one project or one contract, wherever the folders are (REQ-021). It works like a group of browser tabs.
@@ -475,6 +488,14 @@ A **topic** is a title, a short description and a list of related folders, for e
 - **FR-TOP-03** Folders are added with **Add to Topic ▸** in the right-click menu of folders (file list, empty space for the current folder, folder tree, Favourites), which lists the topics that are not archived and *New Topic…* (the new topic starts with those folders), or by dragging folders, from the file list or from other apps, onto a topic. Files are skipped, and a folder is never added twice.
 - **FR-TOP-04** Topics are reordered by dragging them up or down. A topic's right-click menu offers Open, Edit…, Add the open folder, Archive / Unarchive and Delete….
 - **FR-TOP-05** Topics are stored only in `topics.toml` in the app settings folder (Section 8.8), never in the folders. The file can be edited by hand and is reloaded when it changes.
+
+#### 6.4.7 Online drives
+
+- **FR-CLOUD-01** File Catalog finds the folders of Dropbox, OneDrive, Google Drive and Proton Drive when it starts (REQ-028):
+  - **Windows:** OneDrive's own settings, the cloud sync roots registered with Windows (OneDrive, Dropbox, Proton Drive and other apps that use the Cloud Files API), Google Drive for desktop's drive (the drive labelled *Google Drive*), and Dropbox's `info.json`.
+  - **Everywhere:** Dropbox's `info.json`, and the folders the apps create in the home folder (`Dropbox`, `OneDrive`, `OneDrive - <organisation>`, `Google Drive`, `Proton Drive`).
+- **FR-CLOUD-02** Online drives are listed in the folder tree and in the Favourites view's *Online drives* group, with the drive's own folder icon or a cloud in the provider's colour, and tabs inside them show it (FR-TAB-07).
+- **FR-CLOUD-03** Their folders use the slow-path I/O pool (spec 4.3), so a drive that has to fetch from the internet never holds up local folders; they are still watched for changes. Syncing itself stays with each provider's app (section 12: sync states, *Always keep on this device*).
 
 ### 6.5 Per-folder view persistence ("Quick persist")
 
@@ -559,6 +580,7 @@ A **topic** is a title, a short description and a list of related folders, for e
 ### 6.11 Opening items
 
 - **FR-OPEN-01** Files open with the OS default app. Shortcuts open their target. Web links open in the default browser.
+- **FR-OPEN-02** **Open With…** (right-click on one file, **File › Open With…**, command `item.openWith`) opens the file with another app (REQ-024). On Windows it shows the system's own *How do you want to open this file?* dialog, which also lets you choose a new default. On Linux it lists the apps for the file's type from the installed `.desktop` files and `mimeapps.list` (the default marked *default*), with *Show all apps* for the others, and starts the one clicked with the file.
 - **FR-OPEN-03** **Open in Terminal** opens the configured terminal (`general.terminal`; default on Windows: Windows Terminal, else PowerShell; on Linux: `$TERMINAL`, else `x-terminal-emulator`, else `gnome-terminal` / `konsole`) in the current folder.
 - **FR-OPEN-04** **Copy Path** (`Ctrl+Shift+C`) copies the full path(s) of the selection, one per line. **Copy Name** copies names only.
 - **FR-OPEN-05** **Show in File Manager** shows the item in Explorer or the system file manager.
@@ -689,7 +711,7 @@ FileCatalog/
 ├── bookmarks.toml       # Bookmarks and favourites (8.6)
 ├── colours.toml         # Folder colours (8.7)
 ├── topics.toml          # Topics (8.8)
-├── session.toml         # Open tabs, recent folders, palette and search history, folded bookmark groups (written by the app)
+├── session.toml         # Open tabs, recent folders, palette and search history, folded groups, Favourites group order (written by the app)
 ├── folders/             # Per-folder view settings (8.4)
 │   └── <name>-<hash>.toml
 ├── templates/           # Templates (6.8)
@@ -976,6 +998,24 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 **Known limits:** checked with unit tests (Rust) and in a browser with a stand-in backend; the drags need a test in the app on Windows and Linux.
 
 **Fixed 2026-11-22:** saving a topic folder's name or path failed (the backend did not read the UI's `newPath` field).
+
+### 11.7 Update cycle c5 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-024 Open With | FR-OPEN-02 (moved in from section 12; *Properties* stays there) |
+| REQ-025 OS folder icons | FR-ICON-03 |
+| REQ-026 Bookmark folder icons | FR-ICON-03, FR-BB-01 |
+| REQ-027 Tab folder icons | FR-TAB-07 |
+| REQ-028 Online drives | 6.4.7 (FR-CLOUD-01 to 03), 4.3 |
+| REQ-029 Favourites groups | FR-FAV-04, FR-SB-01 |
+
+**Known limits:**
+- Most of this is Windows system code: Open With's dialog, folder icons, the cloud sync-root registry, Google Drive's drive and Quick access. It was checked by compiling for Windows (`cargo clippy --target x86_64-pc-windows-msvc`) and in a browser with a stand-in backend, not yet in the app on Windows. The Linux parts have unit tests.
+- Quick access is read when the app starts and each time the Favourites view is opened; it is read-only (pin and unpin in Explorer). Explorer's *Gallery* is not a folder and is not shown.
+- On Linux, only the standard folders (`user-dirs.dirs`) and online drives have their own folder icon; folder icons set in a file manager (GNOME's custom icon, KDE's `.directory`) are not read.
+- Online drives are found when the app starts; a drive added later shows after a restart.
+
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -997,7 +1037,7 @@ These were specified in the drafts but are not built. Each keeps its ID so it ca
 | Batch rename with live preview | FR-REN-04 |
 | Checking that files changed since the operation before undoing; undo history limit | FR-UNDO-01, FR-UNDO-02 |
 | Filling in a web link's name from the page title | FR-NEW-04, NFR-SEC-01 |
-| *Open With ▸* and *Properties* (`Alt+Enter`), including the native Windows Properties dialog | FR-OPEN-02, FR-PROP-01, FR-PROP-02 |
+| *Properties* (`Alt+Enter`), including the native Windows Properties dialog | FR-PROP-01, FR-PROP-02 |
 | Windows *Show more options* (the native Explorer menu) | FR-CC-07 |
 | Highlighting the target folder while files from another app are dragged over the window; a drag cursor that shows copy / move / shortcut | FR-CC-08, FR-COPY-06 |
 | Hints that name a key (status-bar hints, Bookmark Bar tooltips) showing a changed key | FR-KEY-01 |
@@ -1069,6 +1109,9 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-21 | Topics (REQ-021) kept in `topics.toml` in the app settings folder, as a fourth sidebar view; opening a topic opens its first folder in the active tab; folders added with *Add to Topic ▸* or by dragging; archived topics folded away by default | 6.4.6, 8.8 |
 | 2026-11-21 | Export File List writes visible names only, in screen order, not recursive, as a `.txt` chosen in a save dialog | FR-OPEN-07 |
 | 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
+| 2026-11-22 | Open With uses Windows' own dialog, and a list of apps from the desktop files on Linux; it moves in from section 12 (Properties stays there) | FR-OPEN-02 |
+| 2026-11-22 | Online drives are found from each provider's settings, the Windows sync-root registry and the default folders, and use the slow-path pool; sync states stay in section 12 | 6.4.7 |
+| 2026-11-22 | The Favourites view is grouped (Quick access, Pinned, Online drives, Drives, Network), foldable and reorderable; Quick access is read from the OS and read-only | FR-FAV-04 |
 
 ---
 
@@ -1149,6 +1192,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `item.open` / `item.openNewTab` | Open / Open in New Tab | `Enter` / `Ctrl+Enter` |
 | `item.openTerminal` | Open in Terminal | `` Ctrl+` `` |
 | `item.reveal` | Show in File Manager | — |
+| `item.openWith` | Open With… | — |
 | `item.openInEditor` / `folder.openInEditor` | Open with Text Editor / Open Folder with Text Editor | — |
 | `item.contextMenu` | Right-click Menu | `Shift+F10`, Menu key |
 | `view.saveForFolder` | Save View for This Folder | `Ctrl+S` |

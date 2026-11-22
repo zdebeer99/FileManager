@@ -36,6 +36,9 @@ viewDialog model =
         Just (TopicFolderDialog form) ->
             viewTopicFolderDialog form
 
+        Just (OpenWithDialog state) ->
+            viewOpenWith state
+
         Just (ConfirmDialog confirm) ->
             div [ class "overlay" ]
                 [ div [ class "dialog", attribute "role" "alertdialog" ]
@@ -340,6 +343,58 @@ viewTopicFolderDialog form =
                 , span [ class "dialog-spacer" ] []
                 , button [ onClick DialogCancel ] [ text Text.cancel ]
                 , button [ class "primary", onClick TopicFolderSubmit ] [ text Text.save ]
+                ]
+            ]
+        ]
+
+
+{-| Open With on Linux (FR-OPEN-02): click an app to open the file with it.
+-}
+viewOpenWith : OpenWithState -> Html Msg
+viewOpenWith state =
+    let
+        name =
+            String.split "/" state.path |> List.reverse |> List.head |> Maybe.withDefault state.path
+
+        appButton index app =
+            button
+                ([ class "openwith-app"
+                 , onClick (OpenWithPick app.id)
+                 ]
+                    ++ (if index == 0 then
+                            [ id dialogFirstInputId ]
+
+                        else
+                            []
+                       )
+                )
+                [ span [] [ text app.name ]
+                , viewIf app.default (span [ class "muted" ] [ text Text.openWithDefault ])
+                ]
+
+        shown =
+            if state.showAll then
+                state.apps ++ state.others
+
+            else
+                state.apps
+    in
+    div [ class "overlay" ]
+        [ div
+            [ class "dialog openwith"
+            , attribute "role" "dialog"
+            , Html.Events.custom "keydown" (inputKeys [ "Escape" ] (\_ -> DialogCancel))
+            ]
+            [ div [ class "dialog-title" ] [ text (Text.openWithTitle name) ]
+            , if List.isEmpty shown then
+                div [ class "hint" ] [ text Text.openWithNone ]
+
+              else
+                div [ class "openwith-list" ] (List.indexedMap appButton shown)
+            , div [ class "dialog-actions" ]
+                [ viewIf (not state.showAll && not (List.isEmpty state.others)) (button [ onClick OpenWithShowAll ] [ text Text.openWithShowAll ])
+                , span [ class "dialog-spacer" ] []
+                , button [ onClick DialogCancel ] [ text Text.cancel ]
                 ]
             ]
         ]

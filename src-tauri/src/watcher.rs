@@ -73,7 +73,7 @@ impl DirWatcher {
     pub fn set(&self, folders: Vec<String>) {
         let wanted: HashMap<PathBuf, String> = folders
             .into_iter()
-            .filter(|f| !platform::is_slow_path(Path::new(f)))
+            .filter(|f| !platform::is_slow_device(Path::new(f)))
             .map(|f| (PathBuf::from(&f), f))
             .collect();
         let mut watched = self.watched.lock().unwrap();

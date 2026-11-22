@@ -1004,6 +1004,24 @@ button.primary:hover:not(:disabled) { background: var(--accent); filter: brightn
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 1h9v14L8 11.5 3.5 15z'/%3E%3C/svg%3E");
 }
 
+/* Online drives (REQ-028): a cloud in each provider's colour. Plain shapes, not the providers' logos. */
+.icon.cloud {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 13.5a3.5 3.5 0 0 1-.6-6.95A4.5 4.5 0 0 1 12.6 6a3.75 3.75 0 0 1-.1 7.5z'/%3E%3C/svg%3E");
+  background-color: var(--text-muted);
+}
+.icon.cloud-dropbox { background-color: #0061fe; }
+.icon.cloud-onedrive { background-color: #0f78d4; }
+.icon.cloud-gdrive { background-color: #1fa463; }
+.icon.cloud-proton { background-color: #6d4aff; }
+/* Tab icons (REQ-027) */
+.tab .tab-icons { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.tab .tab-icons:empty { display: none; }
+.tab .tab-icons .sysicon { width: 16px; height: 16px; }
+.tab .tab-icons .tab-cloud { width: 12px; height: 12px; }
+/* Favourites groups (REQ-029) */
+.fav-group { cursor: default; }
+.topic-dragging .fav-group:hover { box-shadow: inset 0 2px 0 var(--accent); }
+
 /* Topics (REQ-021): a stack of folders. */
 .icon.topic {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M1 4h5l1.5 1.5H15V14H1zM3 1.5h4.5L9 3H3z'/%3E%3C/svg%3E");
@@ -1029,6 +1047,10 @@ button.primary:hover:not(:disabled) { background: var(--accent); filter: brightn
 .topic-folder:hover .topic-folder-edit, .topic-folder.current .topic-folder-edit { visibility: visible; }
 .topic-folder-edit:hover { background: var(--chrome-hover, var(--bg-hover)); color: var(--chrome-text, var(--text)); }
 .dialog-actions .dialog-spacer { flex: 1; }
+/* Open With on Linux (FR-OPEN-02) */
+.openwith-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
+.openwith-app { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; text-align: left; border-color: transparent; background: transparent; }
+.openwith-app:hover, .openwith-app:focus { background: var(--bg-hover); border-color: var(--border); }
 
 /* File operations (M3) */
 

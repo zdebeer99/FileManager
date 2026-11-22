@@ -1,4 +1,5 @@
 use std::fs::Metadata;
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::MetadataExt;
 use std::path::{Component, Path, Prefix};
 
@@ -62,42 +63,197 @@ pub fn sync_state(meta: &Metadata) -> SyncState {
     }
 }
 
-/// Home, OneDrive folders, and every drive letter (FR-SB-01).
+/// Home, the online drives (REQ-028), and every drive letter (FR-SB-01).
 pub fn roots(home: &Path) -> Vec<Root> {
-    let mut roots = vec![Root { name: "Home".into(), path: home.to_string_lossy().into_owned(), kind: "home" }];
-    let mut seen = std::collections::HashSet::new();
-    for var in ["OneDriveCommercial", "OneDriveConsumer", "OneDrive"] {
-        if let Ok(path) = std::env::var(var) {
-            if Path::new(&path).is_dir() && seen.insert(path.to_lowercase()) {
-                let name =
-                    Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(path.clone());
-                roots.push(Root { name, path, kind: "cloud" });
-            }
-        }
-    }
+    let mut roots = vec![Root::new("Home", home.to_string_lossy(), "home")];
+    let cloud = super::cloud_roots();
     // SAFETY: GetLogicalDrives takes no arguments and only returns a bit mask.
     let mask = unsafe { GetLogicalDrives() };
+    let mut drives = Vec::new();
     for i in 0..26u32 {
         if mask & (1 << i) == 0 {
             continue;
         }
         let letter = (b'A' + i as u8) as char;
         let path = format!("{letter}:\\");
-        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
-        // SAFETY: `wide` is a valid, NUL-terminated UTF-16 string that outlives the call.
-        let kind = match unsafe { GetDriveTypeW(wide.as_ptr()) } {
+        // Google Drive's own drive letter is listed once, as an online drive.
+        if cloud.iter().any(|c| c.path.eq_ignore_ascii_case(&path)) {
+            continue;
+        }
+        let kind = match drive_type(&path) {
             DRIVE_REMOTE => "network",
             DRIVE_REMOVABLE | DRIVE_CDROM => "removable",
             _ => "drive",
         };
-        roots.push(Root { name: format!("{letter}:"), path, kind });
+        drives.push(Root::new(format!("{letter}:"), path, kind));
     }
+    roots.extend(cloud);
+    roots.extend(drives);
     roots
 }
 
-/// True for network shares and removable or optical drives, so their I/O
-/// runs on the separate slow-path threads (spec 4.3).
-pub fn is_slow_path(path: &Path) -> bool {
+fn drive_type(root: &str) -> u32 {
+    let wide: Vec<u16> = root.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: `wide` is a valid, NUL-terminated UTF-16 string that outlives the call.
+    unsafe { GetDriveTypeW(wide.as_ptr()) }
+}
+
+/// Online drives Windows knows about (REQ-028): OneDrive's own settings,
+/// the cloud sync roots registered with Windows (OneDrive, Dropbox, Proton
+/// Drive and others that use the Cloud Files API), and Google Drive's drive.
+pub fn cloud_candidates(_home: &Path) -> Vec<crate::cloud::Candidate> {
+    use crate::cloud::Candidate;
+    let mut found = Vec::new();
+    for var in ["OneDriveCommercial", "OneDriveConsumer", "OneDrive"] {
+        if let Some(path) = std::env::var_os(var) {
+            found.push(Candidate { path: path.into(), provider: "onedrive", name: String::new() });
+        }
+    }
+    for (key, path) in sync_roots() {
+        if let Some(provider) = provider_from_key(&key) {
+            found.push(Candidate { path: path.into(), provider, name: String::new() });
+        }
+    }
+    // Google Drive for desktop shows as a drive labelled "Google Drive".
+    // SAFETY: GetLogicalDrives takes no arguments and only returns a bit mask.
+    let mask = unsafe { GetLogicalDrives() };
+    for i in 0..26u32 {
+        let root = format!("{}:\\", (b'A' + i as u8) as char);
+        if mask & (1 << i) != 0
+            && drive_type(&root) == DRIVE_FIXED
+            && volume_label(&root).as_deref() == Some("Google Drive")
+        {
+            found.push(Candidate { path: root.into(), provider: "gdrive", name: "Google Drive".into() });
+        }
+    }
+    found
+}
+
+const DRIVE_FIXED: u32 = 3;
+
+/// The provider named by a SyncRootManager key such as `OneDrive!S-1-5-…!Personal`.
+fn provider_from_key(key: &str) -> Option<&'static str> {
+    let name = key.split('!').next().unwrap_or(key).to_lowercase();
+    if name.contains("onedrive") {
+        Some("onedrive")
+    } else if name.contains("dropbox") {
+        Some("dropbox")
+    } else if name.contains("google") {
+        Some("gdrive")
+    } else if name.contains("proton") {
+        Some("proton")
+    } else {
+        None
+    }
+}
+
+fn volume_label(root: &str) -> Option<String> {
+    use windows_sys::Win32::Storage::FileSystem::GetVolumeInformationW;
+    let wide: Vec<u16> = root.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut label = [0u16; 261];
+    // SAFETY: `wide` is NUL-terminated and `label` is a writable buffer of the size given.
+    let ok = unsafe {
+        GetVolumeInformationW(
+            wide.as_ptr(),
+            label.as_mut_ptr(),
+            label.len() as u32,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    (ok != 0).then(|| String::from_utf16_lossy(&label[..label.iter().position(|&c| c == 0).unwrap_or(0)]))
+}
+
+/// (key name, folder) for every cloud sync root registered for this computer:
+/// `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\<key>\UserSyncRoots`.
+fn sync_roots() -> Vec<(String, String)> {
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ,
+    };
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let open = |parent: HKEY, name: &str| -> Option<HKEY> {
+        let name = wide(name);
+        let mut key: HKEY = std::ptr::null_mut();
+        // SAFETY: `name` is NUL-terminated and `key` receives the opened handle.
+        (unsafe { RegOpenKeyExW(parent, name.as_ptr(), 0, KEY_READ, &mut key) } == 0).then_some(key)
+    };
+    let mut found = Vec::new();
+    let Some(manager) = open(HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager")
+    else {
+        return found;
+    };
+    for index in 0.. {
+        let mut name = [0u16; 512];
+        let mut len = name.len() as u32;
+        // SAFETY: `name` is writable for `len` UTF-16 units; the other outputs are optional.
+        let status = unsafe {
+            RegEnumKeyExW(
+                manager,
+                index,
+                name.as_mut_ptr(),
+                &mut len,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if status != 0 {
+            break;
+        }
+        let key_name = String::from_utf16_lossy(&name[..len as usize]);
+        let Some(user_roots) = open(manager, &format!("{key_name}\\UserSyncRoots")) else { continue };
+        for value_index in 0.. {
+            let mut value_name = [0u16; 256];
+            let mut value_len = value_name.len() as u32;
+            let mut data = [0u16; 1024];
+            let mut data_len = (data.len() * 2) as u32;
+            let mut kind = 0u32;
+            // SAFETY: the name and data buffers are writable for the sizes given (data in bytes).
+            let status = unsafe {
+                RegEnumValueW(
+                    user_roots,
+                    value_index,
+                    value_name.as_mut_ptr(),
+                    &mut value_len,
+                    std::ptr::null(),
+                    &mut kind,
+                    data.as_mut_ptr().cast(),
+                    &mut data_len,
+                )
+            };
+            if status != 0 {
+                break;
+            }
+            if kind == REG_SZ {
+                let units = &data[..(data_len as usize / 2).min(data.len())];
+                let text =
+                    String::from_utf16_lossy(&units[..units.iter().position(|&c| c == 0).unwrap_or(units.len())]);
+                if !text.is_empty() {
+                    found.push((key_name.clone(), text));
+                }
+            }
+        }
+        // SAFETY: the key was opened above.
+        unsafe { RegCloseKey(user_roots) };
+    }
+    // SAFETY: the key was opened above.
+    unsafe { RegCloseKey(manager) };
+    found
+}
+
+/// Whether a folder can have an icon of its own (REQ-025). Windows only uses
+/// a folder's `desktop.ini` when the folder is read-only or a system folder,
+/// which is also how Downloads, Pictures and online drives are marked.
+pub fn may_have_own_icon(_path: &Path, meta: &Metadata) -> bool {
+    meta.is_dir() && meta.file_attributes() & (FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_SYSTEM) != 0
+}
+
+/// True for network shares and removable or optical drives (spec 4.3).
+pub fn is_slow_device(path: &Path) -> bool {
     let root = match path.components().next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {
             Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => format!("{}:\\", letter as char),
@@ -106,10 +262,7 @@ pub fn is_slow_path(path: &Path) -> bool {
         },
         _ => return false,
     };
-    let wide: Vec<u16> = root.encode_utf16().chain(std::iter::once(0)).collect();
-    // SAFETY: `wide` is a valid, NUL-terminated UTF-16 string that outlives the call.
-    let drive_type = unsafe { GetDriveTypeW(wide.as_ptr()) };
-    matches!(drive_type, DRIVE_REMOVABLE | DRIVE_REMOTE | DRIVE_CDROM)
+    matches!(drive_type(&root), DRIVE_REMOVABLE | DRIVE_REMOTE | DRIVE_CDROM)
 }
 
 /// Opens a terminal in `dir`: the configured command, else Windows Terminal,
@@ -212,7 +365,7 @@ pub fn icon(target: &super::IconTarget) -> Option<super::Icon> {
             ("file".to_string(), FILE_ATTRIBUTE_NORMAL, SHGFI_USEFILEATTRIBUTES)
         }
         super::IconTarget::Extension(ext) => (format!("file.{ext}"), FILE_ATTRIBUTE_NORMAL, SHGFI_USEFILEATTRIBUTES),
-        super::IconTarget::File(path) => (path.to_string_lossy().into_owned(), 0, 0),
+        super::IconTarget::File(path) | super::IconTarget::Dir(path) => (path.to_string_lossy().into_owned(), 0, 0),
     };
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
     let mut info = SHFILEINFOW::default();
@@ -329,4 +482,85 @@ fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     writer.write_image_data(rgba).ok()?;
     writer.finish().ok()?;
     Some(out)
+}
+
+/// Open With (FR-OPEN-02): the system's own "How do you want to open this
+/// file?" dialog, which also opens the file with the app picked. `parent` is
+/// the main window, so the dialog stays in front of it. Blocks until it closes.
+pub fn open_with_dialog(path: &Path, parent: isize) -> Result<(), String> {
+    use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+    use windows_sys::Win32::UI::Shell::{
+        SHOpenWithDialog, OAIF_ALLOW_REGISTRATION, OAIF_EXEC, OAIF_REGISTER_EXT, OPENASINFO,
+    };
+    /// HRESULT_FROM_WIN32(ERROR_CANCELLED): the dialog was closed without a choice.
+    const CANCELLED: i32 = 0x8007_04C7_u32 as i32;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let info = OPENASINFO {
+        pcszFile: wide.as_ptr(),
+        pcszClass: std::ptr::null(),
+        oaifInFlags: OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT | OAIF_EXEC,
+    };
+    // SAFETY: COM is set up for this thread; `wide` and `info` outlive the call.
+    let result = unsafe {
+        CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        SHOpenWithDialog(parent as _, &info)
+    };
+    if result >= 0 || result == CANCELLED {
+        Ok(())
+    } else {
+        Err(format!("Could not show Open With (error 0x{:08X}).", result as u32))
+    }
+}
+
+/// Explorer's Quick access folders (REQ-029): the pinned and frequent folders,
+/// in Explorer's order. Recent files in the list are left out. Read only;
+/// pinning stays in Explorer.
+pub fn quick_access(_home: &Path) -> Vec<super::Place> {
+    use windows::core::w;
+    use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{
+        BHID_EnumItems, IEnumShellItems, IShellItem, SHCreateItemFromParsingName, SIGDN, SIGDN_FILESYSPATH,
+        SIGDN_NORMALDISPLAY,
+    };
+
+    fn name_of(item: &IShellItem, kind: SIGDN) -> Option<String> {
+        // SAFETY: GetDisplayName returns a string we own and must free with CoTaskMemFree.
+        unsafe {
+            let text = item.GetDisplayName(kind).ok()?;
+            let value = text.to_string().ok();
+            CoTaskMemFree(Some(text.0 as *const _));
+            value
+        }
+    }
+
+    let mut places = Vec::new();
+    // SAFETY: COM is set up for this thread; every interface is released when dropped.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let Ok(folder) =
+            SHCreateItemFromParsingName::<_, _, IShellItem>(w!("shell:::{679f85cb-0220-4080-b29b-5540cc05aab6}"), None)
+        else {
+            return places;
+        };
+        let Ok(items) = folder.BindToHandler::<_, IEnumShellItems>(None, &BHID_EnumItems) else { return places };
+        loop {
+            let mut batch = [None];
+            let mut fetched = 0u32;
+            if items.Next(&mut batch, Some(&mut fetched)).is_err() || fetched == 0 {
+                break;
+            }
+            let Some(item) = batch[0].take() else { break };
+            let Some(path) = name_of(&item, SIGDN_FILESYSPATH) else { continue };
+            // Only folders; a network folder is listed without checking it.
+            if !(is_slow_device(Path::new(&path)) || Path::new(&path).is_dir()) {
+                continue;
+            }
+            let name = name_of(&item, SIGDN_NORMALDISPLAY).unwrap_or_else(|| path.clone());
+            places.push(super::Place { name, path });
+            if places.len() >= 50 {
+                break;
+            }
+        }
+    }
+    places
 }

@@ -19,6 +19,15 @@ pub fn icon(target: &IconTarget) -> Option<Icon> {
         IconTarget::Folder => vec!["folder".to_string()],
         IconTarget::Extension(ext) => mime_db().icon_names(ext),
         IconTarget::File(_) => return None,
+        // REQ-025: Downloads, Pictures… and online drives, by their XDG icon names.
+        IconTarget::Dir(path) => match (special_folder_icon(path), super::unix::cloud_root(path)) {
+            (Some(name), _) => vec![name.to_string()],
+            (None, Some(root)) => {
+                let p = root.provider;
+                vec![format!("folder-{p}"), p.to_string(), "folder-remote".to_string()]
+            }
+            _ => return None,
+        },
     };
     let themes = themes();
     names.iter().find_map(|name| themes.find(name)).and_then(|path| {
@@ -27,7 +36,66 @@ pub fn icon(target: &IconTarget) -> Option<Icon> {
     })
 }
 
-fn mime_db() -> &'static MimeDb {
+/// The icon name of an XDG special folder (`~/.config/user-dirs.dirs`) or the
+/// home folder, e.g. `folder-download` (REQ-025).
+pub(super) fn special_folder_icon(path: &std::path::Path) -> Option<&'static str> {
+    static FOLDERS: OnceLock<Vec<(PathBuf, &'static str)>> = OnceLock::new();
+    let folders = FOLDERS.get_or_init(|| {
+        let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".config"));
+        let text = fs::read_to_string(config.join("user-dirs.dirs")).unwrap_or_default();
+        special_folders(&text, &home())
+    });
+    folders.iter().find(|(p, _)| p == path).map(|(_, icon)| *icon)
+}
+
+/// The standard folders that exist, in the order file managers list them (REQ-029).
+pub(super) fn standard_folders(home: &std::path::Path) -> Vec<super::Place> {
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    let text = fs::read_to_string(config.join("user-dirs.dirs")).unwrap_or_default();
+    let order =
+        ["user-desktop", "folder-documents", "folder-download", "folder-music", "folder-pictures", "folder-videos"];
+    let folders = special_folders(&text, home);
+    order
+        .iter()
+        .filter_map(|icon| folders.iter().find(|(_, i)| i == icon))
+        .filter(|(path, _)| path.is_dir())
+        .map(|(path, _)| super::Place {
+            name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            path: path.to_string_lossy().into_owned(),
+        })
+        .collect()
+}
+
+/// Reads `XDG_DOWNLOAD_DIR="$HOME/Downloads"` lines. The home folder itself is
+/// `user-home`; a special folder set to the home folder (meaning "unused") is skipped.
+fn special_folders(text: &str, home: &std::path::Path) -> Vec<(PathBuf, &'static str)> {
+    const NAMES: [(&str, &str); 8] = [
+        ("XDG_DESKTOP_DIR", "user-desktop"),
+        ("XDG_DOWNLOAD_DIR", "folder-download"),
+        ("XDG_TEMPLATES_DIR", "folder-templates"),
+        ("XDG_PUBLICSHARE_DIR", "folder-publicshare"),
+        ("XDG_DOCUMENTS_DIR", "folder-documents"),
+        ("XDG_MUSIC_DIR", "folder-music"),
+        ("XDG_PICTURES_DIR", "folder-pictures"),
+        ("XDG_VIDEOS_DIR", "folder-videos"),
+    ];
+    let mut found = vec![(home.to_path_buf(), "user-home")];
+    for line in text.lines().map(str::trim).filter(|l| !l.starts_with('#')) {
+        let Some((key, value)) = line.split_once('=') else { continue };
+        let Some((_, icon)) = NAMES.iter().find(|(k, _)| *k == key.trim()) else { continue };
+        let value = value.trim().trim_matches('"');
+        let path = match value.strip_prefix("$HOME") {
+            Some(rest) => home.join(rest.trim_start_matches('/')),
+            None => PathBuf::from(value),
+        };
+        if path != home {
+            found.push((path, icon));
+        }
+    }
+    found
+}
+
+pub(super) fn mime_db() -> &'static MimeDb {
     static DB: OnceLock<MimeDb> = OnceLock::new();
     DB.get_or_init(|| MimeDb::load(&data_dirs()))
 }
@@ -39,12 +107,12 @@ fn themes() -> &'static Themes {
 
 // DIRECTORIES
 
-fn home() -> PathBuf {
+pub(super) fn home() -> PathBuf {
     crate::paths::home_dir()
 }
 
 /// $XDG_DATA_HOME, then $XDG_DATA_DIRS.
-fn data_dirs() -> Vec<PathBuf> {
+pub(super) fn data_dirs() -> Vec<PathBuf> {
     let mut dirs =
         vec![std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/share"))];
     let system = std::env::var("XDG_DATA_DIRS").unwrap_or_default();
@@ -80,7 +148,7 @@ fn theme_name() -> String {
 }
 
 /// A minimal INI reader: section → key → value.
-fn ini_sections(text: &str) -> HashMap<String, HashMap<String, String>> {
+pub(super) fn ini_sections(text: &str) -> HashMap<String, HashMap<String, String>> {
     let mut sections: HashMap<String, HashMap<String, String>> = HashMap::new();
     let mut current = String::new();
     for line in text.lines().map(str::trim) {
@@ -99,7 +167,7 @@ fn ini_sections(text: &str) -> HashMap<String, HashMap<String, String>> {
 // MIME TYPES
 
 #[derive(Default)]
-struct MimeDb {
+pub(super) struct MimeDb {
     /// Extension → (weight, MIME type).
     by_ext: HashMap<String, (u32, String)>,
     /// MIME type → icon name, from mime/icons.
@@ -144,6 +212,11 @@ impl MimeDb {
                 self.by_ext.insert(ext, (weight, mime.to_string()));
             }
         }
+    }
+
+    /// The MIME type for a lower-case extension, if the database knows it.
+    pub(super) fn mime_type(&self, ext: &str) -> Option<&str> {
+        self.by_ext.get(ext).map(|(_, mime)| mime.as_str())
     }
 
     /// Icon names to try for a file type, most specific first.
@@ -326,6 +399,20 @@ mod tests {
         assert_eq!(themes.find("folder"), Some(base.join("Parent/32x32/places/folder.png")));
         assert_eq!(themes.find("text-x-generic"), Some(base.join("hicolor/48x48/apps/text-x-generic.png")));
         assert_eq!(themes.find("missing"), None);
+    }
+
+    #[test]
+    fn special_folders_come_from_user_dirs() {
+        let home = PathBuf::from("/home/me");
+        let text = "# comment\nXDG_DOWNLOAD_DIR=\"$HOME/Downloads\"\nXDG_MUSIC_DIR=\"/data/Music\"\nXDG_TEMPLATES_DIR=\"$HOME/\"\n";
+        assert_eq!(
+            special_folders(text, &home),
+            [
+                (home.clone(), "user-home"),
+                (home.join("Downloads"), "folder-download"),
+                (PathBuf::from("/data/Music"), "folder-music"),
+            ]
+        );
     }
 
     #[test]

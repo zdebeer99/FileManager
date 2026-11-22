@@ -82,7 +82,7 @@ baseMenus model tab =
             , Submenu "New from Template" (templateEntries model)
             , Separator
             , cmd "Open" "Enter" CmdOpen
-            , later "Open With" ""
+            , cmd Text.openWithMenu "" CmdOpenWith
             , cmd "Open in Terminal" "Ctrl+`" CmdOpenTerminal
             , if model.editorName == "" then
                 later Text.openFolderWithEditor ""

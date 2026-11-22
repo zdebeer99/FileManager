@@ -1189,6 +1189,9 @@ commandName id =
         "item.openInEditor" ->
             "Open with Text Editor"
 
+        "item.openWith" ->
+            "Open With…"
+
         "folder.openInEditor" ->
             "Open Folder with Text Editor"
 
@@ -1816,3 +1819,92 @@ topicFolderHint =
 topicFolderPathNeeded : String
 topicFolderPathNeeded =
     "Enter the folder's path."
+
+
+
+-- OPEN WITH (FR-OPEN-02)
+
+
+openWithMenu : String
+openWithMenu =
+    "Open With…"
+
+
+openWithTitle : String -> String
+openWithTitle shown =
+    "Open \"" ++ shown ++ "\" with"
+
+
+openWithDefault : String
+openWithDefault =
+    "default"
+
+
+openWithShowAll : String
+openWithShowAll =
+    "Show all apps"
+
+
+openWithNone : String
+openWithNone =
+    "No app is registered for this type of file."
+
+
+openWithFolder : String
+openWithFolder =
+    "Open With works on files. Select a file first."
+
+
+
+-- FAVOURITES GROUPS AND ONLINE DRIVES (REQ-028, REQ-029)
+
+
+favouriteGroup : String -> String
+favouriteGroup id =
+    case id of
+        "quick" ->
+            "Quick access"
+
+        "favourites" ->
+            "Pinned"
+
+        "cloud" ->
+            "Online drives"
+
+        "drives" ->
+            "Drives"
+
+        "network" ->
+            "Network"
+
+        _ ->
+            id
+
+
+favouriteGroupHint : String
+favouriteGroupHint =
+    "Click to fold or unfold. Drag up or down to change the order."
+
+
+homeFolder : String
+homeFolder =
+    "Home"
+
+
+onlineDrive : String -> String
+onlineDrive provider =
+    case provider of
+        "dropbox" ->
+            "In Dropbox"
+
+        "onedrive" ->
+            "In OneDrive"
+
+        "gdrive" ->
+            "In Google Drive"
+
+        "proton" ->
+            "In Proton Drive"
+
+        _ ->
+            "In an online drive"

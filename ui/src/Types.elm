@@ -119,6 +119,9 @@ type Request
     | ReqBookmarkEdit
     | ReqTopics
     | ReqTopicEdit
+    | ReqOpenWith String
+    | ReqOpenedWith
+    | ReqQuickAccess
     | ReqViewSaved Int String
     | ReqViewReset Int String
     | ReqOpenSettingsFile
@@ -214,6 +217,25 @@ type Dialog
     | ToolbarDialog ToolbarForm
     | TopicDialog TopicForm
     | TopicFolderDialog TopicFolderForm
+    | OpenWithDialog OpenWithState
+
+
+{-| Open With on Linux (FR-OPEN-02): the apps for the file's type, and all
+other apps when _Show all apps_ is on. Windows shows its own dialog instead.
+-}
+type alias OpenWithState =
+    { path : String
+    , apps : List OpenWithApp
+    , others : List OpenWithApp
+    , showAll : Bool
+    }
+
+
+type alias OpenWithApp =
+    { id : String
+    , name : String
+    , default : Bool
+    }
 
 
 {-| New Topic and Edit Topic (REQ-021). A new topic starts with `folders`.
@@ -365,8 +387,8 @@ type alias DropMods =
     -- The `data-bm-drop` value there: where a dragged bookmark goes (REQ-007).
     , bookmarkUnder : Maybe String
 
-    -- The `data-topic-drop` value there: where a dragged topic goes (REQ-021).
-    , topicUnder : Maybe String
+    -- The `data-order-drop` value there: where a dragged topic, topic folder or Favourites group goes (REQ-021, REQ-023, REQ-029).
+    , orderUnder : Maybe String
     }
 
 
@@ -626,7 +648,35 @@ type alias Root =
     { name : String
     , path : String
     , kind : String
+
+    -- For online drives (REQ-028): "dropbox", "onedrive", "gdrive" or "proton"; else "".
+    , provider : String
     }
+
+
+{-| A folder from the file manager's Quick access list (REQ-029).
+-}
+type alias Place =
+    { name : String
+    , path : String
+    }
+
+
+{-| The Favourites view's groups (REQ-029), in their default order.
+-}
+favouriteGroupIds : List String
+favouriteGroupIds =
+    [ "quick", "favourites", "cloud", "drives", "network" ]
+
+
+{-| The online drive a path is in, if any: the deepest one (REQ-028).
+-}
+cloudRootOf : Model -> String -> Maybe Root
+cloudRootOf model path =
+    model.roots
+        |> List.filter (\r -> r.kind == "cloud" && Path.isInside model.sep r.path path)
+        |> List.sortBy (\r -> negate (String.length r.path))
+        |> List.head
 
 
 type alias Bookmark =
@@ -656,6 +706,8 @@ type Drag
     | MoveBookmark { index : Int, name : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool, over : Maybe BookmarkDrop }
       -- Reordering topics (REQ-021).
     | MoveTopic { index : Int, title : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
+      -- Reordering the Favourites view's groups (REQ-029).
+    | MoveFavGroup { group : String, label : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
       -- Reordering the folders of an open topic (REQ-023).
     | MoveTopicFolder { topic : Int, path : String, label : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
 
@@ -747,6 +799,10 @@ type alias Model =
     , topicSearch : String
     , openTopic : Maybe Int
     , archivedTopicsOpen : Bool
+
+    -- The Favourites view (REQ-029): the OS Quick access folders, and the group order.
+    , quickAccess : List Place
+    , favouriteGroups : List String
     , clipboard : Maybe Clipboard
     , jobs : Dict Int JobStatus
     , jobsPanel : Bool
@@ -863,6 +919,9 @@ type Msg
     | TopicFolderName String
     | TopicFolderSubmit
     | TopicFolderRemove
+    | OpenWithPick String
+    | OpenWithShowAll
+    | FavGroupMouseDown String String Float Float
     | ToggleBookmarkGroup String
     | BookmarkMouseDown Int String Float Float
     | BookmarkDragOver (Maybe BookmarkDrop)
@@ -1007,6 +1066,7 @@ type Command
     | CmdUndo
     | CmdOpenTerminal
     | CmdOpenInEditor
+    | CmdOpenWith
     | CmdCreateShortcut
     | CmdExportFileList
     | CmdOpenFolderInEditor

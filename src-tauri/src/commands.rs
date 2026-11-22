@@ -633,6 +633,58 @@ pub async fn open_in_editor(state: State<'_, AppState>, paths: Vec<String>) -> R
     state.pools.run(&config, Duration::from_secs(10), move || editor::open(&settings, &paths)).await?
 }
 
+/// The file manager's Quick access folders (REQ-029): Explorer's on Windows,
+/// the standard folders and GTK bookmarks elsewhere.
+#[tauri::command]
+pub async fn quick_access(state: State<'_, AppState>) -> Result<Vec<platform::Place>, String> {
+    let home = crate::paths::home_dir();
+    let config = state.paths.config.clone();
+    state.pools.run(&config, Duration::from_secs(15), move || platform::quick_access(&home)).await
+}
+
+/// Open With (FR-OPEN-02). On Windows this shows the system's own dialog,
+/// which opens the file itself; elsewhere it returns the apps to choose from.
+#[tauri::command]
+pub async fn open_with(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<platform::OpenWithChoices, String> {
+    #[cfg(windows)]
+    {
+        let _ = &state;
+        let parent = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+        tauri::async_runtime::spawn_blocking(move || platform::open_with_dialog(Path::new(&path), parent))
+            .await
+            .map_err(|e| e.to_string())??;
+        Ok(platform::OpenWithChoices { shown: true, ..Default::default() })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
+        let config = state.paths.config.clone();
+        state.pools.run(&config, Duration::from_secs(10), move || platform::open_with_choices(Path::new(&path))).await
+    }
+}
+
+/// Opens a file with the app picked in the Open With list (FR-OPEN-02, Linux).
+#[tauri::command]
+pub async fn open_with_app(state: State<'_, AppState>, path: String, app: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = (&state, path, app);
+        Err("Open With uses the Windows dialog.".into())
+    }
+    #[cfg(not(windows))]
+    {
+        let config = state.paths.config.clone();
+        state
+            .pools
+            .run(&config, Duration::from_secs(10), move || platform::open_with_app(&app, Path::new(&path)))
+            .await?
+    }
+}
+
 /// Shows the item in the system file manager.
 #[tauri::command]
 pub async fn reveal_item(path: String) -> Result<(), String> {

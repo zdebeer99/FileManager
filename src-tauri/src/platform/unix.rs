@@ -30,10 +30,9 @@ pub fn is_hidden(name: &str, _meta: &Metadata) -> bool {
 
 /// Home, the file system root, and mounted drives (WSL's Windows drives under /mnt).
 pub fn roots(home: &Path) -> Vec<Root> {
-    let mut roots = vec![
-        Root { name: "Home".into(), path: home.to_string_lossy().into_owned(), kind: "home" },
-        Root { name: "File System".into(), path: "/".into(), kind: "drive" },
-    ];
+    let mut roots = vec![Root::new("Home", home.to_string_lossy(), "home")];
+    roots.extend(super::cloud_roots());
+    roots.push(Root::new("File System", "/", "drive"));
     let user = std::env::var("USER").unwrap_or_default();
     for parent in ["/mnt".to_string(), format!("/media/{user}"), format!("/run/media/{user}")] {
         let Ok(entries) = fs::read_dir(&parent) else { continue };
@@ -44,8 +43,8 @@ pub fn roots(home: &Path) -> Vec<Root> {
             if name == "wsl" || name == "wslg" {
                 continue;
             }
-            let kind = if is_slow_path(&path) { "network" } else { "removable" };
-            roots.push(Root { name, path: path.to_string_lossy().into_owned(), kind });
+            let kind = if is_slow_device(&path) { "network" } else { "removable" };
+            roots.push(Root::new(name, path.to_string_lossy(), kind));
         }
     }
     roots
@@ -63,9 +62,8 @@ pub fn sync_state(_meta: &Metadata) -> SyncState {
     SyncState::None
 }
 
-/// True when the path is on a network or other slow file system, so its
-/// I/O runs on the separate slow-path threads (spec 4.3).
-pub fn is_slow_path(path: &Path) -> bool {
+/// True when the path is on a network or other slow file system (spec 4.3).
+pub fn is_slow_device(path: &Path) -> bool {
     let Ok(mounts) = fs::read_to_string("/proc/self/mounts") else {
         return false;
     };
@@ -133,8 +131,85 @@ pub fn clipboard_cut() -> Option<bool> {
     None
 }
 
+/// Linux has no registry of online drives; the common folders are checked in `cloud`.
+pub fn cloud_candidates(_home: &Path) -> Vec<crate::cloud::Candidate> {
+    Vec::new()
+}
+
+/// Whether a folder can have an icon of its own (REQ-025): the XDG special
+/// folders (Downloads, Pictures, …), the home folder and online drives.
+pub fn may_have_own_icon(path: &Path, _meta: &Metadata) -> bool {
+    super::freedesktop::special_folder_icon(path).is_some() || cloud_root(path).is_some()
+}
+
+/// The online drive whose root folder `path` is.
+pub(super) fn cloud_root(path: &Path) -> Option<&'static crate::cloud::CloudRoot> {
+    crate::cloud::provider_of(path).filter(|r| Path::new(&r.path) == path)
+}
+
+/// The file manager's places (REQ-029): the standard folders (Desktop,
+/// Documents, Downloads, …) and the GTK bookmarks that GNOME Files, Nemo,
+/// Caja and Thunar share (`~/.config/gtk-3.0/bookmarks`).
+pub fn quick_access(home: &Path) -> Vec<super::Place> {
+    let mut places = super::freedesktop::standard_folders(home);
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    for file in [config.join("gtk-3.0/bookmarks"), home.join(".gtk-bookmarks")] {
+        if let Ok(text) = fs::read_to_string(file) {
+            for place in gtk_bookmarks(&text) {
+                if !places.iter().any(|p| p.path == place.path) {
+                    places.push(place);
+                }
+            }
+            break;
+        }
+    }
+    places
+}
+
+/// `file:///home/me/My%20Work Label` lines; other schemes (sftp://…) are skipped.
+fn gtk_bookmarks(text: &str) -> Vec<super::Place> {
+    text.lines()
+        .filter_map(|line| {
+            let (uri, label) = line.split_once(' ').unwrap_or((line, ""));
+            let path = percent_decode(uri.strip_prefix("file://")?);
+            let name = if label.trim().is_empty() {
+                Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone())
+            } else {
+                label.trim().to_string()
+            };
+            Some(super::Place { name, path })
+        })
+        .collect()
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&text[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn gtk_bookmarks_are_read() {
+        let places =
+            super::gtk_bookmarks("file:///home/me/My%20Work\nfile:///data/Projects Projects 2026\nsftp://server/x\n");
+        let found: Vec<(&str, &str)> = places.iter().map(|p| (p.name.as_str(), p.path.as_str())).collect();
+        assert_eq!(found, [("My Work", "/home/me/My Work"), ("Projects 2026", "/data/Projects")]);
+    }
+
     use super::*;
 
     #[test]

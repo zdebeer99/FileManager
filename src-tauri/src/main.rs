@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bookmarks;
+mod cloud;
 mod colours;
 mod commands;
 mod editor;
@@ -67,6 +68,9 @@ fn main() {
             commands::icons_get,
             commands::editor_info,
             commands::open_in_editor,
+            commands::open_with,
+            commands::quick_access,
+            commands::open_with_app,
             commands::app_exit,
             commands::job_start,
             commands::job_cancel,

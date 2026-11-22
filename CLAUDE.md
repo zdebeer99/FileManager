@@ -35,7 +35,7 @@ cargo fmt --check           # rustfmt.toml: max_width 120
 
 **Rule: the UI never waits for the file system** (spec 4.3). Elm does no file system work. Every Rust command is `async`, and it sends file system work to the I/O pools in [pools.rs](src-tauri/src/pools.rs):
 - `local` pool for local disks.
-- `slow` pool for network shares, removable drives and cloud paths, chosen by `platform::is_slow_path`.
+- `slow` pool for network shares, removable drives and online drives, chosen by `platform::is_slow_path` (`platform::is_slow_device` for network and removable drives only, as the watcher and folder icons use).
 - Use `IoPools::run(path, timeout, work)` to wait with a timeout (`network.timeoutSeconds`), or `spawn` to stream results.
 
 ### IPC path
@@ -69,13 +69,14 @@ Command names are snake_case (`dir_list`, `folder_view_save`), even where spec 4
 | `folder_view.rs` | Saved per-folder views in `<config>/folders/<name>-<hash>.toml`, with *apply to subfolders* |
 | `bookmarks.rs` | `bookmarks.toml`: bookmarks with groups, and favourites. Changes are made through `Edit` ops. |
 | `editor.rs` | `[editor]` settings and Open with … (FR-OPEN-06): finds the configured editor, or the first known one installed (VS Code, Zed, …), on PATH. |
-| `icons.rs` | System icons (FR-ICON-02) by key (`folder`, `ext:<ext>`, `file:<path>`), as `data:` URLs; memory cache plus a disk cache in `<cache>/icons/<version>/`. Never reads a file's own icon from slow or online-only files. |
+| `icons.rs` | System icons (FR-ICON-02) by key (`folder`, `ext:<ext>`, `file:<path>`, and `dir:<path>` for a folder's own icon, FR-ICON-03), as `data:` URLs; memory cache plus a disk cache in `<cache>/icons/<version>/`. Never reads a file's own icon from slow or online-only files; `dir:` answers plain folders at once. |
 | `colours.rs` | `colours.toml`: folder colours (spec 6.4.5), a `[folders]` table of path → colour name. `set` keeps the user's comments. |
+| `cloud.rs` | Online drives (spec 6.4.7): Dropbox, OneDrive, Google Drive and Proton Drive folders, found once (`roots`, `provider_of`). The Windows-only sources (sync-root registry, Google Drive's drive) are in `platform::cloud_candidates`. |
 | `topics.rs` | `topics.toml`: Topics (spec 6.4.6), `[[topic]]` entries with title, description, folders and archived. Changes are made through `Edit` ops, like bookmarks. |
-| `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded bookmark groups) and the start-up listing snapshot in the cache folder |
+| `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded groups, the Favourites group order) and the start-up listing snapshot in the cache folder |
 | `paths.rs` | `AppPaths` (config, cache and log folders; portable mode), `write_atomic`, path normalising and `~` expansion, and `split_header`/`join_header` to keep a TOML file's top comments when `toml_edit` rewrites it |
 | `model.rs` | The `Item` record that is shared with Elm (spec 4.4), and `read_item` |
-| `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection, system icons. `windows.rs` uses `windows-sys` (icons through `SHGetFileInfoW`, encoded with `png`). `unix.rs` covers everything that is not Windows; `freedesktop.rs` finds icons in the icon theme. Check Windows code here with `cargo clippy --target x86_64-pc-windows-msvc` (needs `rustup target add x86_64-pc-windows-msvc`). |
+| `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection, system icons. `windows.rs` uses `windows-sys` (icons through `SHGetFileInfoW`, encoded with `png`). `unix.rs` covers everything that is not Windows; `freedesktop.rs` finds icons in the icon theme and the XDG special folders; `apps.rs` lists and starts apps for Open With (FR-OPEN-02). Windows' Quick access (FR-FAV-04) uses COM through the `windows` crate (already part of Tauri's build); everything else uses `windows-sys`. Check Windows code here with `cargo clippy --target x86_64-pc-windows-msvc` (needs `rustup target add x86_64-pc-windows-msvc`). |
 
 Notes:
 - Write files with `paths::write_atomic`.
@@ -87,7 +88,7 @@ Notes:
 
 - `Main.elm`: `init`, `update`, keyboard routing, and the backend message handlers. It is about 5,500 lines, divided by `-- SECTION` comment headers.
 - `View/`: all drawing, one module per component. `View.App` draws the window and puts the components together; `Main` uses only `View.App.view`, `View.Sidebar.treeRows` and `View.Popup.filterPopupValues`.
-  - Components: `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
+  - Components: `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites in groups, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
   - Shared: `Icons` (system and built-in icons, folder colours), `Common` (small helpers such as `viewIf`, `contextMenu`, `dropTarget`, `px`), `Keyboard` (key and mouse-button routing).
   - A component imports only `Common`, `Icons` or another component it draws; keep the imports one-way (no cycles).
 - `Types.elm`: `Model`, `Msg`, `Request` and the tab state, shared by Main and the view.

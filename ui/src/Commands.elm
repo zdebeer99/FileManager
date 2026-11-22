@@ -77,6 +77,7 @@ all =
     , Def "edit.invertSelection" CmdInvertSelection "◑"
     , Def "edit.selectNone" CmdSelectNone "○"
     , Def "item.open" CmdOpen "▶"
+    , Def "item.openWith" CmdOpenWith "▶"
     , Def "item.openNewTab" CmdOpenNewTab "⧉"
     , Def "item.openTerminal" CmdOpenTerminal ".terminal"
     , Def "item.openInEditor" CmdOpenInEditor ".code"

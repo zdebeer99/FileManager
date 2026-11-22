@@ -102,6 +102,8 @@ init _ =
             , topicSearch = ""
             , openTopic = Nothing
             , archivedTopicsOpen = False
+            , quickAccess = []
+            , favouriteGroups = favouriteGroupIds
             , clipboard = Nothing
             , jobs = Dict.empty
             , jobsPanel = False
@@ -1008,6 +1010,26 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        OpenWithPick appId ->
+            case model.dialog of
+                Just (OpenWithDialog state) ->
+                    request "open_with_app" (E.object [ ( "path", E.string state.path ), ( "app", E.string appId ) ]) False ReqOpenedWith { model | dialog = Nothing }
+                        |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
+
+        FavGroupMouseDown group label x y ->
+            ( { model | drag = Just (MoveFavGroup { group = group, label = label, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
+
+        OpenWithShowAll ->
+            case model.dialog of
+                Just (OpenWithDialog state) ->
+                    ( { model | dialog = Just (OpenWithDialog { state | showAll = True }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
         TopicFolderRemove ->
             case model.dialog of
                 Just (TopicFolderDialog form) ->
@@ -1675,16 +1697,14 @@ runCommand command model =
                 name =
                     sidebarModeName mode
             in
-            setSetting "layout.sidebar.mode" (E.string name) (\s -> { s | sidebarMode = name, sidebarVisible = True }) model
-                |> andThen
-                    (\m ->
-                        if model.settings.sidebarVisible then
-                            ( m, Cmd.none )
+            (if mode == FavouritesMode then
+                request "quick_access" (E.object []) False ReqQuickAccess
 
-                        else
-                            setSetting "layout.sidebar.visible" (E.bool True) identity m
-                    )
-                |> andThen followCurrentInTree
+             else
+                \m -> ( m, Cmd.none )
+            )
+                model
+                |> andThen (runSidebarMode name)
 
         CmdSidebarSide side ->
             setSetting "layout.sidebar.side" (E.string side) (\s -> { s | sidebarSide = side }) model
@@ -1915,6 +1935,22 @@ runCommand command model =
 
                     else
                         Just (update (OpenInEditor paths) model)
+                )
+
+        CmdOpenWith ->
+            -- One file: Windows shows its own dialog; elsewhere the apps come back (FR-OPEN-02).
+            withActive model
+                (\tab ->
+                    case targetItems tab of
+                        [ item ] ->
+                            if item.isDir then
+                                Just (flash Text.openWithFolder model)
+
+                            else
+                                Just (request "open_with" (E.object [ ( "path", E.string item.path ) ]) False (ReqOpenWith item.path) { model | popup = Nothing })
+
+                        _ ->
+                            Nothing
                 )
 
         CmdOpenFolderInEditor ->
@@ -2759,6 +2795,7 @@ persist model =
                 , ( "paletteHistory", E.list E.string model.paletteHistory )
                 , ( "findHistory", E.list E.string model.findHistory )
                 , ( "foldedGroups", E.list E.string (Set.toList model.foldedGroups) )
+                , ( "favouriteGroups", E.list E.string model.favouriteGroups )
                 ]
     in
     ( model, Cmd.none )
@@ -2964,6 +3001,9 @@ mouseMove x y model =
         Just (MoveTopicFolder d) ->
             ( { model | drag = Just (MoveTopicFolder { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
 
+        Just (MoveFavGroup d) ->
+            ( { model | drag = Just (MoveFavGroup { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
         Just (ResizeSidebar d) ->
             let
                 delta =
@@ -3053,8 +3093,8 @@ mouseUp mods model =
                     ( done, Cmd.none )
 
         Just (MoveTopic d) ->
-            -- `data-topic-drop` under the pointer: a topic's index, or "end".
-            case ( d.moved, mods.topicUnder ) of
+            -- `data-order-drop` under the pointer: a topic's index, or "end".
+            case ( d.moved, mods.orderUnder ) of
                 ( True, Just under ) ->
                     let
                         before =
@@ -3076,9 +3116,34 @@ mouseUp mods model =
                 _ ->
                     ( done, Cmd.none )
 
+        Just (MoveFavGroup d) ->
+            -- `data-order-drop` on a group heading: the group it goes before, or "end" (REQ-029).
+            case ( d.moved, mods.orderUnder ) of
+                ( True, Just under ) ->
+                    if under == d.group then
+                        ( done, Cmd.none )
+
+                    else
+                        let
+                            rest =
+                                List.filter ((/=) d.group) model.favouriteGroups
+
+                            ( before, after ) =
+                                case List.partition (\g -> g == under) rest of
+                                    ( [], _ ) ->
+                                        ( rest, [] )
+
+                                    _ ->
+                                        splitBefore under rest
+                        in
+                        persist { done | favouriteGroups = before ++ d.group :: after }
+
+                _ ->
+                    ( done, Cmd.none )
+
         Just (MoveTopicFolder d) ->
-            -- In an open topic, `data-topic-drop` holds a folder's path, or "end".
-            case ( d.moved, mods.topicUnder ) of
+            -- In an open topic, `data-order-drop` holds a folder's path, or "end".
+            case ( d.moved, mods.orderUnder ) of
                 ( True, Just under ) ->
                     if under == d.path then
                         ( done, Cmd.none )
@@ -4142,6 +4207,12 @@ itemEntries model tab item =
                     []
     in
     [ act Text.open "Enter" (KeyCommand CmdOpen) ]
+        ++ (if single && not item.isDir then
+                [ act Text.openWithMenu "" (KeyCommand CmdOpenWith) ]
+
+            else
+                []
+           )
         ++ (if model.editorName /= "" then
                 [ act (Text.openWith model.editorName) "" (OpenInEditor (List.map .path (targetItems tab))) ]
 
@@ -4377,6 +4448,40 @@ dropTargetOf value =
 findTopic : Int -> Model -> Maybe Topic
 findTopic index model =
     List.filter (\t -> t.index == index) model.topics |> List.head
+
+
+runSidebarMode : String -> Model -> ( Model, Cmd Msg )
+runSidebarMode name model =
+    setSetting "layout.sidebar.mode" (E.string name) (\s -> { s | sidebarMode = name, sidebarVisible = True }) model
+        |> andThen
+            (\m ->
+                if model.settings.sidebarVisible then
+                    ( m, Cmd.none )
+
+                else
+                    setSetting "layout.sidebar.visible" (E.bool True) identity m
+            )
+        |> andThen followCurrentInTree
+
+
+{-| The items before `x`, and `x` with the items after it.
+-}
+splitBefore : a -> List a -> ( List a, List a )
+splitBefore x list =
+    case list of
+        [] ->
+            ( [], [] )
+
+        first :: rest ->
+            if first == x then
+                ( [], list )
+
+            else
+                let
+                    ( before, after ) =
+                        splitBefore x rest
+                in
+                ( first :: before, after )
 
 
 updateTopicFolderForm : (TopicFolderForm -> TopicFolderForm) -> Model -> Model
@@ -5758,6 +5863,38 @@ handleResponse reqId req envelope model =
         ReqIgnore ->
             ( model, Cmd.none )
 
+        ReqOpenWith path ->
+            let
+                appList =
+                    D.list (D.map3 OpenWithApp (D.field "id" D.string) (D.field "name" D.string) (D.field "default" D.bool))
+            in
+            case ok (D.map3 (\shown apps others -> ( shown, apps, others )) (D.field "shown" D.bool) (D.field "apps" appList) (D.field "others" appList)) of
+                Just ( False, apps, others ) ->
+                    ( { model | dialog = Just (OpenWithDialog { path = path, apps = apps, others = others, showAll = List.isEmpty apps }) }
+                    , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+                    )
+
+                Just _ ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
+        ReqQuickAccess ->
+            case ok (D.list (D.map2 Place (D.field "name" D.string) (D.field "path" D.string))) of
+                Just places ->
+                    ( { model | quickAccess = places }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ReqOpenedWith ->
+            if envelope.kind == "ok" then
+                ( model, Cmd.none )
+
+            else
+                flashError model
+
         ReqJobStart ->
             flashError model
 
@@ -5921,6 +6058,7 @@ type alias InitData =
     , findHistory : List String
     , foldedGroups : List String
     , perFileIcons : Bool
+    , favouriteGroups : List String
     }
 
 
@@ -5935,7 +6073,7 @@ initDecoder =
         |> andMap (D.field "home" D.string)
         |> andMap (D.field "sep" D.string)
         |> andMap (D.field "syncStatus" D.bool)
-        |> andMap (D.field "roots" (D.list (D.map3 Root (D.field "name" D.string) (D.field "path" D.string) (D.field "kind" D.string))))
+        |> andMap (D.field "roots" (D.list (D.map4 Root (D.field "name" D.string) (D.field "path" D.string) (D.field "kind" D.string) (D.oneOf [ D.field "provider" D.string, D.succeed "" ]))))
         |> andMap (D.field "settingsFile" D.string)
         |> andMap (D.field "bookmarksFile" D.string)
         |> andMap (D.field "version" D.string)
@@ -5945,6 +6083,7 @@ initDecoder =
         |> andMap (D.oneOf [ D.at [ "session", "findHistory" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.at [ "session", "foldedGroups" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.field "perFileIcons" D.bool, D.succeed False ])
+        |> andMap (D.oneOf [ D.at [ "session", "favouriteGroups" ] (D.list D.string), D.succeed [] ])
 
 
 andMap : D.Decoder a -> D.Decoder (a -> b) -> D.Decoder b
@@ -6036,6 +6175,10 @@ boot data model =
                 , findHistory = data.findHistory
                 , foldedGroups = Set.fromList data.foldedGroups
                 , perFileIcons = data.perFileIcons
+                , favouriteGroups =
+                    -- Known groups in the saved order, then any new ones (REQ-029).
+                    List.filter (\g -> List.member g favouriteGroupIds) data.favouriteGroups
+                        ++ List.filter (\g -> not (List.member g data.favouriteGroups)) favouriteGroupIds
             }
                 |> applyKeyBindings data.keybindings
                 |> applyToolbar data.toolbar
@@ -6051,6 +6194,7 @@ boot data model =
         |> andThen persist
         |> andThen (request "bookmarks_get" (E.object []) False ReqBookmarks)
         |> andThen (request "topics_get" (E.object []) False ReqTopics)
+        |> andThen (request "quick_access" (E.object []) False ReqQuickAccess)
         |> andThen (request "colours_get" (E.object []) False ReqColours)
         |> andThen (request "editor_info" (E.object []) False ReqEditorInfo)
         |> andThen (request "templates_list" (E.object []) False ReqTemplates)
@@ -6114,8 +6258,59 @@ ensureIcons model =
             bookmarkKeys =
                 List.map bookmarkIconKey model.bookmarks
 
+            -- Folders' own icons (REQ-025 to REQ-028): the folders on screen, the
+            -- sidebar's folders, bookmarked folders, and each tab's folder and the
+            -- folders above it. The backend answers plain folders at once.
+            dirKey path =
+                "dir:" ++ path
+
+            onScreenFolders =
+                case activeTab model of
+                    Just tab ->
+                        let
+                            first =
+                                max 0 (floor (tab.scrollTop / rowHeight) - 5)
+                        in
+                        Array.slice first (first + ceiling (model.viewportHeight / rowHeight) + 10) tab.visible
+                            |> Array.toList
+                            |> List.filter .isDir
+                            |> List.map .path
+
+                    Nothing ->
+                        []
+
+            browsingFolders =
+                case model.favBrowse of
+                    Just browse ->
+                        browse.path :: (Dict.values browse.items |> List.filter .isDir |> List.map .path)
+
+                    Nothing ->
+                        []
+
+            ancestors path =
+                path :: (Path.parent model.sep path |> Maybe.map ancestors |> Maybe.withDefault [])
+
+            sidebarFolders =
+                List.map .path model.roots
+                    ++ List.map .path model.favourites
+                    ++ List.map .path model.quickAccess
+                    ++ List.concatMap (.folders >> List.map .path) model.topics
+                    ++ (model.bookmarks |> List.filter (\b -> b.kind == "folder") |> List.map .target)
+                    ++ (if sidebarModeFromString model.settings.sidebarMode == TreeMode then
+                            List.map .path (View.Sidebar.treeRows model)
+
+                        else
+                            []
+                       )
+
+            tabFolders =
+                model.tabs |> List.filter (\t -> t.search == Nothing) |> List.concatMap (.path >> ancestors)
+
+            folderKeys =
+                List.map dirKey (model.home :: onScreenFolders ++ browsingFolders ++ sidebarFolders ++ tabFolders)
+
             wanted =
-                ("folder" :: onScreen ++ browsing ++ List.filterMap identity bookmarkKeys)
+                ("folder" :: onScreen ++ browsing ++ List.filterMap identity bookmarkKeys ++ folderKeys)
                     |> List.filter (\key -> not (Set.member key model.iconsAsked))
                     |> Set.fromList
         in
@@ -6423,7 +6618,7 @@ handleEvent name data model =
                                     Nothing ->
                                         activeTab model |> Maybe.map (.path >> DropFolder)
                         in
-                        dropItems { ctrl = False, shift = False, alt = False, under = Nothing, bookmarkUnder = Nothing, topicUnder = Nothing } paths dropTarget model
+                        dropItems { ctrl = False, shift = False, alt = False, under = Nothing, bookmarkUnder = Nothing, orderUnder = Nothing } paths dropTarget model
 
                 _ ->
                     ( model, Cmd.none )
@@ -6542,7 +6737,7 @@ subscriptions model =
                         (D.field "altKey" D.bool)
                         (D.field "target" dropAttribute)
                         (D.field "target" (dataAttribute "bmDrop"))
-                        (D.field "target" (dataAttribute "topicDrop"))
+                        (D.field "target" (dataAttribute "orderDrop"))
                         |> D.map MouseUp
                     )
                 ]

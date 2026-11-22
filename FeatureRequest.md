@@ -1,7 +1,7 @@
 # File Catalog Feature Requests
 2026-11-02
 
- Update Cycle: c4
+ Update Cycle: c5
 
 ## How to use this file
 
@@ -26,12 +26,7 @@
 
 
 
-- Support OS folder icons, show folder icons for folders like downloads, pictures, and where the folder icon is set.
-- In the book marks support folder icons, like if the download folder is bookmark show the download folder icon.
-- In the Tab show the folder icon of the first parent that has a alternative icon, also show if this is a online folder like dropbox, onedrive, gdrive.
-- Support the following online drives, dropbox, onedrive, gdrive and proton drive.
-- On the favroutes side panel also show at the top the OS file explorer pin folders. one windows file exploerer it shows a Home, and Gallery, and below it it shows quickaccess folders, and below this you can have a group for drives, network drives, etc. Your pinned folders can be in group as well, the order of the groups can by changed and folded.
-- Add a "open with" action to allow opening file with the non default application.
+- 
 
 
 
@@ -39,11 +34,6 @@
 
 | ID      | Name                | Area            | Description     | Priority | Status | Update Cycle | Comment       |
 | ------- | ------------------- | --------------- | --------------- | -------- | ------ | ------------ | ------------- |
-| REQ-024 |                     |                 |                 |          |        |              |               |
-| REQ-025 |                     |                 |                 |          |        |              |               |
-| REQ-026 |                     |                 |                 |          |        |              |               |
-| REQ-027 |                     |                 |                 |          |        |              |               |
-| REQ-028 |                     |                 |                 |          |        |              |               |
 
 ## Done
 
@@ -70,6 +60,12 @@
 | REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal | c3 | 02Nov26 new. 21Nov26 Built: FR-BM-07: drag in the sidebar and on the Bookmark Bar; drop on a bookmark (before it) or a group (end of it). |
 | REQ-021 | Topic View | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" below. | Normal | c3 | 14Nov26 Added. 21Nov26 Built: spec 6.4.6 (FR-TOP-01 to 05), topics.toml (8.8): fourth sidebar view, Add to Topic in folder menus, drag folders onto a topic. |
 | REQ-022 | Export file names | File View | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal | c3 | 21Nov26 added. 21Nov26 Built: FR-OPEN-07: Export File List… (right-click on empty space, File menu, palette); the names shown, one per line, in a .txt you choose. |
+| REQ-024 | Open With | File List | Add an "Open With" action to open a file with an app other than the default one. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-OPEN-02: Open With… in the file's right-click menu and the File menu; Windows' own dialog, an app list on Linux. |
+| REQ-025 | OS folder icons | File List | Show the OS folder icons for folders like Downloads and Pictures, and for folders with a custom icon set. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-ICON-03: folders' own icons (Downloads, Pictures, custom icons, online drives) in the list, tree, Favourites and Topics. |
+| REQ-026 | Bookmark folder icons | Bookmarks | Bookmarked folders show their folder icon, e.g. the Downloads icon for a Downloads bookmark. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-ICON-03, FR-BB-01: bookmarked folders show the folder's own icon, in the sidebar and on the Bookmark Bar. |
+| REQ-027 | Tab folder icons | Tabs | A tab shows the icon of the nearest folder above it with its own icon, and shows when the folder is in an online drive (Dropbox, OneDrive, Google Drive). | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-TAB-07: the nearest own folder icon, and a cloud badge inside an online drive. |
+| REQ-028 | Online drives | General | Support the online drives Dropbox, OneDrive, Google Drive and Proton Drive. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: Spec 6.4.7 (FR-CLOUD-01 to 03): found from the providers' settings, the Windows sync-root registry and the default folders; shown in the tree and Favourites; slow-path pool. |
+| REQ-029 | Favourites groups | Side Bar | Show the OS file explorer's pinned folders at the top of the Favourites view (on Windows: Home and Quick access), then groups for your pinned folders, drives, network drives and so on. Groups can be folded and reordered. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-FAV-04: Quick access (Explorer's on Windows, standard folders and GTK bookmarks on Linux), Pinned, Online drives, Drives, Network; fold and drag to reorder. |
 | REQ-023 | Topics Improvements | Topics Side Bar | See "REQ-023 Topics Improvements" below. | Normal | c4 | 21Nov26 added. 21Nov26 Built: FR-TOP-02 (Archive and Delete in the ✎ topic dialog), FR-TOP-06 (✎ per folder: name shown and path, Remove from Topic; drag folders to reorder), FR-TOP-07 (opening a folder opens its topic). |
 | — | Quick requests | General | Show the Type column by default; remove the Save View button; larger toolbar buttons. | Normal | c3 | 21Nov26 Built: FR-CC-01 (Type column), FR-TB-04 (Save View out of the default toolbar, 36 × 34 px buttons). |
 | REQ-018 | UI Style (visual refresh) | Look and Feel | Use Tailwind css style sheets to style the application components | Normal | c3 | 14Nov26 Added. 14Nov26 Decided: a visual refresh, not Tailwind. Built in the "Studio" direction: dark frame and flat tabs, blue accent, 28 px rows, redrawn icons (see details below). |
@@ -134,6 +130,7 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
+- **22Nov26 c5 built** on branch `dev`: REQ-024 Open With, REQ-025 OS folder icons, REQ-026 bookmark folder icons, REQ-027 tab folder icons, REQ-028 online drives, REQ-029 Favourites groups (logged from the quick requests). See spec section 11.7. The Windows parts were checked by compiling for Windows and need a test in the app.
 - **22Nov26 Fixed (REQ-023)**: saving a folder's name or path in a topic did nothing. The backend expected the field `new_path` while the UI sends `newPath`, so every save failed; a test now reads each topic change exactly as the UI sends it.
 - **21Nov26 c4 built** on branch `dev`: REQ-023 Topics improvements. Reordering folders had not been built in REQ-021; it is now. See spec section 11.6.
 - **21Nov26 c3 second part built** on branch `dev`: quick requests (Type column by default, Save View out of the default toolbar, larger toolbar buttons), REQ-007 bookmark dragging, REQ-021 Topics, REQ-022 Export File List. See spec section 11.5. Choices made for REQ-021: topics live in `topics.toml` in the app settings folder; opening a topic opens its first folder in the active tab; topics with the open folder in them are marked.

@@ -17,7 +17,7 @@ import Text
 import Types exposing (..)
 import View.BookmarkBar exposing (bookmarkEntries)
 import View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, middleClick, px)
-import View.Icons exposing (viewBookmarkIcon, viewFolderIcon, viewIcon)
+import View.Icons exposing (viewBookmarkIcon, viewFolderIcon, viewIcon, viewPlaceIcon)
 
 
 viewSidebar : Model -> Tab -> Html Msg
@@ -140,11 +140,7 @@ viewTree model tab =
                     ++ dropTarget model (DropFolder row.path) row.path
                 )
                 [ span [ class "twisty", stopPropagationOn "click" (D.succeed ( TreeToggle row.path, True )) ] [ text twisty ]
-                , if row.kind == "folder" then
-                    viewFolderIcon model row.path
-
-                  else
-                    span [ class ("icon " ++ rootIcon row.kind) ] []
+                , viewPlaceIcon model row.path (rootIcon row.kind)
                 , span [ class "label" ] [ text row.label ]
                 ]
         )
@@ -162,6 +158,9 @@ rootIcon kind =
 
         "network" ->
             "network"
+
+        "cloud" ->
+            "cloud"
 
         "home" ->
             "home"
@@ -351,42 +350,145 @@ viewFavouriteList model tab =
         move path delta =
             BookmarkEditOp [ ( "op", Json.Encode.string "moveFavourite" ), ( "path", Json.Encode.string path ), ( "delta", Json.Encode.int delta ) ]
 
-        entries f =
-            folderEntries model f.path
-                ++ [ Action { label = Text.moveUp, key = "", msg = Just (move f.path -1), checked = Nothing }
-                   , Action { label = Text.moveDown, key = "", msg = Just (move f.path 1), checked = Nothing }
-                   ]
-    in
-    (if List.isEmpty model.favourites then
-        [ div [ class "sidebar-empty" ] [ text Text.noFavourites ] ]
+        place label path icon extraEntries isMissing =
+            button
+                ([ class "side-item"
+                 , classList [ ( "current", path == tab.path ), ( "missing", isMissing ) ]
+                 , onClick (FavBrowseTo path path)
+                 , on "auxclick" (middleClick (NavigateNewTab path))
+                 , contextMenu (folderEntries model path ++ extraEntries)
+                 , title path
+                 ]
+                    ++ dropTarget model (DropFolder path) path
+                )
+                [ viewPlaceIcon model path icon, span [ class "label" ] [ text label ] ]
 
-     else
-        List.map
-            (\f ->
-                button
-                    ([ class "side-item"
-                     , classList [ ( "current", f.path == tab.path ), ( "missing", not f.exists ) ]
-                     , onClick (FavBrowseTo f.path f.path)
-                     , on "auxclick" (middleClick (NavigateNewTab f.path))
-                     , contextMenu (entries f)
-                     , title f.path
-                     ]
-                        ++ dropTarget model (DropFolder f.path) f.path
-                    )
-                    [ viewFolderIcon model f.path, span [ class "label" ] [ text (Path.name model.sep f.path) ] ]
-            )
-            model.favourites
-    )
-        ++ [ button [ class "side-add", onClick (KeyCommand CmdTogglePin) ]
-                [ text
-                    (if pinned then
-                        Text.unpinThis
+        rootsOf kinds =
+            List.filter (\r -> List.member r.kind kinds) model.roots
+
+        rootPlace r =
+            place r.name r.path (rootIcon r.kind) [] False
+
+        -- Each group: its heading and rows; an empty group is left out, except your own.
+        groupRows group =
+            case group of
+                "quick" ->
+                    place Text.homeFolder model.home "home" [] False
+                        :: List.map (\p -> place p.name p.path "folder" [] False) (List.filter (\p -> p.path /= model.home) model.quickAccess)
+
+                "favourites" ->
+                    (if List.isEmpty model.favourites then
+                        [ div [ class "sidebar-empty" ] [ text Text.noFavourites ] ]
 
                      else
-                        Text.pinThis
+                        List.map
+                            (\f ->
+                                place (Path.name model.sep f.path)
+                                    f.path
+                                    "folder"
+                                    [ Action { label = Text.moveUp, key = "", msg = Just (move f.path -1), checked = Nothing }
+                                    , Action { label = Text.moveDown, key = "", msg = Just (move f.path 1), checked = Nothing }
+                                    ]
+                                    (not f.exists)
+                            )
+                            model.favourites
                     )
-                ]
-           ]
+                        ++ [ button [ class "side-add", onClick (KeyCommand CmdTogglePin) ]
+                                [ text
+                                    (if pinned then
+                                        Text.unpinThis
+
+                                     else
+                                        Text.pinThis
+                                    )
+                                ]
+                           ]
+
+                "cloud" ->
+                    List.map rootPlace (rootsOf [ "cloud" ])
+
+                "drives" ->
+                    List.map rootPlace (rootsOf [ "drive", "removable" ])
+
+                "network" ->
+                    List.map rootPlace (rootsOf [ "network" ])
+
+                _ ->
+                    []
+
+        draggingGroup =
+            case model.drag of
+                Just (MoveFavGroup d) ->
+                    d.moved
+
+                _ ->
+                    False
+
+        viewGroup group =
+            let
+                rows =
+                    groupRows group
+
+                key =
+                    "fav:" ++ group
+
+                folded =
+                    Set.member key model.foldedGroups
+
+                label =
+                    Text.favouriteGroup group
+            in
+            if List.isEmpty rows then
+                []
+
+            else
+                button
+                    [ class "side-group fav-group"
+                    , onClick (ToggleBookmarkGroup key)
+                    , on "mousedown"
+                        (D.field "button" D.int
+                            |> D.andThen
+                                (\b ->
+                                    if b == 0 then
+                                        D.map2 (FavGroupMouseDown group label) (D.field "clientX" D.float) (D.field "clientY" D.float)
+
+                                    else
+                                        D.fail "not the left button"
+                                )
+                        )
+                    , attribute "data-order-drop" group
+                    , attribute "aria-expanded"
+                        (if folded then
+                            "false"
+
+                         else
+                            "true"
+                        )
+                    , title Text.favouriteGroupHint
+                    ]
+                    [ span [ class "twisty" ]
+                        [ text
+                            (if folded then
+                                "▸"
+
+                             else
+                                "▾"
+                            )
+                        ]
+                    , span [ class "label" ] [ text label ]
+                    ]
+                    :: (if folded then
+                            []
+
+                        else
+                            rows
+                       )
+    in
+    [ div [ classList [ ( "topics", True ), ( "topic-dragging", draggingGroup ) ] ]
+        (List.concatMap viewGroup model.favouriteGroups
+            ++ [ div [ class "topic-end topic-end-space", attribute "data-order-drop" "end" ] [] ]
+        )
+    ]
 
 
 viewBookmarksPanel : Model -> List (Html Msg)
@@ -642,7 +744,7 @@ viewTopicList model tab =
                         topic.description
                     )
                  , dragSource topic
-                 , attribute "data-topic-drop" (String.fromInt topic.index)
+                 , attribute "data-order-drop" (String.fromInt topic.index)
                  ]
                     -- Dragging folders onto a topic adds them to it.
                     ++ dropTarget model (DropTopic topic.index) ("topic:" ++ String.fromInt topic.index)
@@ -691,7 +793,7 @@ viewTopicList model tab =
                                 []
                             )
                         )
-                    , attribute "data-topic-drop" "end"
+                    , attribute "data-order-drop" "end"
                     ]
                     [ text Text.newTopicButton ]
                ]
@@ -781,7 +883,7 @@ viewOpenTopic model tab topic =
                     )
                  , title folder.path
                  , dragSource folder
-                 , attribute "data-topic-drop" folder.path
+                 , attribute "data-order-drop" folder.path
                  ]
                     ++ dropTarget model (DropFolder folder.path) folder.path
                 )
@@ -827,10 +929,10 @@ viewOpenTopic model tab topic =
             List.map folderRow topic.folders
          )
             ++ [ if tab.search == Nothing && not hasOpen then
-                    button [ class "side-add topic-end", onClick (addFolderOp topic tab.path), attribute "data-topic-drop" "end" ] [ text Text.addOpenFolder ]
+                    button [ class "side-add topic-end", onClick (addFolderOp topic tab.path), attribute "data-order-drop" "end" ] [ text Text.addOpenFolder ]
 
                  else
-                    div [ class "topic-end topic-end-space", attribute "data-topic-drop" "end" ] []
+                    div [ class "topic-end topic-end-space", attribute "data-order-drop" "end" ] []
                ]
         )
     ]

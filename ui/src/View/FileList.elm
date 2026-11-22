@@ -410,6 +410,13 @@ viewDragGhost model =
             else
                 text ""
 
+        Just (MoveFavGroup d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.label ]
+
+            else
+                text ""
+
         Just (MoveTopicFolder d) ->
             if d.moved then
                 div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.label ]
