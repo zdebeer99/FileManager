@@ -1,4 +1,4 @@
-module View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, field, inputKeys, keepOnScreen, middleClick, px, viewIf)
+module View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, field, inputKeys, keepOnScreen, middleClick, noAutocomplete, px, viewIf)
 
 {-| Small helpers shared by the view components: optional elements, menus on right-click, middle-click, drop targets, sizes.
 -}
@@ -35,11 +35,19 @@ inputKeys keys toMsg =
             )
 
 
+{-| No autofill or "earlier entries" drop-down on a text box (REQ-033). On
+Windows the WebView's autofill is also turned off as a whole.
+-}
+noAutocomplete : Html.Attribute msg
+noAutocomplete =
+    attribute "autocomplete" "off"
+
+
 field : String -> String -> String -> (String -> Msg) -> Html Msg
 field labelText domId current toMsg =
     label [ class "field" ]
         [ span [] [ text labelText ]
-        , input [ id domId, value current, onInput toMsg, spellcheck False, attribute "data-select-on-focus" "" ] []
+        , input [ noAutocomplete, id domId, value current, onInput toMsg, spellcheck False, attribute "data-select-on-focus" "" ] []
         ]
 
 

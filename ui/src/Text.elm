@@ -1908,3 +1908,18 @@ onlineDrive provider =
 
         _ ->
             "In an online drive"
+
+
+openInActiveTab : String
+openInActiveTab =
+    "Open in the active tab (Ctrl+Click)"
+
+
+switchTopic : String
+switchTopic =
+    "Switch to another topic"
+
+
+allTopics : String
+allTopics =
+    "All Topics"

@@ -10,7 +10,7 @@ import Json.Decode as D
 import Path
 import Text
 import Types exposing (..)
-import View.Common exposing (inputKeys)
+import View.Common exposing (inputKeys, noAutocomplete)
 
 
 viewAddressBar : Model -> Tab -> Html Msg
@@ -20,7 +20,8 @@ viewAddressBar model tab =
             Editing typed error ->
                 div [ class "address-edit" ]
                     [ input
-                        [ id addressInputId
+                        [ noAutocomplete
+                        , id addressInputId
                         , class "address-input"
                         , value typed
                         , onInput AddressInput
@@ -44,7 +45,8 @@ viewAddressBar model tab =
         , div [ class "filter-box", classList [ ( "active", tab.filter /= "" ) ] ]
             [ span [ class "icon filter" ] []
             , input
-                [ id filterInputId
+                [ noAutocomplete
+                , id filterInputId
                 , class "filter-input"
                 , placeholder Text.filterPlaceholder
                 , value tab.filter

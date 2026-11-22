@@ -17,7 +17,7 @@ import Json.Decode as D
 import Set
 import Text
 import Types exposing (..)
-import View.Common exposing (dropTarget, inputKeys, middleClick, px)
+import View.Common exposing (dropTarget, inputKeys, middleClick, noAutocomplete, px)
 import View.Icons exposing (viewIcon)
 
 
@@ -337,7 +337,8 @@ viewRenameCell model item r =
     div [ class "cell name renaming" ]
         [ viewIcon model item
         , input
-            [ id renameInputId
+            [ noAutocomplete
+            , id renameInputId
             , stopPropagationOn "mousedown" (D.succeed ( NoOp, True ))
             , class "rename-input"
             , classList [ ( "invalid", r.error /= Nothing ) ]

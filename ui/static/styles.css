@@ -1045,8 +1045,21 @@ button.primary:hover:not(:disabled) { background: var(--accent); filter: brightn
   visibility: hidden;
 }
 .topic-folder:hover .topic-folder-edit, .topic-folder.current .topic-folder-edit { visibility: visible; }
+/* ↗ on Favourites folders: open in the active tab (REQ-030) */
+.row-action {
+  margin-left: auto; flex-shrink: 0; width: 22px; height: 20px; padding: 0;
+  border: none; border-radius: 4px; background: transparent; line-height: 1;
+  color: var(--chrome-muted, var(--text-muted)); visibility: hidden;
+}
+.fav-place:hover .row-action, .fav-place.current .row-action { visibility: visible; }
+.row-action:hover { background: var(--chrome-hover, var(--bg-hover)); color: var(--chrome-text, var(--text)); }
 .topic-folder-edit:hover { background: var(--chrome-hover, var(--bg-hover)); color: var(--chrome-text, var(--text)); }
 .dialog-actions .dialog-spacer { flex: 1; }
+.topic-switch { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 2px 4px; border: none; border-radius: 4px; background: transparent; color: inherit; font: inherit; font-weight: 600; text-align: left; }
+.topic-switch .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topic-switch:hover { background: var(--chrome-hover, var(--bg-hover)); }
+.fav-header .topic-switch { flex: 1; width: auto; height: 24px; font-size: inherit; padding: 0 6px; color: inherit; }
+.topic-switch-arrow { font-size: 10px; color: var(--chrome-muted, var(--text-muted)); }
 /* Open With on Linux (FR-OPEN-02) */
 .openwith-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow: auto; }
 .openwith-app { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; text-align: left; border-color: transparent; background: transparent; }

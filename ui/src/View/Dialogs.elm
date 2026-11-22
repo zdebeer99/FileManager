@@ -10,7 +10,7 @@ import Json.Decode as D
 import Json.Encode
 import Text
 import Types exposing (..)
-import View.Common exposing (field, inputKeys, viewIf)
+import View.Common exposing (field, inputKeys, noAutocomplete, viewIf)
 import View.Shortcuts exposing (viewShortcuts)
 import View.ToolbarDialog exposing (viewToolbarDialog)
 
@@ -159,7 +159,8 @@ viewGroupField model form =
         [ span [] [ text Text.group ]
         , div [ class "combo" ]
             [ input
-                [ id "dialog-group"
+                [ noAutocomplete
+                , id "dialog-group"
                 , value form.group
                 , onInput DialogGroup
                 , onFocus (DialogGroupOpen True)

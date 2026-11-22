@@ -41,6 +41,14 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|_app| {
+            // REQ-033: no autofill suggestions in File Catalog's text boxes.
+            #[cfg(windows)]
+            for window in _app.webview_windows().values() {
+                platform::disable_autofill(window);
+            }
+            Ok(())
+        })
         .manage(commands::AppState::new(app_paths))
         .invoke_handler(tauri::generate_handler![
             commands::app_init,

@@ -10,6 +10,7 @@ import Html.Keyed
 import Json.Decode as D
 import Text
 import Types exposing (..)
+import View.Common exposing (noAutocomplete)
 
 
 viewPalette : Model -> Html Msg
@@ -22,7 +23,8 @@ viewPalette model =
             div [ class "palette-overlay", onClick (PaletteKey "Escape" False) ]
                 [ div [ class "palette", stopPropagationOn "click" (D.succeed ( NoOp, True )) ]
                     [ input
-                        [ id paletteInputId
+                        [ noAutocomplete
+                        , id paletteInputId
                         , value p.text
                         , onInput PaletteInput
                         , placeholder Text.palettePlaceholder

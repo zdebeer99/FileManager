@@ -16,7 +16,7 @@ import Set
 import Text
 import Types exposing (..)
 import View.BookmarkBar exposing (bookmarkEntries)
-import View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, middleClick, px)
+import View.Common exposing (bookmarkDragSource, bookmarkDropTarget, contextMenu, dropTarget, middleClick, noAutocomplete, px)
 import View.Icons exposing (viewBookmarkIcon, viewFolderIcon, viewIcon, viewPlaceIcon)
 
 
@@ -266,12 +266,19 @@ viewFavBrowse model tab browse =
             button
                 ([ class "side-item"
                  , classList [ ( "current", item.path == tab.path ), ( "selected", browse.selected == Just item.path ), ( "hidden-item", item.hidden ) ]
-                 , onClick
-                    (if item.isDir then
-                        FavBrowseTo browse.root item.path
+                 , on "click"
+                    (D.map
+                        (\ctrl ->
+                            if item.isDir && ctrl then
+                                NavigateTo item.path
 
-                     else
-                        FavSelect item.path
+                            else if item.isDir then
+                                FavBrowseTo browse.root item.path
+
+                            else
+                                FavSelect item.path
+                        )
+                        (D.field "ctrlKey" D.bool)
                     )
                  , on "dblclick"
                     (D.succeed
@@ -341,6 +348,31 @@ viewFavBrowse model tab browse =
         :: body
 
 
+{-| Ctrl+Click opens a folder in the active tab; a plain click browses it (REQ-030).
+-}
+openOrBrowse : String -> Bool -> Msg
+openOrBrowse path ctrl =
+    if ctrl then
+        NavigateTo path
+
+    else
+        FavBrowseTo path path
+
+
+{-| ↗ next to a folder: open it in the active tab (REQ-030).
+-}
+openHereButton : String -> Html Msg
+openHereButton path =
+    button
+        [ class "row-action"
+        , stopPropagationOn "click" (D.succeed ( NavigateTo path, True ))
+        , title Text.openInActiveTab
+        , attribute "aria-label" Text.openInActiveTab
+        , tabindex -1
+        ]
+        [ text "↗" ]
+
+
 viewFavouriteList : Model -> Tab -> List (Html Msg)
 viewFavouriteList model tab =
     let
@@ -350,18 +382,23 @@ viewFavouriteList model tab =
         move path delta =
             BookmarkEditOp [ ( "op", Json.Encode.string "moveFavourite" ), ( "path", Json.Encode.string path ), ( "delta", Json.Encode.int delta ) ]
 
+        -- Click shows the folder's contents here (FR-FAV-03); Ctrl+Click or ↗ opens
+        -- it in the active tab, middle-click in a new tab (REQ-030).
         place label path icon extraEntries isMissing =
-            button
-                ([ class "side-item"
+            div
+                ([ class "side-item fav-place"
                  , classList [ ( "current", path == tab.path ), ( "missing", isMissing ) ]
-                 , onClick (FavBrowseTo path path)
+                 , on "click" (D.map (openOrBrowse path) (D.field "ctrlKey" D.bool))
                  , on "auxclick" (middleClick (NavigateNewTab path))
                  , contextMenu (folderEntries model path ++ extraEntries)
                  , title path
                  ]
                     ++ dropTarget model (DropFolder path) path
                 )
-                [ viewPlaceIcon model path icon, span [ class "label" ] [ text label ] ]
+                [ viewPlaceIcon model path icon
+                , span [ class "label" ] [ text label ]
+                , openHereButton path
+                ]
 
         rootsOf kinds =
             List.filter (\r -> List.member r.kind kinds) model.roots
@@ -615,7 +652,8 @@ viewBookmarksPanel model =
                 )
     in
     [ input
-        [ class "side-search"
+        [ noAutocomplete
+        , class "side-search"
         , placeholder Text.searchBookmarks
         , value model.bookmarkSearch
         , onInput BookmarkSearch
@@ -767,7 +805,9 @@ viewTopicList model tab =
     in
     [ div [ classList [ ( "topics", True ), ( "topic-dragging", draggingTopic ) ] ]
         ([ input
-            [ class "side-search"
+            [ noAutocomplete
+            , noAutocomplete
+            , class "side-search"
             , placeholder Text.searchTopics
             , value model.topicSearch
             , onInput TopicSearch
@@ -832,6 +872,27 @@ viewTopicList model tab =
                )
         )
     ]
+
+
+{-| The topic switcher (REQ-031): the first 7 topics that are not archived,
+in the user's order, the open one ticked, then the list of all topics.
+-}
+switchEntries : Model -> Topic -> List MenuEntry
+switchEntries model current =
+    (model.topics
+        |> List.filter (not << .archived)
+        |> List.take 7
+        |> List.map
+            (\t ->
+                Action
+                    { label = t.title
+                    , key = ""
+                    , msg = Just (OpenTopic t.index)
+                    , checked = Just (t.index == current.index)
+                    }
+            )
+    )
+        ++ [ Separator, Action { label = Text.allTopics, key = "", msg = Just CloseTopic, checked = Nothing } ]
 
 
 {-| An open topic (REQ-021, REQ-023): its title and description, and its
@@ -913,7 +974,14 @@ viewOpenTopic model tab topic =
     in
     [ div ([ class "fav-header" ] ++ topicDrop)
         [ button [ class "fav-up", onClick CloseTopic, title Text.backToTopics, attribute "aria-label" Text.backToTopics ] [ text "‹" ]
-        , span [ class "fav-location", title topic.title ] [ text topic.title ]
+        , button
+            [ class "fav-location topic-switch"
+            , on "click" (D.map2 (ItemContextMenu (switchEntries model topic)) (D.field "clientX" D.float) (D.field "clientY" D.float))
+            , title Text.switchTopic
+            , attribute "aria-haspopup" "menu"
+            , tabindex -1
+            ]
+            [ span [ class "label" ] [ text topic.title ], span [ class "topic-switch-arrow" ] [ text "▾" ] ]
         , button [ class "fav-open", onClick (EditTopic (Just topic.index) []), title Text.editTopicTitle, attribute "aria-label" Text.editTopicTitle ] [ text "✎" ]
         ]
     , if topic.description == "" then

@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycles **c1** to **c5** are built on top of it and not yet released (Sections 11.2 to 11.7). |
-| Changes | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
+| Status | 0.1.0 released. Update cycles **c1** to **c6** are built on top of it and not yet released (Sections 11.2 to 11.8). |
+| Changes | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05). |
+| | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
 | | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
 | | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
 | | c3 (unreleased, 2026-11-14): Create Shortcut (FR-NEW-06); folder colours follow renamed and moved folders (FR-FCOL-03); Favourites drops anywhere on the file list copy, and Cut/Copy in its menus (FR-FAV-03); icons in Bookmark Bar groups (FR-BB-01); errors written to the log (NFR-MNT-03); fixes for the command palette width and Open with VS Code on Windows (FR-OPEN-06). |
@@ -472,6 +473,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-FCOL-02** The folder's icon is shown in that colour everywhere File Catalog shows the folder (list, tree, Favourites).
 - **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour follows its folder, and the folders inside it, when File Catalog renames or moves the folder or undoes that (REQ-013). A folder renamed or moved by another program loses its colour, because only its path is known.
 
+- **FR-FAV-05** In the Favourites view's groups, a click shows a folder's contents (FR-FAV-03), and **Ctrl+Click** or the **↗** button next to the folder (shown on hover) opens it in the active tab, like middle-click opens a new tab (REQ-030). Inside a folder, Ctrl+Click on a sub-folder also opens it in the active tab.
 - **FR-FAV-04** The Favourites view shows folders in groups (REQ-029). Each group heading folds or unfolds its group; headings are dragged up or down to change the order. Folded groups and the order are kept in `session.toml`. Empty groups are not shown, except *Pinned*.
   - **Quick access:** Home, then the file manager's own list, read-only: on Windows, Explorer's Quick access (pinned and frequent folders); on Linux, the standard folders (Desktop, Documents, Downloads, Music, Pictures, Videos) and the GTK bookmarks shared by GNOME Files, Nemo, Caja and Thunar.
   - **Pinned:** your favourites (FR-FAV-01, FR-FAV-02).
@@ -485,6 +487,7 @@ A **topic** is a title, a short description and a list of related folders, for e
 - **FR-TOP-02** Clicking a topic opens it: the title at the top with *Back* (‹) to the list and ✎ to edit, the description below, and the folders. Opening a topic also opens its first folder in the active tab. Clicking a folder opens it in the active tab; middle-click opens a new tab. The open view also offers *+ Add the open folder*. ✎ in the header opens the topic dialog: title, description, *Archive* / *Unarchive* and *Delete…* (asks first; only the topic is deleted, never the folders) (REQ-023).
 - **FR-TOP-06** Each folder in an open topic has ✎ (shown on hover) and *Edit Folder…* in its right-click menu (REQ-023). The dialog, like the bookmark dialog, changes the **name** shown for the folder in this topic (empty: the folder's own name; the folder itself is never renamed) and its **path**, and offers *Remove from Topic*. A path that is already in the topic is refused. The folders of an open topic are reordered by dragging them up or down; dropping below the last folder moves one to the end.
 - **FR-TOP-07** When the active tab goes to a folder that belongs to a topic (the folder itself or a folder inside it), that topic is opened in the Topics view (REQ-023). The open topic stays open when it has the folder; otherwise a topic with exactly that folder is preferred to one with a folder above it, and topics that are not archived to archived ones. *Back* (‹) shows the list until the next folder change.
+- **FR-TOP-08** The open topic's title is a drop-down (REQ-031): it lists the first 7 topics that are not archived, in the user's order, with the open one ticked, and *All Topics*, which goes back to the list. Picking a topic opens it like a click in the list (FR-TOP-02).
 - **FR-TOP-03** Folders are added with **Add to Topic ▸** in the right-click menu of folders (file list, empty space for the current folder, folder tree, Favourites), which lists the topics that are not archived and *New Topic…* (the new topic starts with those folders), or by dragging folders, from the file list or from other apps, onto a topic. Files are skipped, and a folder is never added twice.
 - **FR-TOP-04** Topics are reordered by dragging them up or down. A topic's right-click menu offers Open, Edit…, Add the open folder, Archive / Unarchive and Delete….
 - **FR-TOP-05** Topics are stored only in `topics.toml` in the app settings folder (Section 8.8), never in the folders. The file can be edited by hand and is reloaded when it changes.
@@ -668,6 +671,7 @@ Reference hardware: 4-core CPU (2020 or newer), 8 GB RAM, NVMe SSD. Targets appl
 ### 7.3 Usability
 
 - **NFR-UX-01** All functions can be reached by keyboard (FR-UI-05).
+- **NFR-UX-05** Text boxes (names, labels, paths, descriptions, searches) show no autofill or earlier-entries drop-down: every text box has `autocomplete="off"`, and on Windows the WebView's general autofill and password saving are turned off (REQ-033).
 - **NFR-UX-04** UI text is in English, with all strings kept in one Elm module (`Text.elm`) so they can be translated later.
 
 ### 7.4 Security and privacy
@@ -1016,6 +1020,16 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 - On Linux, only the standard folders (`user-dirs.dirs`) and online drives have their own folder icon; folder icons set in a file manager (GNOME's custom icon, KDE's `.directory`) are not read.
 - Online drives are found when the app starts; a drive added later shows after a restart.
 
+
+### 11.8 Update cycle c6 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-030 Open Favourites folders in the active tab | FR-FAV-05 |
+| REQ-031 Topic switcher | FR-TOP-08 |
+| REQ-033 No autocomplete in text boxes | NFR-UX-05 |
+
+REQ-032 (Google Drive sync status) is not built yet: Google Drive for desktop does not mark online-only files the way OneDrive does, so the right signal must first be found on a real Google Drive (see FeatureRequest.md).
 ---
 
 ## 12. Not in 0.1.0 (later versions)

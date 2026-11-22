@@ -10,7 +10,7 @@ import Html.Events exposing (onClick, onInput)
 import Keys
 import Text
 import Types exposing (..)
-import View.Common exposing (viewIf)
+import View.Common exposing (noAutocomplete, viewIf)
 
 
 viewShortcuts : Model -> ShortcutsState -> Html Msg
@@ -39,7 +39,8 @@ viewShortcuts model state =
         [ div [ class "dialog shortcuts", id shortcutsDialogId, tabindex -1, attribute "role" "dialog" ]
             [ div [ class "dialog-title" ] [ text Text.shortcutsTitle ]
             , input
-                [ id shortcutsSearchId
+                [ noAutocomplete
+                , id shortcutsSearchId
                 , class "shortcuts-search"
                 , value state.search
                 , onInput ShortcutsSearch

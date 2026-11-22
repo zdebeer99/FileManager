@@ -564,3 +564,21 @@ pub fn quick_access(_home: &Path) -> Vec<super::Place> {
     }
     places
 }
+
+/// Turns off WebView2's autofill and saved-entry suggestions, so typing a
+/// name, path or description shows no drop-down of earlier entries (REQ-033).
+pub fn disable_autofill(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|webview| {
+        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings4;
+        use windows::core::Interface;
+        // SAFETY: WebView2 calls made on the webview's own thread, as with_webview runs them.
+        unsafe {
+            let Ok(core) = webview.controller().CoreWebView2() else { return };
+            let Ok(settings) = core.Settings() else { return };
+            if let Ok(settings) = settings.cast::<ICoreWebView2Settings4>() {
+                let _ = settings.SetIsGeneralAutofillEnabled(false);
+                let _ = settings.SetIsPasswordAutosaveEnabled(false);
+            }
+        }
+    });
+}
