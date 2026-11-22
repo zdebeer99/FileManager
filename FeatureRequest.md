@@ -1,3 +1,7 @@
+---
+feature: file:C:/Users/zdebe/Documents/CodeProjects/FileCatalog/md-FeatureRequest/image-20261121210836923.png
+thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
+---
 # File Catalog Feature Requests
 2026-11-02
 
@@ -26,7 +30,11 @@
 
 
 
-- 
+- On the favorites side panel, add the ability to open the link directly in the active tab, ad the the arrow button used in the drill down view to do the same function but show it next to each folder already in the top view. also have Ctrl+Click on the folder open it in the active tab.
+- The sync status for gdrive files is not showing in the sync columns, please fix this.
+- In the topics side panel have when in the detail view, have the topic header as a drop down showing the top 7 topics, to quickly switch between topics. 
+- Remove the auto complete futures from when editing the folder names, labels, paths and descriptions. 
+
 
 
 
