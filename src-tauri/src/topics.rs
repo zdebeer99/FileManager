@@ -87,6 +87,8 @@ pub enum Edit {
     UpdateFolder {
         index: usize,
         path: String,
+        // `rename_all` on the enum renames only the variants, so the field needs its own.
+        #[serde(rename = "newPath")]
         new_path: String,
         name: String,
     },
@@ -432,6 +434,27 @@ mod tests {
         assert!(!fs::read_to_string(paths.topics_file()).unwrap().contains("name = \"Contracts\""));
         apply(&paths, Edit::RemoveFolder { index: 0, path: d.clone() }).unwrap();
         assert_eq!(order(&paths), [a, c]);
+    }
+
+    /// The ops exactly as the UI sends them (REQ-023: `newPath` was not read).
+    #[test]
+    fn edits_are_read_as_the_ui_sends_them() {
+        let read = |json: &str| serde_json::from_str::<Edit>(json).unwrap();
+        assert!(matches!(
+            read(r#"{"op":"updateFolder","index":0,"path":"/a","newPath":"/b","name":"Label"}"#),
+            Edit::UpdateFolder { new_path, name, .. } if new_path == "/b" && name == "Label"
+        ));
+        assert!(matches!(
+            read(r#"{"op":"moveFolder","index":1,"path":"/a","before":null}"#),
+            Edit::MoveFolder { index: 1, before: None, .. }
+        ));
+        assert!(matches!(read(r#"{"op":"addFolders","index":0,"paths":["/a"]}"#), Edit::AddFolders { .. }));
+        assert!(matches!(read(r#"{"op":"removeFolder","index":0,"path":"/a"}"#), Edit::RemoveFolder { .. }));
+        assert!(matches!(read(r#"{"op":"moveTo","index":0,"before":2}"#), Edit::MoveTo { before: Some(2), .. }));
+        assert!(matches!(read(r#"{"op":"archive","index":0,"archived":true}"#), Edit::Archive { archived: true, .. }));
+        assert!(matches!(read(r#"{"op":"add","title":"T","description":"","folders":[]}"#), Edit::Add { .. }));
+        assert!(matches!(read(r#"{"op":"update","index":0,"title":"T","description":"d"}"#), Edit::Update { .. }));
+        assert!(matches!(read(r#"{"op":"remove","index":0}"#), Edit::Remove { index: 0 }));
     }
 
     #[test]

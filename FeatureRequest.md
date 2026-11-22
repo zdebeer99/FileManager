@@ -26,7 +26,6 @@
 
 
 
-- changing the folder name (label) in the topic view, still does nothing. when i click on the edit pen, and type a name on the name field in the dialog and click on save, the name does not change and opening the dialog window again show again the anme as empty.
 - Support OS folder icons, show folder icons for folders like downloads, pictures, and where the folder icon is set.
 - In the book marks support folder icons, like if the download folder is bookmark show the download folder icon.
 - In the Tab show the folder icon of the first parent that has a alternative icon, also show if this is a online folder like dropbox, onedrive, gdrive.
@@ -135,5 +134,6 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
+- **22Nov26 Fixed (REQ-023)**: saving a folder's name or path in a topic did nothing. The backend expected the field `new_path` while the UI sends `newPath`, so every save failed; a test now reads each topic change exactly as the UI sends it.
 - **21Nov26 c4 built** on branch `dev`: REQ-023 Topics improvements. Reordering folders had not been built in REQ-021; it is now. See spec section 11.6.
 - **21Nov26 c3 second part built** on branch `dev`: quick requests (Type column by default, Save View out of the default toolbar, larger toolbar buttons), REQ-007 bookmark dragging, REQ-021 Topics, REQ-022 Export File List. See spec section 11.5. Choices made for REQ-021: topics live in `topics.toml` in the app settings folder; opening a topic opens its first folder in the active tab; topics with the open folder in them are marked.

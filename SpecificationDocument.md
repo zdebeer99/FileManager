@@ -974,6 +974,8 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | REQ-023 Topics improvements | FR-TOP-02 (Archive and Delete moved into the topic dialog), FR-TOP-06 (edit a folder's name and path; reorder folders by dragging), FR-TOP-07 (opening a folder opens its topic), 8.8 |
 
 **Known limits:** checked with unit tests (Rust) and in a browser with a stand-in backend; the drags need a test in the app on Windows and Linux.
+
+**Fixed 2026-11-22:** saving a topic folder's name or path failed (the backend did not read the UI's `newPath` field).
 ---
 
 ## 12. Not in 0.1.0 (later versions)
