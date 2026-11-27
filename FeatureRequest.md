@@ -27,13 +27,11 @@ thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
 
 **Quick Requests**
 
-- Support for network folders. `\\hostname\` or `\\ipaddress\` should open the netwrok device showing all the shared folders. currently it only works if you put the full path in including the shared folder name.
-
-
-
-
-
+- Support for network folders. `\\hostname\` or `\\ipaddress\` should open the network device showing all the shared folders. currently it only works if you put the full path in including the shared folder name.
+- add setup pages, to allow changing the application settings using a UI.
 - 
+
+
 
 **Request table**
 
