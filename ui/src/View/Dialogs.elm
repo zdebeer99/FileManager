@@ -11,6 +11,7 @@ import Json.Encode
 import Text
 import Types exposing (..)
 import View.Common exposing (field, inputKeys, noAutocomplete, viewIf)
+import View.SettingsDialog exposing (viewSettingsDialog)
 import View.Shortcuts exposing (viewShortcuts)
 import View.ToolbarDialog exposing (viewToolbarDialog)
 
@@ -38,6 +39,9 @@ viewDialog model =
 
         Just (OpenWithDialog state) ->
             viewOpenWith state
+
+        Just (SettingsDialog state) ->
+            viewSettingsDialog model state
 
         Just (ConfirmDialog confirm) ->
             div [ class "overlay" ]

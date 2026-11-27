@@ -123,6 +123,7 @@ type Request
     | ReqOpenedWith
     | ReqQuickAccess
     | ReqWindow
+    | ReqSettingSaved
     | ReqViewSaved Int String
     | ReqViewReset Int String
     | ReqOpenSettingsFile
@@ -219,6 +220,13 @@ type Dialog
     | TopicDialog TopicForm
     | TopicFolderDialog TopicFolderForm
     | OpenWithDialog OpenWithState
+    | SettingsDialog SettingsState
+
+
+{-| The settings page (REQ-038): the section shown.
+-}
+type alias SettingsState =
+    { section : String }
 
 
 {-| Open With on Linux (FR-OPEN-02): the apps for the file's type, and all
@@ -740,6 +748,9 @@ type alias Model =
     , settingsFile : String
     , bookmarksFile : String
     , settings : Settings
+
+    -- settings.toml as the backend sent it, for the settings page (REQ-038).
+    , settingsRaw : D.Value
     , zone : Time.Zone
     , tabs : List Tab
     , active : Int
@@ -928,6 +939,9 @@ type Msg
     | OpenWithPick String
     | OpenWithShowAll
     | FavGroupMouseDown String String Float Float
+      -- The settings page (REQ-038)
+    | SettingsSection String
+    | SettingChange String D.Value
     | ToggleBookmarkGroup String
     | BookmarkMouseDown Int String Float Float
     | BookmarkDragOver (Maybe BookmarkDrop)
@@ -1056,6 +1070,7 @@ type Command
     | CmdBookmarkItem
     | CmdTogglePin
     | CmdOpenSettingsFile
+    | CmdSettingsPage
     | CmdOpenBookmarksFile
     | CmdOpenLogFolder
     | CmdAbout

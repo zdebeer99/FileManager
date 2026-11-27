@@ -254,6 +254,10 @@ pub fn may_have_own_icon(_path: &Path, meta: &Metadata) -> bool {
 
 /// True for network shares and removable or optical drives (spec 4.3).
 pub fn is_slow_device(path: &Path) -> bool {
+    // Any `\\server` path, including a computer on its own (REQ-037).
+    if path.to_string_lossy().starts_with("\\\\") {
+        return true;
+    }
     let root = match path.components().next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {
             Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => format!("{}:\\", letter as char),
@@ -581,4 +585,53 @@ pub fn disable_autofill(window: &tauri::WebviewWindow) {
             }
         }
     });
+}
+
+/// The shared folders of a network computer (REQ-037), as folders
+/// `\\server\share`. Printer and IPC shares are left out; admin shares
+/// (`C$`, `ADMIN$`) are marked hidden.
+pub fn list_shares(server: &str) -> std::io::Result<Vec<crate::model::Item>> {
+    use windows_sys::Win32::NetworkManagement::NetManagement::{NetApiBufferFree, MAX_PREFERRED_LENGTH};
+    use windows_sys::Win32::Storage::FileSystem::{NetShareEnum, SHARE_INFO_1, STYPE_DISKTREE, STYPE_MASK};
+
+    let name: Vec<u16> = format!("\\\\{server}").encode_utf16().chain(std::iter::once(0)).collect();
+    let mut buffer: *mut u8 = std::ptr::null_mut();
+    let (mut read, mut total, mut resume) = (0u32, 0u32, 0u32);
+    // SAFETY: `name` is NUL-terminated; NetShareEnum allocates `buffer`, freed below.
+    let status = unsafe {
+        NetShareEnum(name.as_ptr(), 1, &mut buffer, MAX_PREFERRED_LENGTH, &mut read, &mut total, &mut resume)
+    };
+    if status != 0 {
+        if !buffer.is_null() {
+            // SAFETY: allocated by NetShareEnum.
+            unsafe { NetApiBufferFree(buffer.cast()) };
+        }
+        let message = match status {
+            5 => format!("Access to {server} was denied. Open one of its shares with your user name first, for example in Explorer."),
+            53 | 2250 | 1222 => format!("Can't reach the computer \"{server}\". Check its name and the network."),
+            _ => format!("Could not list the shared folders on {server} (error {status})."),
+        };
+        return Err(std::io::Error::other(message));
+    }
+    let mut items = Vec::new();
+    if !buffer.is_null() {
+        // SAFETY: on success `buffer` holds `read` SHARE_INFO_1 records.
+        let shares = unsafe { std::slice::from_raw_parts(buffer as *const SHARE_INFO_1, read as usize) };
+        for share in shares {
+            if share.shi1_type & STYPE_MASK != STYPE_DISKTREE {
+                continue;
+            }
+            // SAFETY: shi1_netname is a NUL-terminated wide string inside the buffer.
+            let share_name = unsafe {
+                let p = share.shi1_netname;
+                let len = (0..).take_while(|&i| *p.add(i) != 0).count();
+                String::from_utf16_lossy(std::slice::from_raw_parts(p, len))
+            };
+            let hidden = share_name.ends_with('$');
+            items.push(crate::model::virtual_folder(share_name.clone(), format!("\\\\{server}\\{share_name}"), hidden));
+        }
+        // SAFETY: allocated by NetShareEnum.
+        unsafe { NetApiBufferFree(buffer.cast()) };
+    }
+    Ok(items)
 }

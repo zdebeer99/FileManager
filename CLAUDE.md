@@ -88,7 +88,7 @@ Notes:
 
 - `Main.elm`: `init`, `update`, keyboard routing, and the backend message handlers. It is about 5,500 lines, divided by `-- SECTION` comment headers.
 - `View/`: all drawing, one module per component. `View.App` draws the window and puts the components together; `Main` uses only `View.App.view`, `View.Sidebar.treeRows` and `View.Popup.filterPopupValues`.
-  - Components: `TitleBar` (window buttons and drag regions, FR-UI-07), `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites in groups, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
+  - Components: `TitleBar` (window buttons and drag regions, FR-UI-07), `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites in groups, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`, `SettingsDialog` (the settings page; which values it shows is in the feature module `SettingsPage.elm`, labels in `Text.settingLabel`).
   - Shared: `Icons` (system and built-in icons, folder colours), `Common` (small helpers such as `viewIf`, `contextMenu`, `dropTarget`, `px`), `Keyboard` (key and mouse-button routing).
   - A component imports only `Common`, `Icons` or another component it draws; keep the imports one-way (no cycles).
 - `Types.elm`: `Model`, `Msg`, `Request` and the tab state, shared by Main and the view.

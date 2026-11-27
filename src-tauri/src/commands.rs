@@ -257,7 +257,12 @@ pub struct Resolved {
 /// Turns what the user typed in the Address Bar into a folder (FR-ADDR-03).
 #[tauri::command]
 pub async fn resolve_path(state: State<'_, AppState>, input: String, base: String) -> Result<Resolved, String> {
-    let expanded = PathBuf::from(paths::expand(&input, &paths::home_dir()));
+    let typed = paths::expand(&input, &paths::home_dir());
+    // `\\server` or `\\server\` opens the computer's list of shared folders (REQ-037).
+    if let Some(server) = platform::server_root(Path::new(&typed)) {
+        return Ok(Resolved { dir: format!("\\\\{server}"), select: None });
+    }
+    let expanded = PathBuf::from(typed);
     let full = paths::clean(&if expanded.is_relative() { Path::new(&base).join(expanded) } else { expanded });
     let probe = full.clone();
     state

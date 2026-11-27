@@ -23,15 +23,23 @@ crumbs sep path =
         { label = "/", path = "/" } :: below "/" "" parts
 
     else if String.startsWith "\\\\" path then
+        -- A network computer, then its share (REQ-037): Up from a share lists
+        -- the computer's shared folders.
         case nonEmptyParts "\\" (String.dropLeft 2 path) of
             server :: share :: rest ->
                 let
-                    root =
-                        "\\\\" ++ server ++ "\\" ++ share
-                in
-                { label = root, path = root } :: below "\\" root rest
+                    computer =
+                        "\\\\" ++ server
 
-            _ ->
+                    root =
+                        computer ++ "\\" ++ share
+                in
+                { label = computer, path = computer } :: { label = share, path = root } :: below "\\" root rest
+
+            [ server ] ->
+                [ { label = "\\\\" ++ server, path = "\\\\" ++ server } ]
+
+            [] ->
                 [ { label = path, path = path } ]
 
     else

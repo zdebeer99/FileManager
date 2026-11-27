@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycles **c1** to **c7** are built on top of it and not yet released (Sections 11.2 to 11.9). |
-| Changes | c7 (unreleased, 2026-11-27): browser layout with tabs at the top and a ☰ menu, own title bar with window buttons (FR-UI-06, FR-UI-07); Typewriter, Explorer and Modern styles (FR-UI-08). |
+| Status | 0.1.0 released. Update cycles **c1** to **c8** are built on top of it and not yet released (Sections 11.2 to 11.10). |
+| Changes | c8 (unreleased, 2026-11-27): network computers list their shares (FR-ADDR-06); settings page (FR-SET-01). |
+| | c7 (unreleased, 2026-11-27): browser layout with tabs at the top and a ☰ menu, own title bar with window buttons (FR-UI-06, FR-UI-07); Typewriter, Explorer and Modern styles (FR-UI-08). |
 | | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01); light theme fixed: a light frame and readable menus (3.2). |
 | | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
 | | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
@@ -316,7 +317,7 @@ The **classic layout** keeps a row for each bar, as in 0.1.0:
 | **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, Topics, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Style ▸ (Studio, Typewriter, Explorer, Modern), Layout ▸ (Browser, Classic, Use the System Title Bar), Refresh |
 | **Go** | Back, Forward, Up, Home, Go to Address, Recent Folders ▸, Favourites ▸, Pin This Folder to Favourites |
 | **Bookmarks** | Bookmark This Folder, Bookmark Selected Item, Manage Bookmarks, Open Bookmarks File, All Bookmarks ▸ |
-| **Tools** | Quick Find, Quick Filter, Command Palette, Commands…, Save Selection as Template, Edit Templates Folder, Open Settings File, Open Key Bindings File, Open Toolbar File |
+| **Tools** | Quick Find, Quick Filter, Command Palette, Commands…, Save Selection as Template, Edit Templates Folder, Settings… (FR-SET-01), Open Settings File, Open Key Bindings File, Open Toolbar File |
 | **Window** | Jobs, Next Tab, Previous Tab, Tabs ▸, Duplicate Tab, Reopen Closed Tab |
 | **Help** | Keyboard Shortcuts, Open Log Folder, About File Catalog |
 
@@ -350,6 +351,7 @@ The **classic layout** keeps a row for each bar, as in 0.1.0:
 - **FR-ADDR-01** Shows the current path in **breadcrumb mode**. Each segment can be clicked to navigate. The `›` separator between segments opens a drop-down of that folder's sub-folders.
 - **FR-ADDR-02** Clicking empty space in the bar, or pressing `Ctrl+L` / `Alt+D`, switches to **edit mode**: a text box with the full path selected. It completes folder names with `Tab`; `Enter` navigates; `Esc` cancels.
 - **FR-ADDR-03** Accepts drive paths, UNC paths (`\\server\share`), `~`, and environment variables (`%USERPROFILE%`, `$HOME`). Typing a file path opens that file's folder with the file selected.
+- **FR-ADDR-06** On Windows, a network computer on its own (`\\server`, `\\server\` or `\\192.168.1.20`) opens a list of its shared folders (REQ-037), read with Windows' share list (`NetShareEnum`); printer and IPC shares are left out, and admin shares (`C$`, `ADMIN$`) are hidden items. The computer is the first breadcrumb, so *Up* from a share goes back to the list. When the computer can't be reached or refuses the list, a readable message says so (open one of its shares in Explorer first to sign in). On Linux, shares are reached through their mount points.
 - **FR-ADDR-04** Long paths shrink from the left: the first segment and the last segments stay visible, and hidden middle segments go into a `…` drop-down.
 - **FR-ADDR-05** The Quick Filter box (FR-QF) sits at the right end of the Address Bar.
 
@@ -755,6 +757,8 @@ FileCatalog/
 
 ### 8.3 `settings.toml` and `keybindings.toml`
 
+**FR-SET-01** **Settings…** (`Ctrl+,`, the gear on the toolbar, **Tools › Settings…**, command `settings.open`) opens a settings page (REQ-038) with sections: General, Layout, Folder View, Quick Find, Text Editor, Templates and Network. Each value has a toggle, a choice list, a text box, a number or a list (one per line), with a short help text. A change is written to `settings.toml` at once (toggles and choices) or when a text box is left or Enter is pressed, through the same editor as hand-made changes, so the file keeps its comments, and applies straight away. The page also opens the settings file (`settings.openFile`), *Keyboard Shortcuts* and *Customise Toolbar*. Settings the page does not show (columns, sort) are set in the app as before or in the file.
+
 ```toml
 # File Catalog settings
 # Only values that differ from the defaults are needed.
@@ -1077,6 +1081,15 @@ REQ-032: checked on a real Google Drive (2026-11-22): every file reports `Normal
 **Known limits:**
 - The own title bar was checked in a browser with a stand-in backend and by compiling for Windows, not yet in the app. Windows' Snap Layouts flyout (hovering Maximise) is not offered by a drawn title bar.
 - On Linux, a desktop that adds its own title bar anyway may show two; use *Use the System Title Bar* there.
+
+### 11.10 Update cycle c8 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-037 Network computers | FR-ADDR-06 |
+| REQ-038 Settings page | FR-SET-01 |
+
+**Known limits:** listing a computer's shares was checked by compiling for Windows, not yet on a network; the settings page was checked in a browser with a stand-in backend.
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -1172,6 +1185,8 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
 | 2026-11-22 | Open With uses Windows' own dialog, and a list of apps from the desktop files on Linux; it moves in from section 12 (Properties stays there) | FR-OPEN-02 |
 | 2026-11-22 | Online drives are found from each provider's settings, the Windows sync-root registry and the default folders, and use the slow-path pool; sync states stay in section 12 | 6.4.7 |
+| 2026-11-27 | `settings.open` (`Ctrl+,`, the gear) now opens the settings page; opening the file is `settings.openFile` (REQ-038) | FR-SET-01 |
+| 2026-11-27 | `\\server` on its own lists the computer's shares with NetShareEnum, Windows only (REQ-037) | FR-ADDR-06 |
 | 2026-11-27 | Browser layout (tabs at the top, toolbar around the Address Bar, ☰ menu) becomes the default, the classic layout stays a setting; File Catalog draws its own title bar on Windows and Linux, with a setting for the system one (REQ-036) | 5.1 |
 | 2026-11-27 | Styles Typewriter, Explorer and Modern change the light theme only; the dark theme keeps Studio's dark look; no fonts are bundled (REQ-035) | FR-UI-08 |
 | 2026-11-27 | The Studio frame follows the theme (light in the light theme) instead of staying dark in both; menus always use the normal text colour (REQ-034) | 3.2 |
@@ -1275,6 +1290,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `bookmark.open` | Open a bookmark (`args = { name = "…" }`) | — |
 | `favourite.toggle` | Pin / Unpin Favourite | — |
 | `jobs.toggle` | Jobs panel | — |
-| `settings.open` / `keybindings.open` / `toolbar.open` | Open Settings / Key Bindings / Toolbar File | `Ctrl+,` / `Ctrl+K Ctrl+S` / — |
+| `settings.open` | Settings… (FR-SET-01) | `Ctrl+,` |
+| `settings.openFile` / `keybindings.open` / `toolbar.open` | Open Settings / Key Bindings / Toolbar File | — / `Ctrl+K Ctrl+S` / — |
 | `help.shortcuts` | Keyboard Shortcuts | `Ctrl+/` |
 | `app.exit` | Exit | — |

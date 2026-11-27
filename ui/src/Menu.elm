@@ -241,7 +241,8 @@ baseMenus model tab =
             , cmd "Save Selection as Template" "" CmdSaveAsTemplate
             , cmd "Edit Templates Folder" "" CmdEditTemplates
             , Separator
-            , cmd "Open Settings File" "Ctrl+," CmdOpenSettingsFile
+            , cmd Text.settingsMenu "Ctrl+," CmdSettingsPage
+            , cmd "Open Settings File" "" CmdOpenSettingsFile
             , cmd "Open Key Bindings File" "" CmdOpenKeybindingsFile
             , cmd "Open Toolbar File" "" CmdOpenToolbarFile
             ]

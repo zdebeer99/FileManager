@@ -52,6 +52,12 @@ impl Patch {
 
 /// Reads a folder, calling `on_chunk` for every `CHUNK` items as they are read.
 pub fn read_dir_streaming(dir: &Path, mut on_chunk: impl FnMut(&[Item])) -> io::Result<Vec<Item>> {
+    // `\\server` on its own: the computer's shared folders (REQ-037).
+    if let Some(server) = crate::platform::server_root(dir) {
+        let shares = crate::platform::list_shares(&server)?;
+        on_chunk(&shares);
+        return Ok(shares);
+    }
     let mut items = Vec::new();
     let mut sent = 0;
     for entry in fs::read_dir(dir)? {

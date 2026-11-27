@@ -2012,3 +2012,24 @@ button.small { height: 24px; padding: 0 8px; font-size: 12px; }
 }
 .app[data-style="modern"][data-theme="light"] .tab.active { font-weight: 600; }
 @media (prefers-color-scheme: light) { .app[data-style="modern"]:not([data-theme="dark"]) .tab.active { font-weight: 600; } }
+
+
+/* Settings page (REQ-038) */
+.dialog.settings-dialog { width: min(760px, calc(100vw - 32px)); max-height: 84vh; }
+.settings-body { display: flex; gap: 16px; min-height: 360px; overflow: hidden; }
+.settings-nav { display: flex; flex-direction: column; gap: 2px; width: 150px; flex-shrink: 0; }
+.settings-tab { text-align: left; padding: 6px 10px; border: none; border-radius: 6px; background: transparent; color: var(--text); }
+.settings-tab:hover { background: var(--bg-hover); }
+.settings-tab.active { background: var(--bg-selected); font-weight: 600; }
+.settings-fields { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+.setting-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.setting-label { font-weight: 500; }
+.setting-text, .setting-number, .setting-lines, .settings-fields select {
+  font: inherit; color: var(--text); background: var(--bg-input);
+  border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; outline: none;
+}
+.setting-text { width: 280px; }
+.setting-number { width: 100px; }
+.setting-lines { width: 280px; resize: vertical; }
+.setting-text:focus, .setting-number:focus, .setting-lines:focus, .settings-fields select:focus { border-color: var(--focus); }
+.setting .hint { margin-top: 2px; }

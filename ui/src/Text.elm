@@ -1334,6 +1334,9 @@ commandName id =
             "Jobs"
 
         "settings.open" ->
+            "Settings…"
+
+        "settings.openFile" ->
             "Open Settings File"
 
         "keybindings.open" ->
@@ -2019,3 +2022,257 @@ restoreWindow =
 closeWindow : String
 closeWindow =
     "Close"
+
+
+
+-- SETTINGS PAGE (REQ-038)
+
+
+settingsMenu : String
+settingsMenu =
+    "Settings…"
+
+
+settingsTitle : String
+settingsTitle =
+    "Settings"
+
+
+openSettingsFile : String
+openSettingsFile =
+    "Open Settings File"
+
+
+keyboardShortcutsButton : String
+keyboardShortcutsButton =
+    "Keyboard Shortcuts…"
+
+
+customiseToolbarButton : String
+customiseToolbarButton =
+    "Customise Toolbar…"
+
+
+done : String
+done =
+    "Done"
+
+
+settingsSection : String -> String
+settingsSection id =
+    case id of
+        "general" ->
+            "General"
+
+        "layout" ->
+            "Layout"
+
+        "view" ->
+            "Folder View"
+
+        "search" ->
+            "Quick Find"
+
+        "editor" ->
+            "Text Editor"
+
+        "templates" ->
+            "Templates"
+
+        "network" ->
+            "Network"
+
+        _ ->
+            id
+
+
+settingLabel : String -> String
+settingLabel key =
+    case key of
+        "general.theme" ->
+            "Theme"
+
+        "general.style" ->
+            "Style (light theme)"
+
+        "general.startupFolder" ->
+            "Open at start-up"
+
+        "general.restoreTabs" ->
+            "Reopen the tabs from last time"
+
+        "general.homeFolder" ->
+            "Home folder"
+
+        "general.confirmDelete" ->
+            "Ask before moving items to the Recycle Bin"
+
+        "general.confirmExtensionChange" ->
+            "Ask before changing a file's extension"
+
+        "general.keepFilterOnNavigate" ->
+            "Keep the Quick Filter when opening another folder"
+
+        "general.terminal" ->
+            "Terminal program"
+
+        "layout.style" ->
+            "Layout"
+
+        "layout.systemTitleBar" ->
+            "Use the system title bar"
+
+        "layout.bookmarkBar" ->
+            "Show the Bookmark Bar"
+
+        "layout.statusBar" ->
+            "Show the status bar"
+
+        "layout.sidebar.visible" ->
+            "Show the sidebar"
+
+        "layout.sidebar.side" ->
+            "Sidebar side"
+
+        "layout.menuBar" ->
+            "Show the Menu Bar"
+
+        "layout.toolbar" ->
+            "Show the toolbar"
+
+        "layout.tabBar" ->
+            "Show the Tab Bar"
+
+        "layout.addressBar" ->
+            "Show the Address Bar"
+
+        "view.default.foldersFirst" ->
+            "Folders first"
+
+        "view.default.showHidden" ->
+            "Show hidden files"
+
+        "view.default.showExtensions" ->
+            "Show file extensions"
+
+        "view.default.icons" ->
+            "Icons"
+
+        "view.default.dateFormat" ->
+            "Date format"
+
+        "search.includeHidden" ->
+            "Include hidden files"
+
+        "search.followLinks" ->
+            "Follow links and junctions"
+
+        "search.skipOnlineOnlyFolders" ->
+            "Skip online-only folders"
+
+        "search.maxDepth" ->
+            "Deepest folder level"
+
+        "search.maxResults" ->
+            "Most results"
+
+        "editor.command" ->
+            "Program"
+
+        "editor.name" ->
+            "Name in menus"
+
+        "editor.args" ->
+            "Extra arguments"
+
+        "templates.folders" ->
+            "Templates folders"
+
+        "templates.dateFormat" ->
+            "Date format for {date}"
+
+        "network.timeoutSeconds" ->
+            "Network time-out (seconds)"
+
+        _ ->
+            key
+
+
+settingHelp : String -> String
+settingHelp key =
+    case key of
+        "general.startupFolder" ->
+            "last, home, or a folder path."
+
+        "general.homeFolder" ->
+            "Where Home goes; ~ is your user folder."
+
+        "general.terminal" ->
+            "Empty: Windows Terminal or PowerShell on Windows, $TERMINAL on Linux."
+
+        "layout.systemTitleBar" ->
+            "Off: File Catalog draws its own title bar with the window buttons."
+
+        "layout.menuBar" ->
+            "Menu Bar, toolbar, Tab Bar and Address Bar: classic layout only."
+
+        "view.default.dateFormat" ->
+            "For example yyyy-MM-dd HH:mm."
+
+        "view.default.showHidden" ->
+            "The default for folders without a saved view."
+
+        "search.maxDepth" ->
+            "0 means no limit."
+
+        "editor.command" ->
+            "A program on PATH (code, zed, subl) or a full path. Empty: the first known editor found."
+
+        "editor.args" ->
+            "One per line, put before the file, for example --new-window."
+
+        "templates.folders" ->
+            "One per line; relative to the settings folder or full paths."
+
+        "network.timeoutSeconds" ->
+            "How long to wait for a network folder before showing it as not available."
+
+        _ ->
+            ""
+
+
+settingChoice : String -> String -> String
+settingChoice key value =
+    case ( key, value ) of
+        ( "general.theme", "system" ) ->
+            "Follow the system"
+
+        ( "general.theme", "light" ) ->
+            "Light"
+
+        ( "general.theme", "dark" ) ->
+            "Dark"
+
+        ( "general.style", _ ) ->
+            styleName value
+
+        ( "layout.style", "browser" ) ->
+            layoutBrowser
+
+        ( "layout.style", "classic" ) ->
+            layoutClassic
+
+        ( "layout.sidebar.side", "left" ) ->
+            "Left"
+
+        ( "layout.sidebar.side", "right" ) ->
+            "Right"
+
+        ( "view.default.icons", "system" ) ->
+            systemIcons
+
+        ( "view.default.icons", "builtin" ) ->
+            builtinIcons
+
+        _ ->
+            value

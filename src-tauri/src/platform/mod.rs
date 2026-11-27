@@ -110,3 +110,35 @@ pub struct Place {
     pub name: String,
     pub path: String,
 }
+
+/// The computer named by `\\server` or `\\server\` (a network computer on its
+/// own, without a share), on Windows (REQ-037).
+pub fn server_root(path: &std::path::Path) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let text = path.to_string_lossy().replace('/', "\\");
+    let server = text.strip_prefix("\\\\")?.trim_end_matches('\\');
+    (!server.is_empty() && !server.contains('\\') && server != "?" && server != ".").then(|| server.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn a_server_on_its_own_is_recognised_on_windows() {
+        let found = |p: &str| server_root(Path::new(p));
+        if cfg!(windows) {
+            assert_eq!(found(r"\\nas"), Some("nas".into()));
+            assert_eq!(found(r"\\192.168.1.20\"), Some("192.168.1.20".into()));
+            assert_eq!(found("//nas/"), Some("nas".into()));
+            assert_eq!(found(r"\\nas\photos"), None);
+            assert_eq!(found(r"\\?\C:\x"), None);
+        } else {
+            assert_eq!(found(r"\\nas"), None);
+        }
+        assert_eq!(found("C:\\"), None);
+    }
+}

@@ -131,6 +131,11 @@ pub fn clipboard_cut() -> Option<bool> {
     None
 }
 
+/// Network computers are only listed on Windows (REQ-037); Linux reaches shares through its mounts.
+pub fn list_shares(_server: &str) -> std::io::Result<Vec<crate::model::Item>> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Listing a computer's shares works on Windows only."))
+}
+
 /// Linux has no registry of online drives; the common folders are checked in `cloud`.
 pub fn cloud_candidates(_home: &Path) -> Vec<crate::cloud::Candidate> {
     Vec::new()

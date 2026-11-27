@@ -104,6 +104,7 @@ init _ =
             , archivedTopicsOpen = False
             , quickAccess = []
             , maximized = False
+            , settingsRaw = E.null
             , favouriteGroups = favouriteGroupIds
             , clipboard = Nothing
             , jobs = Dict.empty
@@ -1032,6 +1033,18 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        SettingsSection section ->
+            case model.dialog of
+                Just (SettingsDialog _) ->
+                    ( { model | dialog = Just (SettingsDialog { section = section }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        SettingChange key value ->
+            -- Written at once; settings.toml's change event brings the new settings back.
+            request "settings_set" (E.object [ ( "key", E.string key ), ( "value", value ) ]) False ReqSettingSaved model
+
         FavGroupMouseDown group label x y ->
             ( { model | drag = Just (MoveFavGroup { group = group, label = label, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
 
@@ -1770,6 +1783,11 @@ runCommand command model =
                     in
                     Just (update (BookmarkEditOp [ ( "op", E.string op ), ( "path", E.string tab.path ) ]) model)
                 )
+
+        CmdSettingsPage ->
+            ( { model | dialog = Just (SettingsDialog { section = "general" }), popup = Nothing, menuBar = Nothing, palette = Nothing }
+            , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+            )
 
         CmdOpenSettingsFile ->
             update (OpenPath model.settingsFile) model
@@ -5907,6 +5925,13 @@ handleResponse reqId req envelope model =
                 Nothing ->
                     flashError model
 
+        ReqSettingSaved ->
+            if envelope.kind == "ok" then
+                ( model, Cmd.none )
+
+            else
+                flashError model
+
         ReqWindow ->
             case ok D.bool of
                 Just maximized ->
@@ -6076,6 +6101,7 @@ handleResponse reqId req envelope model =
 
 type alias InitData =
     { settings : Settings
+    , settingsRaw : D.Value
     , warnings : List String
     , activeTab : Int
     , tabs : List String
@@ -6101,6 +6127,7 @@ initDecoder : D.Decoder InitData
 initDecoder =
     D.succeed InitData
         |> andMap (D.field "settings" Settings.decoder)
+        |> andMap (D.field "settings" D.value)
         |> andMap (D.field "warnings" (D.list D.string))
         |> andMap (D.at [ "session", "activeTab" ] D.int)
         |> andMap (D.at [ "session", "tabs" ] (D.list D.string))
@@ -6197,6 +6224,7 @@ boot data model =
             { model
                 | booted = True
                 , settings = data.settings
+                , settingsRaw = data.settingsRaw
                 , warnings = data.warnings
                 , recent = data.recent
                 , home = data.home
@@ -6579,7 +6607,11 @@ handleEvent name data model =
                 Ok ( settings, warnings ) ->
                     let
                         updated =
-                            { model | settings = settings, warnings = warnings }
+                            { model
+                                | settings = settings
+                                , warnings = warnings
+                                , settingsRaw = D.decodeValue (D.field "settings" D.value) data |> Result.withDefault model.settingsRaw
+                            }
 
                         newDefault =
                             defaultView updated
