@@ -12,13 +12,19 @@ import Path
 import Text
 import Types exposing (..)
 import View.Common exposing (dropTarget, middleClick, viewIf)
+import View.Icons exposing (ownFolderIcon)
+import View.TitleBar exposing (dragRegion)
 
 
 viewTabBar : Model -> Html Msg
 viewTabBar model =
-    div [ class "tabbar", attribute "role" "tablist" ]
+    div ([ class "tabbar", attribute "role" "tablist" ] ++ dragRegion model)
         (List.map (viewTab model) model.tabs
-            ++ [ button [ class "newtab", onClick NewTab, title Text.newTab, tabindex -1 ] [ text "+" ] ]
+            ++ [ button [ class "newtab", onClick NewTab, title Text.newTab, tabindex -1 ] [ text "+" ]
+
+               -- Empty space after the tabs moves the window (spec 5.1).
+               , div ([ class "tabbar-space" ] ++ dragRegion model) []
+               ]
         )
 
 
@@ -37,6 +43,45 @@ tabColour model path =
 
             else
                 Path.parent model.sep path |> Maybe.andThen (tabColour model)
+
+
+{-| REQ-027: the own icon of the tab's folder or the nearest folder above it
+that has one, and a cloud badge inside an online drive (REQ-028). Plain
+folders show nothing, as before.
+-}
+viewTabIcon : Model -> String -> Html Msg
+viewTabIcon model path =
+    let
+        nearest p =
+            case ownFolderIcon model p of
+                Just url ->
+                    Just ( p, url )
+
+                Nothing ->
+                    Path.parent model.sep p |> Maybe.andThen nearest
+
+        cloud =
+            cloudRootOf model path
+
+        badge =
+            case cloud of
+                Just root ->
+                    span [ class ("icon tab-cloud cloud cloud-" ++ root.provider), title (Text.onlineDrive root.provider) ] []
+
+                Nothing ->
+                    text ""
+    in
+    case nearest path of
+        Just ( from, url ) ->
+            span [ class "tab-icons" ]
+                [ Html.img [ class "sysicon", Html.Attributes.src url, Html.Attributes.alt "", attribute "draggable" "false" ] []
+
+                -- The online drive's own folder icon already says which drive it is.
+                , viewIf (Maybe.map .path cloud /= Just from) badge
+                ]
+
+        Nothing ->
+            span [ class "tab-icons" ] [ badge ]
 
 
 viewTab : Model -> Tab -> Html Msg
@@ -76,7 +121,8 @@ viewTab model tab =
          ]
             ++ dropTarget model (DropFolder tab.path) tab.path
         )
-        [ viewIf (isFiltering tab) (span [ class "icon filter", title Text.filtered ] [])
+        [ viewIf (tab.search == Nothing) (viewTabIcon model tab.path)
+        , viewIf (isFiltering tab) (span [ class "icon filter", title Text.filtered ] [])
         , case tab.search of
             Just search ->
                 span [ class "label search" ] [ text (Text.searchTabLabel search.query) ]

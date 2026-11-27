@@ -293,6 +293,17 @@ pub fn create_shortcut_auto(parent: &Path, target: &Path) -> Result<PathBuf, Str
     }
 }
 
+/// The text of an exported file list (REQ-022, FR-OPEN-07): one name per
+/// line, with Windows line endings on Windows so Notepad shows it right.
+pub fn file_list_text(names: &[String]) -> String {
+    let newline = if cfg!(windows) { "\r\n" } else { "\n" };
+    let mut text = names.join(newline);
+    if !names.is_empty() {
+        text.push_str(newline);
+    }
+    text
+}
+
 /// A short, readable explanation of a file system error (spec 9).
 pub fn describe(error: &io::Error, path: &Path) -> String {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
@@ -308,6 +319,14 @@ pub fn describe(error: &io::Error, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_list_has_one_name_per_line() {
+        let nl = if cfg!(windows) { "\r\n" } else { "\n" };
+        let names = vec!["Archive".to_string(), "Budget.xlsx".to_string()];
+        assert_eq!(file_list_text(&names), format!("Archive{nl}Budget.xlsx{nl}"));
+        assert_eq!(file_list_text(&[]), "");
+    }
 
     #[cfg(unix)]
     #[test]

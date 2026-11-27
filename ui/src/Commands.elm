@@ -77,11 +77,13 @@ all =
     , Def "edit.invertSelection" CmdInvertSelection "◑"
     , Def "edit.selectNone" CmdSelectNone "○"
     , Def "item.open" CmdOpen "▶"
+    , Def "item.openWith" CmdOpenWith "▶"
     , Def "item.openNewTab" CmdOpenNewTab "⧉"
     , Def "item.openTerminal" CmdOpenTerminal ".terminal"
     , Def "item.openInEditor" CmdOpenInEditor ".code"
     , Def "folder.openInEditor" CmdOpenFolderInEditor ".code"
     , Def "item.reveal" CmdReveal ".link-out"
+    , Def "file.exportList" CmdExportFileList ".save"
     , Def "item.contextMenu" CmdItemMenu "≡"
     , Def "view.saveForFolder" (CmdSaveView False) ".save"
     , Def "view.saveForSubfolders" (CmdSaveView True) ".save"
@@ -91,6 +93,7 @@ all =
     , Def "view.sidebarMode.tree" (CmdSidebarMode TreeMode) ".tree"
     , Def "view.sidebarMode.favourites" (CmdSidebarMode FavouritesMode) ".star"
     , Def "view.sidebarMode.bookmarks" (CmdSidebarMode BookmarksMode) ".bookmark"
+    , Def "view.sidebarMode.topics" (CmdSidebarMode TopicsMode) ".topic"
     , Def "view.sidebarLeft" (CmdSidebarSide "left") "◧"
     , Def "view.sidebarRight" (CmdSidebarSide "right") "◨"
     , Def "view.toggleMenuBar" (CmdToggleSetting "layout.menuBar") "☰"
@@ -105,6 +108,13 @@ all =
     , Def "view.theme.system" (CmdSetTheme "system") "◐"
     , Def "view.theme.light" (CmdSetTheme "light") "☀"
     , Def "view.theme.dark" (CmdSetTheme "dark") "☾"
+    , Def "view.style.studio" (CmdSetStyle "studio") "◐"
+    , Def "view.style.typewriter" (CmdSetStyle "typewriter") "◐"
+    , Def "view.style.explorer" (CmdSetStyle "explorer") "◐"
+    , Def "view.style.modern" (CmdSetStyle "modern") "◐"
+    , Def "view.layout.browser" (CmdSetLayout "browser") "☰"
+    , Def "view.layout.classic" (CmdSetLayout "classic") "☰"
+    , Def "view.systemTitleBar" CmdToggleSystemTitleBar "☰"
     , Def "view.icons.system" (CmdSetIcons "system") "▣"
     , Def "view.icons.builtin" (CmdSetIcons "builtin") "□"
     , Def "focus.nextRegion" (CmdFocusRegion True) "⇥"
@@ -116,7 +126,8 @@ all =
     , Def "bookmark.openFile" CmdOpenBookmarksFile ".gear"
     , Def "favourite.toggle" CmdTogglePin "★"
     , Def "jobs.toggle" CmdToggleJobs "≡"
-    , Def "settings.open" CmdOpenSettingsFile ".gear"
+    , Def "settings.open" CmdSettingsPage ".gear"
+    , Def "settings.openFile" CmdOpenSettingsFile ".gear"
     , Def "keybindings.open" CmdOpenKeybindingsFile ".keyboard"
     , Def "toolbar.open" CmdOpenToolbarFile ".gear"
     , Def "toolbar.customise" CmdCustomiseToolbar ".pencil"
@@ -225,6 +236,7 @@ defaults =
     , ( "Ctrl+Shift+1", "view.sidebarMode.tree", "global" )
     , ( "Ctrl+Shift+2", "view.sidebarMode.favourites", "global" )
     , ( "Ctrl+Shift+3", "view.sidebarMode.bookmarks", "global" )
+    , ( "Ctrl+Shift+4", "view.sidebarMode.topics", "global" )
     , ( "Ctrl+H", "view.toggleHidden", "global" )
     , ( "F6", "focus.nextRegion", "global" )
     , ( "Shift+F6", "focus.prevRegion", "global" )

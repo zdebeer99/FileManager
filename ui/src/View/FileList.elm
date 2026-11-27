@@ -17,7 +17,7 @@ import Json.Decode as D
 import Set
 import Text
 import Types exposing (..)
-import View.Common exposing (dropTarget, inputKeys, middleClick, px)
+import View.Common exposing (dropTarget, inputKeys, middleClick, noAutocomplete, px)
 import View.Icons exposing (viewIcon)
 
 
@@ -337,7 +337,8 @@ viewRenameCell model item r =
     div [ class "cell name renaming" ]
         [ viewIcon model item
         , input
-            [ id renameInputId
+            [ noAutocomplete
+            , id renameInputId
             , stopPropagationOn "mousedown" (D.succeed ( NoOp, True ))
             , class "rename-input"
             , classList [ ( "invalid", r.error /= Nothing ) ]
@@ -390,12 +391,43 @@ syncGlyph sync =
         Item.SyncError ->
             "⚠"
 
+        Item.SyncInCloud ->
+            "☁"
+
 
 {-| The label that follows the pointer while dragging items.
 -}
 viewDragGhost : Model -> Html Msg
 viewDragGhost model =
     case model.drag of
+        Just (MoveBookmark d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.name ]
+
+            else
+                text ""
+
+        Just (MoveTopic d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.title ]
+
+            else
+                text ""
+
+        Just (MoveFavGroup d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.label ]
+
+            else
+                text ""
+
+        Just (MoveTopicFolder d) ->
+            if d.moved then
+                div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ] [ text d.label ]
+
+            else
+                text ""
+
         Just (DragItems d) ->
             if d.moved then
                 div [ class "drag-ghost", style "left" (px (d.x + 14)), style "top" (px (d.y + 14)) ]

@@ -3,7 +3,10 @@
 //! - `folder`: the folder icon,
 //! - `ext:<extension>`: a file type's icon (found without touching any file),
 //! - `file:<path>`: one file's own icon (programs, shortcuts), where the
-//!   platform has them (`platform::PER_FILE_ICONS`).
+//!   platform has them (`platform::PER_FILE_ICONS`),
+//! - `dir:<path>`: a folder's own icon (REQ-025): Downloads, Pictures, a
+//!   custom folder icon, an online drive. Every other folder answers `None`
+//!   at once, without asking the system, so the UI can ask for any folder.
 //!
 //! Answers are kept in memory for the session. Folder and file type icons are
 //! also kept in the cache folder (spec 4.5), so the next start needs no lookups.
@@ -45,6 +48,8 @@ fn parse_key(key: &str) -> Option<IconTarget> {
         Some(IconTarget::Folder)
     } else if let Some(ext) = key.strip_prefix("ext:") {
         Some(IconTarget::Extension(ext.to_lowercase()))
+    } else if let Some(path) = key.strip_prefix("dir:") {
+        Some(IconTarget::Dir(PathBuf::from(path)))
     } else {
         key.strip_prefix("file:").map(|path| IconTarget::File(PathBuf::from(path)))
     }
@@ -63,6 +68,21 @@ fn lookup(paths: &AppPaths, target: &IconTarget) -> Option<Icon> {
                 return None;
             }
             platform::icon(target).filter(|i| i.bytes.len() <= MAX_ICON_BYTES)
+        }
+        IconTarget::Dir(path) => {
+            // Never on network or removable drives (spec 4.3); online drives are fine,
+            // as a folder's icon comes from its own small settings file.
+            if platform::is_slow_device(path) {
+                return None;
+            }
+            let meta = fs::metadata(path).ok()?;
+            if !platform::may_have_own_icon(path, &meta) {
+                return None;
+            }
+            let icon = platform::icon(target).filter(|i| i.bytes.len() <= MAX_ICON_BYTES)?;
+            // The plain folder icon is not an icon of its own.
+            let plain = lookup(paths, &IconTarget::Folder);
+            (plain.as_ref().map(|p| &p.bytes) != Some(&icon.bytes)).then_some(icon)
         }
         _ => {
             let file = disk_file(paths, target)?;
@@ -89,7 +109,7 @@ fn disk_file(paths: &AppPaths, target: &IconTarget) -> Option<PathBuf> {
             // A hash keeps different extensions apart when they look the same once made safe.
             format!("ext-{safe}-{:08x}", fnv(ext.as_bytes()))
         }
-        IconTarget::File(_) => return None,
+        IconTarget::File(_) | IconTarget::Dir(_) => return None,
     };
     Some(paths.cache.join("icons").join(env!("CARGO_PKG_VERSION")).join(name))
 }
@@ -145,6 +165,7 @@ mod tests {
         assert_eq!(parse_key("ext:PDF"), Some(IconTarget::Extension("pdf".into())));
         assert_eq!(parse_key("ext:"), Some(IconTarget::Extension(String::new())));
         assert_eq!(parse_key("file:/a/b.exe"), Some(IconTarget::File(PathBuf::from("/a/b.exe"))));
+        assert_eq!(parse_key("dir:/a/Downloads"), Some(IconTarget::Dir(PathBuf::from("/a/Downloads"))));
         assert_eq!(parse_key("nonsense"), None);
     }
 
@@ -163,6 +184,16 @@ mod tests {
         // Kept in memory: removing the file changes nothing this session.
         fs::remove_file(file.with_extension("png")).unwrap();
         assert!(get(&cache, &paths, vec!["ext:abc".into()])["ext:abc"].is_some());
+    }
+
+    #[test]
+    fn plain_folders_have_no_icon_of_their_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths { config: dir.path().into(), cache: dir.path().join("cache"), logs: dir.path().into() };
+        let plain = dir.path().join("Plain");
+        fs::create_dir_all(&plain).unwrap();
+        let key = format!("dir:{}", plain.display());
+        assert_eq!(get(&IconCache::default(), &paths, vec![key.clone()])[&key], None);
     }
 
     #[test]

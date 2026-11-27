@@ -54,13 +54,41 @@ pub struct Bookmarks {
 #[derive(Deserialize, Debug)]
 #[serde(tag = "op", rename_all = "camelCase")]
 pub enum Edit {
-    Add { name: String, target: String, group: Vec<String> },
-    Update { index: usize, name: String, target: String, group: Vec<String> },
-    Remove { index: usize },
-    Move { index: usize, delta: i64 },
-    AddFavourite { path: String },
-    RemoveFavourite { path: String },
-    MoveFavourite { path: String, delta: i64 },
+    Add {
+        name: String,
+        target: String,
+        group: Vec<String>,
+    },
+    Update {
+        index: usize,
+        name: String,
+        target: String,
+        group: Vec<String>,
+    },
+    Remove {
+        index: usize,
+    },
+    Move {
+        index: usize,
+        delta: i64,
+    },
+    /// Drag and drop (REQ-007): put a bookmark before another one, or at the
+    /// end of a group when `before` is None, and into `group`.
+    MoveTo {
+        index: usize,
+        before: Option<usize>,
+        group: Vec<String>,
+    },
+    AddFavourite {
+        path: String,
+    },
+    RemoveFavourite {
+        path: String,
+    },
+    MoveFavourite {
+        path: String,
+        delta: i64,
+    },
 }
 
 pub fn load(paths: &AppPaths) -> Bookmarks {
@@ -160,6 +188,36 @@ pub fn apply(paths: &AppPaths, edit: Edit) -> Result<(), String> {
                 }
             }
         }
+        Edit::MoveTo { index, before, group } => {
+            let tables = bookmark_tables(&mut doc);
+            let mut all: Vec<Table> = tables.iter().cloned().collect();
+            if index >= all.len() {
+                return Err("That bookmark no longer exists.".into());
+            }
+            let positions: Vec<Option<isize>> = all.iter().map(Table::position).collect();
+            let groups: Vec<Vec<String>> = all.iter().map(group_of).collect();
+            let mut entry = all.remove(index);
+            entry["group"] = toml_edit::value(group.iter().map(String::as_str).collect::<toml_edit::Array>());
+            // Indexes of the others, now one lower past the removed entry.
+            let shift = |i: usize| if i > index { i - 1 } else { i };
+            let to = match before {
+                Some(b) if b != index && b < groups.len() => shift(b),
+                _ => {
+                    // After the last bookmark of the group, or at the very end.
+                    (0..groups.len())
+                        .rev()
+                        .find(|&i| i != index && groups[i] == group)
+                        .map(|i| shift(i) + 1)
+                        .unwrap_or(all.len())
+                }
+            };
+            all.insert(to.min(all.len()), entry);
+            tables.clear();
+            for (mut entry, position) in all.into_iter().zip(positions) {
+                entry.set_position(position);
+                tables.push(entry);
+            }
+        }
         Edit::AddFavourite { path } => {
             let list = favourite_paths(&mut doc);
             if !list.iter().any(|p| p.as_str() == Some(path.as_str())) {
@@ -212,6 +270,14 @@ fn fill(entry: &mut Table, name: &str, target: &str, group: &[String]) {
     entry["group"] = toml_edit::value(group.iter().map(String::as_str).collect::<toml_edit::Array>());
 }
 
+fn group_of(entry: &Table) -> Vec<String> {
+    entry
+        .get("group")
+        .and_then(Item::as_array)
+        .map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+        .unwrap_or_default()
+}
+
 fn classify(target: &str) -> (&'static str, bool) {
     if target.contains("://") {
         return ("url", true);
@@ -242,6 +308,34 @@ mod tests {
 
     fn test_paths(dir: &Path) -> AppPaths {
         AppPaths { config: dir.to_path_buf(), cache: dir.join("cache"), logs: dir.join("logs") }
+    }
+
+    #[test]
+    fn bookmarks_are_dragged_before_others_and_between_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = test_paths(dir.path());
+        let add = |name: &str, group: &[&str]| {
+            let group = group.iter().map(|g| g.to_string()).collect();
+            apply(&paths, Edit::Add { name: name.into(), target: format!("https://{name}.example"), group }).unwrap();
+        };
+        add("A", &["bar"]);
+        add("B", &["bar"]);
+        add("C", &["bar", "Legal"]);
+        add("D", &[]);
+        let names = || load(&paths).bookmarks.iter().map(|b| (b.name.clone(), b.group.join("/"))).collect::<Vec<_>>();
+        let pair = |n: &str, g: &str| (n.to_string(), g.to_string());
+
+        // B before A, same group.
+        apply(&paths, Edit::MoveTo { index: 1, before: Some(0), group: vec!["bar".into()] }).unwrap();
+        assert_eq!(names(), [pair("B", "bar"), pair("A", "bar"), pair("C", "bar/Legal"), pair("D", "")]);
+
+        // D into the Legal group, at its end.
+        apply(&paths, Edit::MoveTo { index: 3, before: None, group: vec!["bar".into(), "Legal".into()] }).unwrap();
+        assert_eq!(names(), [pair("B", "bar"), pair("A", "bar"), pair("C", "bar/Legal"), pair("D", "bar/Legal")]);
+
+        // B into a new, empty group goes to the end.
+        apply(&paths, Edit::MoveTo { index: 0, before: None, group: vec!["Work".into()] }).unwrap();
+        assert_eq!(names(), [pair("A", "bar"), pair("C", "bar/Legal"), pair("D", "bar/Legal"), pair("B", "Work")]);
     }
 
     #[test]

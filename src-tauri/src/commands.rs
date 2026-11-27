@@ -28,6 +28,7 @@ use crate::session::{self, Session};
 use crate::settings::{self, Settings};
 use crate::templates;
 use crate::toolbar::{self, Toolbar};
+use crate::topics::{self, Topics};
 use crate::watcher::DirWatcher;
 
 pub struct AppState {
@@ -125,6 +126,10 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
 
     *state.settings.write().unwrap() = loaded.clone();
     *state.session.lock().unwrap() = last_session.clone();
+    // File Catalog draws its own title bar unless the system one is wanted (spec 5.1).
+    if let Some(window) = tauri::Manager::get_webview_window(&app, "main") {
+        let _ = window.set_decorations(loaded.layout.system_title_bar);
+    }
 
     let home = if loaded.general.home_folder.trim().is_empty() || loaded.general.home_folder == "~" {
         paths::home_dir()
@@ -252,7 +257,12 @@ pub struct Resolved {
 /// Turns what the user typed in the Address Bar into a folder (FR-ADDR-03).
 #[tauri::command]
 pub async fn resolve_path(state: State<'_, AppState>, input: String, base: String) -> Result<Resolved, String> {
-    let expanded = PathBuf::from(paths::expand(&input, &paths::home_dir()));
+    let typed = paths::expand(&input, &paths::home_dir());
+    // `\\server` or `\\server\` opens the computer's list of shared folders (REQ-037).
+    if let Some(server) = platform::server_root(Path::new(&typed)) {
+        return Ok(Resolved { dir: format!("\\\\{server}"), select: None });
+    }
+    let expanded = PathBuf::from(typed);
     let full = paths::clean(&if expanded.is_relative() { Path::new(&base).join(expanded) } else { expanded });
     let probe = full.clone();
     state
@@ -335,6 +345,45 @@ pub async fn session_save(state: State<'_, AppState>, session: Session) -> Resul
         .pools
         .run(&config, Duration::from_secs(10), move || session::save(&paths, &session).map_err(|e| e.to_string()))
         .await?
+}
+
+/// Export File List (REQ-022, FR-OPEN-07): asks where to save, starting in
+/// the folder itself, then writes the names, one per line. Returns the file
+/// saved, or `None` when the user cancelled.
+#[tauri::command]
+pub async fn export_file_list(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder: String,
+    names: Vec<String>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let dir = PathBuf::from(&folder);
+    let base = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Folder".into());
+    let suggested = format!("{base} - file list.txt");
+    let start = dir.clone();
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("Export File List")
+            .set_directory(&start)
+            .set_file_name(suggested)
+            .add_filter("Text", &["txt"])
+            .blocking_save_file()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    let Some(chosen) = chosen else { return Ok(None) };
+    let target = chosen.into_path().map_err(|e| e.to_string())?;
+    let text = fileops::file_list_text(&names);
+    let written = target.clone();
+    state
+        .pools
+        .run(&target.clone(), state.timeout(), move || {
+            paths::write_atomic(&written, text.as_bytes()).map_err(|e| fileops::describe(&e, &written))
+        })
+        .await??;
+    Ok(Some(target.to_string_lossy().into_owned()))
 }
 
 /// Writes an error that a command returned to the UI into the log file
@@ -423,6 +472,19 @@ pub async fn icons_get(
     let paths = state.paths.clone();
     let cache = state.icons.clone();
     state.pools.run(&paths.cache.clone(), Duration::from_secs(30), move || icons::get(&cache, &paths, keys)).await
+}
+
+/// Topics (REQ-021, spec 6.4.6).
+#[tauri::command]
+pub async fn topics_get(state: State<'_, AppState>) -> Result<Topics, String> {
+    let paths = state.paths.clone();
+    state.pools.run(&paths.config.clone(), state.timeout(), move || topics::load(&paths)).await
+}
+
+#[tauri::command]
+pub async fn topics_edit(state: State<'_, AppState>, edit: topics::Edit) -> Result<(), String> {
+    let paths = state.paths.clone();
+    state.pools.run(&paths.config.clone(), Duration::from_secs(10), move || topics::apply(&paths, edit)).await?
 }
 
 /// Moves folder colours along with renamed or moved folders (REQ-013).
@@ -578,6 +640,80 @@ pub async fn open_in_editor(state: State<'_, AppState>, paths: Vec<String>) -> R
     let settings = state.settings.read().unwrap().editor.clone();
     let config = state.paths.config.clone();
     state.pools.run(&config, Duration::from_secs(10), move || editor::open(&settings, &paths)).await?
+}
+
+/// The window buttons in File Catalog's own title bar (spec 5.1). `action` is
+/// "minimize", "maximize" (toggles), "close" or "" (only asks). Returns
+/// whether the window is maximised, so the button can show Restore.
+#[tauri::command]
+pub async fn window_control(window: tauri::WebviewWindow, action: String) -> Result<bool, String> {
+    let result = match action.as_str() {
+        "minimize" => window.minimize(),
+        "maximize" if window.is_maximized().unwrap_or(false) => window.unmaximize(),
+        "maximize" => window.maximize(),
+        "close" => window.close(),
+        _ => Ok(()),
+    };
+    result.map_err(|e| e.to_string())?;
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
+/// Switches between the system's title bar and File Catalog's own (spec 5.1).
+#[tauri::command]
+pub async fn window_frame(window: tauri::WebviewWindow, system: bool) -> Result<(), String> {
+    window.set_decorations(system).map_err(|e| e.to_string())
+}
+
+/// The file manager's Quick access folders (REQ-029): Explorer's on Windows,
+/// the standard folders and GTK bookmarks elsewhere.
+#[tauri::command]
+pub async fn quick_access(state: State<'_, AppState>) -> Result<Vec<platform::Place>, String> {
+    let home = crate::paths::home_dir();
+    let config = state.paths.config.clone();
+    state.pools.run(&config, Duration::from_secs(15), move || platform::quick_access(&home)).await
+}
+
+/// Open With (FR-OPEN-02). On Windows this shows the system's own dialog,
+/// which opens the file itself; elsewhere it returns the apps to choose from.
+#[tauri::command]
+pub async fn open_with(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<platform::OpenWithChoices, String> {
+    #[cfg(windows)]
+    {
+        let _ = &state;
+        let parent = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
+        tauri::async_runtime::spawn_blocking(move || platform::open_with_dialog(Path::new(&path), parent))
+            .await
+            .map_err(|e| e.to_string())??;
+        Ok(platform::OpenWithChoices { shown: true, ..Default::default() })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
+        let config = state.paths.config.clone();
+        state.pools.run(&config, Duration::from_secs(10), move || platform::open_with_choices(Path::new(&path))).await
+    }
+}
+
+/// Opens a file with the app picked in the Open With list (FR-OPEN-02, Linux).
+#[tauri::command]
+pub async fn open_with_app(state: State<'_, AppState>, path: String, app: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let _ = (&state, path, app);
+        Err("Open With uses the Windows dialog.".into())
+    }
+    #[cfg(not(windows))]
+    {
+        let config = state.paths.config.clone();
+        state
+            .pools
+            .run(&config, Duration::from_secs(10), move || platform::open_with_app(&app, Path::new(&path)))
+            .await?
+    }
 }
 
 /// Shows the item in the system file manager.

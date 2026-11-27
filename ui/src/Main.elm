@@ -37,7 +37,7 @@ main : Program () Model Msg
 main =
     Browser.element
         { init = init
-        , update = \msg model -> update msg model |> andThen ensureIcons
+        , update = \msg model -> update msg model |> followTopic model |> andThen ensureIcons
         , view = View.App.view
         , subscriptions = subscriptions
         }
@@ -97,6 +97,15 @@ init _ =
             , colourWarnings = []
             , bookmarkSearch = ""
             , foldedGroups = Set.empty
+            , topics = []
+            , topicWarnings = []
+            , topicSearch = ""
+            , openTopic = Nothing
+            , archivedTopicsOpen = False
+            , quickAccess = []
+            , maximized = False
+            , settingsRaw = E.null
+            , favouriteGroups = favouriteGroupIds
             , clipboard = Nothing
             , jobs = Dict.empty
             , jobsPanel = False
@@ -416,6 +425,18 @@ update msg model =
 
         WindowResized width height ->
             ( { model | windowWidth = width, windowHeight = height }, measureList )
+                -- Maximising or restoring resizes the window; ask which it is now (spec 5.1).
+                |> andThen
+                    (\m ->
+                        if m.booted && not m.settings.systemTitleBar then
+                            request "window_control" (E.object [ ( "action", E.string "" ) ]) False ReqWindow m
+
+                        else
+                            ( m, Cmd.none )
+                    )
+
+        WindowControl action ->
+            request "window_control" (E.object [ ( "action", E.string action ) ]) False ReqWindow model
 
         RowClicked index mods ->
             ( updateActive (clickRow index mods) { model | popup = Nothing, menuBar = Nothing }, Cmd.none )
@@ -852,6 +873,198 @@ update msg model =
         BookmarkEditOp fields ->
             request "bookmarks_edit" (E.object [ ( "edit", E.object fields ) ]) False ReqBookmarkEdit { model | popup = Nothing }
 
+        -- Topics (REQ-021)
+        TopicEditOp fields ->
+            request "topics_edit" (E.object [ ( "edit", E.object fields ) ]) False ReqTopicEdit { model | popup = Nothing, dialog = Nothing }
+
+        TopicSearch text ->
+            ( { model | topicSearch = text }, Cmd.none )
+
+        OpenTopic index ->
+            -- Opening a topic also opens its first folder in the active tab.
+            let
+                opened =
+                    { model | openTopic = Just index, popup = Nothing }
+            in
+            case findTopic index model |> Maybe.andThen (.folders >> List.head) of
+                Just first ->
+                    update (NavigateTo first.path) opened
+
+                Nothing ->
+                    ( opened, Cmd.none )
+
+        CloseTopic ->
+            ( { model | openTopic = Nothing }, Cmd.none )
+
+        ToggleArchivedTopics ->
+            ( { model | archivedTopicsOpen = not model.archivedTopicsOpen }, Cmd.none )
+
+        EditTopic index folders ->
+            let
+                existing =
+                    Maybe.andThen (\i -> findTopic i model) index
+            in
+            ( { model
+                | dialog =
+                    Just
+                        (TopicDialog
+                            { index = index
+                            , title = Maybe.map .title existing |> Maybe.withDefault ""
+                            , description = Maybe.map .description existing |> Maybe.withDefault ""
+                            , folders = folders
+                            , archived = Maybe.map .archived existing |> Maybe.withDefault False
+                            , error = Nothing
+                            }
+                        )
+                , popup = Nothing
+                , menuBar = Nothing
+              }
+            , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+            )
+
+        TopicTitle text ->
+            ( updateTopicForm (\f -> { f | title = text, error = Nothing }) model, Cmd.none )
+
+        TopicDescription text ->
+            ( updateTopicForm (\f -> { f | description = text }) model, Cmd.none )
+
+        TopicSubmit ->
+            case model.dialog of
+                Just (TopicDialog form) ->
+                    let
+                        fields =
+                            [ ( "title", E.string (String.trim form.title) ), ( "description", E.string (String.trim form.description) ) ]
+                    in
+                    if String.trim form.title == "" then
+                        ( updateTopicForm (\f -> { f | error = Just Text.topicTitleNeeded }) model, Cmd.none )
+
+                    else
+                        update
+                            (TopicEditOp
+                                (case form.index of
+                                    Just index ->
+                                        ( "op", E.string "update" ) :: ( "index", E.int index ) :: fields
+
+                                    Nothing ->
+                                        ( "op", E.string "add" ) :: ( "folders", E.list E.string form.folders ) :: fields
+                                )
+                            )
+                            { model | dialog = Nothing }
+                            |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
+
+        DeleteTopic index ->
+            case findTopic index model of
+                Just topic ->
+                    askConfirm
+                        { title = Text.deleteTopicTitle topic.title
+                        , lines = [ Text.deleteTopicNote ]
+                        , confirmLabel = Text.delete
+                        , onConfirm = RemoveTopic index
+                        , danger = True
+                        }
+                        model
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        RemoveTopic index ->
+            update (TopicEditOp [ ( "op", E.string "remove" ), ( "index", E.int index ) ])
+                { model
+                    | openTopic =
+                        if model.openTopic == Just index then
+                            Nothing
+
+                        else
+                            model.openTopic
+                }
+
+        TopicMouseDown index topicTitle x y ->
+            ( { model | drag = Just (MoveTopic { index = index, title = topicTitle, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
+
+        TopicFolderMouseDown topic path label x y ->
+            ( { model | drag = Just (MoveTopicFolder { topic = topic, path = path, label = label, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
+
+        EditTopicFolder topic folder ->
+            ( { model
+                | dialog = Just (TopicFolderDialog { topic = topic, path = folder.path, newPath = folder.path, name = folder.name, error = Nothing })
+                , popup = Nothing
+                , menuBar = Nothing
+              }
+            , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+            )
+
+        TopicFolderPath text ->
+            ( updateTopicFolderForm (\f -> { f | newPath = text, error = Nothing }) model, Cmd.none )
+
+        TopicFolderName text ->
+            ( updateTopicFolderForm (\f -> { f | name = text }) model, Cmd.none )
+
+        TopicFolderSubmit ->
+            case model.dialog of
+                Just (TopicFolderDialog form) ->
+                    if String.trim form.newPath == "" then
+                        ( updateTopicFolderForm (\f -> { f | error = Just Text.topicFolderPathNeeded }) model, Cmd.none )
+
+                    else
+                        update
+                            (TopicEditOp
+                                [ ( "op", E.string "updateFolder" )
+                                , ( "index", E.int form.topic )
+                                , ( "path", E.string form.path )
+                                , ( "newPath", E.string (String.trim form.newPath) )
+                                , ( "name", E.string (String.trim form.name) )
+                                ]
+                            )
+                            model
+                            |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
+
+        OpenWithPick appId ->
+            case model.dialog of
+                Just (OpenWithDialog state) ->
+                    request "open_with_app" (E.object [ ( "path", E.string state.path ), ( "app", E.string appId ) ]) False ReqOpenedWith { model | dialog = Nothing }
+                        |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
+
+        SettingsSection section ->
+            case model.dialog of
+                Just (SettingsDialog _) ->
+                    ( { model | dialog = Just (SettingsDialog { section = section }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        SettingChange key value ->
+            -- Written at once; settings.toml's change event brings the new settings back.
+            request "settings_set" (E.object [ ( "key", E.string key ), ( "value", value ) ]) False ReqSettingSaved model
+
+        FavGroupMouseDown group label x y ->
+            ( { model | drag = Just (MoveFavGroup { group = group, label = label, startX = x, startY = y, x = x, y = y, moved = False }) }, Cmd.none )
+
+        OpenWithShowAll ->
+            case model.dialog of
+                Just (OpenWithDialog state) ->
+                    ( { model | dialog = Just (OpenWithDialog { state | showAll = True }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        TopicFolderRemove ->
+            case model.dialog of
+                Just (TopicFolderDialog form) ->
+                    update (TopicEditOp [ ( "op", E.string "removeFolder" ), ( "index", E.int form.topic ), ( "path", E.string form.path ) ]) model
+                        |> addCmd focusList
+
+                _ ->
+                    ( model, Cmd.none )
+
         TabMouseDown tabId x ->
             ( { model | drag = Just (MoveTab { tabId = tabId, startX = x, moved = False, over = Nothing }) }, Cmd.none )
 
@@ -924,6 +1137,17 @@ update msg model =
               }
             , Cmd.none
             )
+
+        BookmarkMouseDown index name x y ->
+            ( { model | drag = Just (MoveBookmark { index = index, name = name, startX = x, startY = y, x = x, y = y, moved = False, over = Nothing }) }, Cmd.none )
+
+        BookmarkDragOver over ->
+            case model.drag of
+                Just (MoveBookmark d) ->
+                    ( { model | drag = Just (MoveBookmark { d | over = over }) }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
 
         ToggleBookmarkGroup key ->
             persist
@@ -1484,6 +1708,20 @@ runCommand command model =
         CmdSetTheme theme ->
             setSetting "general.theme" (E.string theme) (\s -> { s | theme = theme }) model
 
+        CmdSetStyle style ->
+            setSetting "general.style" (E.string style) (\s -> { s | style = style }) model
+
+        CmdSetLayout layout ->
+            setSetting "layout.style" (E.string layout) (\s -> { s | layoutStyle = layout }) { model | menuBar = Nothing }
+
+        CmdToggleSystemTitleBar ->
+            let
+                system =
+                    not model.settings.systemTitleBar
+            in
+            setSetting "layout.systemTitleBar" (E.bool system) (\s -> { s | systemTitleBar = system }) model
+                |> andThen (request "window_frame" (E.object [ ( "system", E.bool system ) ]) False ReqIgnore)
+
         CmdSetIcons icons ->
             setSetting "view.default.icons" (E.string icons) (\s -> { s | icons = icons }) model
 
@@ -1499,16 +1737,14 @@ runCommand command model =
                 name =
                     sidebarModeName mode
             in
-            setSetting "layout.sidebar.mode" (E.string name) (\s -> { s | sidebarMode = name, sidebarVisible = True }) model
-                |> andThen
-                    (\m ->
-                        if model.settings.sidebarVisible then
-                            ( m, Cmd.none )
+            (if mode == FavouritesMode then
+                request "quick_access" (E.object []) False ReqQuickAccess
 
-                        else
-                            setSetting "layout.sidebar.visible" (E.bool True) identity m
-                    )
-                |> andThen followCurrentInTree
+             else
+                \m -> ( m, Cmd.none )
+            )
+                model
+                |> andThen (runSidebarMode name)
 
         CmdSidebarSide side ->
             setSetting "layout.sidebar.side" (E.string side) (\s -> { s | sidebarSide = side }) model
@@ -1547,6 +1783,11 @@ runCommand command model =
                     in
                     Just (update (BookmarkEditOp [ ( "op", E.string op ), ( "path", E.string tab.path ) ]) model)
                 )
+
+        CmdSettingsPage ->
+            ( { model | dialog = Just (SettingsDialog { section = "general" }), popup = Nothing, menuBar = Nothing, palette = Nothing }
+            , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+            )
 
         CmdOpenSettingsFile ->
             update (OpenPath model.settingsFile) model
@@ -1682,6 +1923,27 @@ runCommand command model =
         CmdUndo ->
             request "undo_last" (E.object []) False ReqUndo model
 
+        CmdExportFileList ->
+            -- The names shown in the list, in screen order (REQ-022, FR-OPEN-07).
+            withActive model
+                (\tab ->
+                    if tab.search /= Nothing then
+                        Nothing
+
+                    else
+                        Just
+                            (request "export_file_list"
+                                (E.object
+                                    [ ( "folder", E.string tab.path )
+                                    , ( "names", E.list (.name >> E.string) (Array.toList tab.visible) )
+                                    ]
+                                )
+                                False
+                                ReqExported
+                                { model | popup = Nothing }
+                            )
+                )
+
         CmdCreateShortcut ->
             -- A shortcut to each selected item, next to it (FR-NEW-06).
             withActive model
@@ -1718,6 +1980,22 @@ runCommand command model =
 
                     else
                         Just (update (OpenInEditor paths) model)
+                )
+
+        CmdOpenWith ->
+            -- One file: Windows shows its own dialog; elsewhere the apps come back (FR-OPEN-02).
+            withActive model
+                (\tab ->
+                    case targetItems tab of
+                        [ item ] ->
+                            if item.isDir then
+                                Just (flash Text.openWithFolder model)
+
+                            else
+                                Just (request "open_with" (E.object [ ( "path", E.string item.path ) ]) False (ReqOpenWith item.path) { model | popup = Nothing })
+
+                        _ ->
+                            Nothing
                 )
 
         CmdOpenFolderInEditor ->
@@ -2562,6 +2840,7 @@ persist model =
                 , ( "paletteHistory", E.list E.string model.paletteHistory )
                 , ( "findHistory", E.list E.string model.findHistory )
                 , ( "foldedGroups", E.list E.string (Set.toList model.foldedGroups) )
+                , ( "favouriteGroups", E.list E.string model.favouriteGroups )
                 ]
     in
     ( model, Cmd.none )
@@ -2758,6 +3037,18 @@ mouseMove x y model =
         Just (MoveTab d) ->
             ( { model | drag = Just (MoveTab { d | moved = d.moved || abs (x - d.startX) > 8 }) }, Cmd.none )
 
+        Just (MoveBookmark d) ->
+            ( { model | drag = Just (MoveBookmark { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
+        Just (MoveTopic d) ->
+            ( { model | drag = Just (MoveTopic { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
+        Just (MoveTopicFolder d) ->
+            ( { model | drag = Just (MoveTopicFolder { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
+        Just (MoveFavGroup d) ->
+            ( { model | drag = Just (MoveFavGroup { d | x = x, y = y, moved = d.moved || abs (x - d.startX) + abs (y - d.startY) > 6 }) }, Cmd.none )
+
         Just (ResizeSidebar d) ->
             let
                 delta =
@@ -2785,16 +3076,16 @@ mouseUp mods model =
                 let
                     -- The element under the pointer decides; hover events can arrive late.
                     target =
-                        case mods.under of
-                            Just "bookmark-bar" ->
-                                Just DropBookmarkBar
-
-                            Just path ->
+                        case Maybe.map dropTargetOf mods.under of
+                            Just (DropFolder path) ->
                                 if List.member path d.paths then
                                     Nothing
 
                                 else
                                     Just (DropFolder path)
+
+                            Just other ->
+                                Just other
 
                             Nothing ->
                                 d.target
@@ -2815,6 +3106,112 @@ mouseUp mods model =
 
                     Nothing ->
                         ( done, Cmd.none )
+
+        Just (MoveBookmark d) ->
+            -- The element under the pointer decides, like file drops.
+            case ( d.moved, Maybe.andThen (D.decodeString bookmarkDropDecoder >> Result.toMaybe) mods.bookmarkUnder ) of
+                ( True, Just drop ) ->
+                    let
+                        ( before, group ) =
+                            case drop of
+                                BeforeBookmark index g ->
+                                    ( Just index, g )
+
+                                IntoGroup g ->
+                                    ( Nothing, g )
+                    in
+                    if before == Just d.index then
+                        ( done, Cmd.none )
+
+                    else
+                        update
+                            (BookmarkEditOp
+                                [ ( "op", E.string "moveTo" )
+                                , ( "index", E.int d.index )
+                                , ( "before", Maybe.map E.int before |> Maybe.withDefault E.null )
+                                , ( "group", E.list E.string group )
+                                ]
+                            )
+                            done
+
+                _ ->
+                    ( done, Cmd.none )
+
+        Just (MoveTopic d) ->
+            -- `data-order-drop` under the pointer: a topic's index, or "end".
+            case ( d.moved, mods.orderUnder ) of
+                ( True, Just under ) ->
+                    let
+                        before =
+                            String.toInt under
+                    in
+                    if before == Just d.index then
+                        ( done, Cmd.none )
+
+                    else
+                        update
+                            (TopicEditOp
+                                [ ( "op", E.string "moveTo" )
+                                , ( "index", E.int d.index )
+                                , ( "before", Maybe.map E.int before |> Maybe.withDefault E.null )
+                                ]
+                            )
+                            done
+
+                _ ->
+                    ( done, Cmd.none )
+
+        Just (MoveFavGroup d) ->
+            -- `data-order-drop` on a group heading: the group it goes before, or "end" (REQ-029).
+            case ( d.moved, mods.orderUnder ) of
+                ( True, Just under ) ->
+                    if under == d.group then
+                        ( done, Cmd.none )
+
+                    else
+                        let
+                            rest =
+                                List.filter ((/=) d.group) model.favouriteGroups
+
+                            ( before, after ) =
+                                case List.partition (\g -> g == under) rest of
+                                    ( [], _ ) ->
+                                        ( rest, [] )
+
+                                    _ ->
+                                        splitBefore under rest
+                        in
+                        persist { done | favouriteGroups = before ++ d.group :: after }
+
+                _ ->
+                    ( done, Cmd.none )
+
+        Just (MoveTopicFolder d) ->
+            -- In an open topic, `data-order-drop` holds a folder's path, or "end".
+            case ( d.moved, mods.orderUnder ) of
+                ( True, Just under ) ->
+                    if under == d.path then
+                        ( done, Cmd.none )
+
+                    else
+                        update
+                            (TopicEditOp
+                                [ ( "op", E.string "moveFolder" )
+                                , ( "index", E.int d.topic )
+                                , ( "path", E.string d.path )
+                                , ( "before"
+                                  , if under == "end" then
+                                        E.null
+
+                                    else
+                                        E.string under
+                                  )
+                                ]
+                            )
+                            done
+
+                _ ->
+                    ( done, Cmd.none )
 
         Just (MoveTab d) ->
             case ( d.moved, d.over ) of
@@ -3855,6 +4252,12 @@ itemEntries model tab item =
                     []
     in
     [ act Text.open "Enter" (KeyCommand CmdOpen) ]
+        ++ (if single && not item.isDir then
+                [ act Text.openWithMenu "" (KeyCommand CmdOpenWith) ]
+
+            else
+                []
+           )
         ++ (if model.editorName /= "" then
                 [ act (Text.openWith model.editorName) "" (OpenInEditor (List.map .path (targetItems tab))) ]
 
@@ -3890,6 +4293,7 @@ itemEntries model tab item =
         ++ (if item.isDir then
                 [ act Text.pin "" (BookmarkEditOp [ ( "op", E.string "addFavourite" ), ( "path", E.string item.path ) ])
                 , Menu.colourEntries model (selectedFolders tab item)
+                , Menu.topicEntries model (selectedFolders tab item)
                 , act Text.openTerminalHere "" (KeyCommand CmdOpenTerminal)
                 ]
 
@@ -3935,8 +4339,15 @@ folderMenuEntries model tab =
     , Separator
     , act Text.selectAllItems "Ctrl+A" (KeyCommand CmdSelectAll)
     , act Text.refreshFolder "F5" (KeyCommand CmdRefresh)
+    , act Text.exportFileList "" (KeyCommand CmdExportFileList)
     , act Text.openTerminalHere "" (KeyCommand CmdOpenTerminal)
     ]
+        ++ (if tab.search == Nothing then
+                [ Menu.topicEntries model [ tab.path ] ]
+
+            else
+                []
+           )
         ++ (if model.editorName /= "" && tab.search == Nothing then
                 [ act (Text.openFolderWith model.editorName) "" (OpenInEditor [ tab.path ]) ]
 
@@ -4056,8 +4467,174 @@ dropItems mods paths target model =
                 ( model, Cmd.none )
                 paths
 
+        Just (DropTopic index) ->
+            update (TopicEditOp [ ( "op", E.string "addFolders" ), ( "index", E.int index ), ( "paths", E.list E.string paths ) ]) model
+
         Nothing ->
             ( model, Cmd.none )
+
+
+{-| What a `data-drop` value names: the Bookmark Bar, a topic or a folder.
+-}
+dropTargetOf : String -> DropTarget
+dropTargetOf value =
+    if value == "bookmark-bar" then
+        DropBookmarkBar
+
+    else
+        case ( String.startsWith "topic:" value, String.toInt (String.dropLeft 6 value) ) of
+            ( True, Just index ) ->
+                DropTopic index
+
+            _ ->
+                DropFolder value
+
+
+findTopic : Int -> Model -> Maybe Topic
+findTopic index model =
+    List.filter (\t -> t.index == index) model.topics |> List.head
+
+
+runSidebarMode : String -> Model -> ( Model, Cmd Msg )
+runSidebarMode name model =
+    setSetting "layout.sidebar.mode" (E.string name) (\s -> { s | sidebarMode = name, sidebarVisible = True }) model
+        |> andThen
+            (\m ->
+                if model.settings.sidebarVisible then
+                    ( m, Cmd.none )
+
+                else
+                    setSetting "layout.sidebar.visible" (E.bool True) identity m
+            )
+        |> andThen followCurrentInTree
+
+
+{-| The items before `x`, and `x` with the items after it.
+-}
+splitBefore : a -> List a -> ( List a, List a )
+splitBefore x list =
+    case list of
+        [] ->
+            ( [], [] )
+
+        first :: rest ->
+            if first == x then
+                ( [], list )
+
+            else
+                let
+                    ( before, after ) =
+                        splitBefore x rest
+                in
+                ( first :: before, after )
+
+
+updateTopicFolderForm : (TopicFolderForm -> TopicFolderForm) -> Model -> Model
+updateTopicFolderForm f model =
+    case model.dialog of
+        Just (TopicFolderDialog form) ->
+            { model | dialog = Just (TopicFolderDialog (f form)) }
+
+        _ ->
+            model
+
+
+{-| When the active tab moves to a folder that belongs to a topic, open that
+topic in the Topics view (REQ-023). The open topic stays when it has the
+folder; otherwise a topic with exactly that folder wins over one with a
+folder above it, and topics that are not archived over archived ones.
+-}
+followTopic : Model -> ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+followTopic before ( model, cmd ) =
+    let
+        pathOf m =
+            activeTab m
+                |> Maybe.andThen
+                    (\tab ->
+                        if tab.search == Nothing then
+                            Just tab.path
+
+                        else
+                            Nothing
+                    )
+    in
+    case pathOf model of
+        Just path ->
+            if pathOf before == Just path then
+                ( model, cmd )
+
+            else
+                let
+                    has exact topic =
+                        List.any
+                            (\f ->
+                                if exact then
+                                    Path.samePath model.sep f.path path
+
+                                else
+                                    Path.isInside model.sep f.path path
+                            )
+                            topic.folders
+
+                    keep =
+                        Maybe.andThen (\i -> findTopic i model) model.openTopic
+                            |> Maybe.map (has False)
+                            |> Maybe.withDefault False
+
+                    ( archived, active ) =
+                        List.partition .archived model.topics
+
+                    found =
+                        [ List.filter (has True) active, List.filter (has True) archived, List.filter (has False) active, List.filter (has False) archived ]
+                            |> List.concat
+                            |> List.head
+                in
+                case ( keep, found ) of
+                    ( False, Just topic ) ->
+                        ( { model | openTopic = Just topic.index }, cmd )
+
+                    _ ->
+                        ( model, cmd )
+
+        Nothing ->
+            ( model, cmd )
+
+
+updateTopicForm : (TopicForm -> TopicForm) -> Model -> Model
+updateTopicForm f model =
+    case model.dialog of
+        Just (TopicDialog form) ->
+            { model | dialog = Just (TopicDialog (f form)) }
+
+        _ ->
+            model
+
+
+{-| The nearest value of a `data-…` attribute at or above an element.
+-}
+dataAttribute : String -> D.Decoder (Maybe String)
+dataAttribute name =
+    D.oneOf
+        [ D.at [ "dataset", name ] D.string |> D.map Just
+        , D.field "parentElement" (D.nullable (D.lazy (\_ -> dataAttribute name))) |> D.map (Maybe.andThen identity)
+        , D.succeed Nothing
+        ]
+
+
+{-| A dropped bookmark's place, as written in `data-bm-drop` (REQ-007).
+-}
+bookmarkDropDecoder : D.Decoder BookmarkDrop
+bookmarkDropDecoder =
+    D.map2 Tuple.pair (D.field "before" (D.nullable D.int)) (D.field "group" (D.list D.string))
+        |> D.map
+            (\( before, group ) ->
+                case before of
+                    Just index ->
+                        BeforeBookmark index group
+
+                    Nothing ->
+                        IntoGroup group
+            )
 
 
 {-| The nearest `data-drop` value at or above an element.
@@ -5204,6 +5781,27 @@ handleResponse reqId req envelope model =
             else
                 flashError model
 
+        ReqTopics ->
+            case ok topicsDecoder of
+                Just ( topics, warnings ) ->
+                    ( { model
+                        | topics = topics
+                        , topicWarnings = warnings
+                        , openTopic = Maybe.andThen (\i -> Maybe.map .index (List.head (List.filter (\t -> t.index == i) topics))) model.openTopic
+                      }
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ReqTopicEdit ->
+            if envelope.kind == "ok" then
+                request "topics_get" (E.object []) False ReqTopics model
+
+            else
+                flashError model
+
         ReqFavList ->
             let
                 event =
@@ -5278,6 +5876,17 @@ handleResponse reqId req envelope model =
                 Nothing ->
                     ( model, Cmd.none )
 
+        ReqExported ->
+            case ok (D.nullable D.string) of
+                Just (Just file) ->
+                    flash (Text.fileListSaved file) model
+
+                Just Nothing ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
         ReqColours ->
             case ok coloursDecoder of
                 Just ( colours, warnings ) ->
@@ -5298,6 +5907,53 @@ handleResponse reqId req envelope model =
 
         ReqIgnore ->
             ( model, Cmd.none )
+
+        ReqOpenWith path ->
+            let
+                appList =
+                    D.list (D.map3 OpenWithApp (D.field "id" D.string) (D.field "name" D.string) (D.field "default" D.bool))
+            in
+            case ok (D.map3 (\shown apps others -> ( shown, apps, others )) (D.field "shown" D.bool) (D.field "apps" appList) (D.field "others" appList)) of
+                Just ( False, apps, others ) ->
+                    ( { model | dialog = Just (OpenWithDialog { path = path, apps = apps, others = others, showAll = List.isEmpty apps }) }
+                    , Task.attempt (\_ -> NoOp) (Dom.focus dialogFirstInputId)
+                    )
+
+                Just _ ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
+        ReqSettingSaved ->
+            if envelope.kind == "ok" then
+                ( model, Cmd.none )
+
+            else
+                flashError model
+
+        ReqWindow ->
+            case ok D.bool of
+                Just maximized ->
+                    ( { model | maximized = maximized }, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
+        ReqQuickAccess ->
+            case ok (D.list (D.map2 Place (D.field "name" D.string) (D.field "path" D.string))) of
+                Just places ->
+                    ( { model | quickAccess = places }, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ReqOpenedWith ->
+            if envelope.kind == "ok" then
+                ( model, Cmd.none )
+
+            else
+                flashError model
 
         ReqJobStart ->
             flashError model
@@ -5445,6 +6101,7 @@ handleResponse reqId req envelope model =
 
 type alias InitData =
     { settings : Settings
+    , settingsRaw : D.Value
     , warnings : List String
     , activeTab : Int
     , tabs : List String
@@ -5462,6 +6119,7 @@ type alias InitData =
     , findHistory : List String
     , foldedGroups : List String
     , perFileIcons : Bool
+    , favouriteGroups : List String
     }
 
 
@@ -5469,6 +6127,7 @@ initDecoder : D.Decoder InitData
 initDecoder =
     D.succeed InitData
         |> andMap (D.field "settings" Settings.decoder)
+        |> andMap (D.field "settings" D.value)
         |> andMap (D.field "warnings" (D.list D.string))
         |> andMap (D.at [ "session", "activeTab" ] D.int)
         |> andMap (D.at [ "session", "tabs" ] (D.list D.string))
@@ -5476,7 +6135,7 @@ initDecoder =
         |> andMap (D.field "home" D.string)
         |> andMap (D.field "sep" D.string)
         |> andMap (D.field "syncStatus" D.bool)
-        |> andMap (D.field "roots" (D.list (D.map3 Root (D.field "name" D.string) (D.field "path" D.string) (D.field "kind" D.string))))
+        |> andMap (D.field "roots" (D.list (D.map4 Root (D.field "name" D.string) (D.field "path" D.string) (D.field "kind" D.string) (D.oneOf [ D.field "provider" D.string, D.succeed "" ]))))
         |> andMap (D.field "settingsFile" D.string)
         |> andMap (D.field "bookmarksFile" D.string)
         |> andMap (D.field "version" D.string)
@@ -5486,11 +6145,29 @@ initDecoder =
         |> andMap (D.oneOf [ D.at [ "session", "findHistory" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.at [ "session", "foldedGroups" ] (D.list D.string), D.succeed [] ])
         |> andMap (D.oneOf [ D.field "perFileIcons" D.bool, D.succeed False ])
+        |> andMap (D.oneOf [ D.at [ "session", "favouriteGroups" ] (D.list D.string), D.succeed [] ])
 
 
 andMap : D.Decoder a -> D.Decoder (a -> b) -> D.Decoder b
 andMap =
     D.map2 (|>)
+
+
+topicsDecoder : D.Decoder ( List Topic, List String )
+topicsDecoder =
+    D.map2 Tuple.pair
+        (D.field "topics"
+            (D.list
+                (D.map5 Topic
+                    (D.field "index" D.int)
+                    (D.field "title" D.string)
+                    (D.field "description" D.string)
+                    (D.field "folders" (D.list (D.map2 TopicFolder (D.field "path" D.string) (D.field "name" D.string))))
+                    (D.field "archived" D.bool)
+                )
+            )
+        )
+        (D.field "warnings" (D.list D.string))
 
 
 bookmarksDecoder : D.Decoder ( List Favourite, List Bookmark, List String )
@@ -5547,6 +6224,7 @@ boot data model =
             { model
                 | booted = True
                 , settings = data.settings
+                , settingsRaw = data.settingsRaw
                 , warnings = data.warnings
                 , recent = data.recent
                 , home = data.home
@@ -5560,6 +6238,10 @@ boot data model =
                 , findHistory = data.findHistory
                 , foldedGroups = Set.fromList data.foldedGroups
                 , perFileIcons = data.perFileIcons
+                , favouriteGroups =
+                    -- Known groups in the saved order, then any new ones (REQ-029).
+                    List.filter (\g -> List.member g favouriteGroupIds) data.favouriteGroups
+                        ++ List.filter (\g -> not (List.member g data.favouriteGroups)) favouriteGroupIds
             }
                 |> applyKeyBindings data.keybindings
                 |> applyToolbar data.toolbar
@@ -5574,6 +6256,8 @@ boot data model =
         |> andThen (loadView booted.active)
         |> andThen persist
         |> andThen (request "bookmarks_get" (E.object []) False ReqBookmarks)
+        |> andThen (request "topics_get" (E.object []) False ReqTopics)
+        |> andThen (request "quick_access" (E.object []) False ReqQuickAccess)
         |> andThen (request "colours_get" (E.object []) False ReqColours)
         |> andThen (request "editor_info" (E.object []) False ReqEditorInfo)
         |> andThen (request "templates_list" (E.object []) False ReqTemplates)
@@ -5637,8 +6321,59 @@ ensureIcons model =
             bookmarkKeys =
                 List.map bookmarkIconKey model.bookmarks
 
+            -- Folders' own icons (REQ-025 to REQ-028): the folders on screen, the
+            -- sidebar's folders, bookmarked folders, and each tab's folder and the
+            -- folders above it. The backend answers plain folders at once.
+            dirKey path =
+                "dir:" ++ path
+
+            onScreenFolders =
+                case activeTab model of
+                    Just tab ->
+                        let
+                            first =
+                                max 0 (floor (tab.scrollTop / rowHeight) - 5)
+                        in
+                        Array.slice first (first + ceiling (model.viewportHeight / rowHeight) + 10) tab.visible
+                            |> Array.toList
+                            |> List.filter .isDir
+                            |> List.map .path
+
+                    Nothing ->
+                        []
+
+            browsingFolders =
+                case model.favBrowse of
+                    Just browse ->
+                        browse.path :: (Dict.values browse.items |> List.filter .isDir |> List.map .path)
+
+                    Nothing ->
+                        []
+
+            ancestors path =
+                path :: (Path.parent model.sep path |> Maybe.map ancestors |> Maybe.withDefault [])
+
+            sidebarFolders =
+                List.map .path model.roots
+                    ++ List.map .path model.favourites
+                    ++ List.map .path model.quickAccess
+                    ++ List.concatMap (.folders >> List.map .path) model.topics
+                    ++ (model.bookmarks |> List.filter (\b -> b.kind == "folder") |> List.map .target)
+                    ++ (if sidebarModeFromString model.settings.sidebarMode == TreeMode then
+                            List.map .path (View.Sidebar.treeRows model)
+
+                        else
+                            []
+                       )
+
+            tabFolders =
+                model.tabs |> List.filter (\t -> t.search == Nothing) |> List.concatMap (.path >> ancestors)
+
+            folderKeys =
+                List.map dirKey (model.home :: onScreenFolders ++ browsingFolders ++ sidebarFolders ++ tabFolders)
+
             wanted =
-                ("folder" :: onScreen ++ browsing ++ List.filterMap identity bookmarkKeys)
+                ("folder" :: onScreen ++ browsing ++ List.filterMap identity bookmarkKeys ++ folderKeys)
                     |> List.filter (\key -> not (Set.member key model.iconsAsked))
                     |> Set.fromList
         in
@@ -5872,7 +6607,11 @@ handleEvent name data model =
                 Ok ( settings, warnings ) ->
                     let
                         updated =
-                            { model | settings = settings, warnings = warnings }
+                            { model
+                                | settings = settings
+                                , warnings = warnings
+                                , settingsRaw = D.decodeValue (D.field "settings" D.value) data |> Result.withDefault model.settingsRaw
+                            }
 
                         newDefault =
                             defaultView updated
@@ -5888,12 +6627,23 @@ handleEvent name data model =
                     ( { updated | tabs = List.map adjust model.tabs }, measureList )
                         -- [editor] may have changed (FR-OPEN-06).
                         |> andThen (request "editor_info" (E.object []) False ReqEditorInfo)
+                        -- The title bar setting was changed in the file (spec 5.1).
+                        |> andThen
+                            (if settings.systemTitleBar /= model.settings.systemTitleBar then
+                                request "window_frame" (E.object [ ( "system", E.bool settings.systemTitleBar ) ]) False ReqIgnore
+
+                             else
+                                \m -> ( m, Cmd.none )
+                            )
 
                 Err _ ->
                     ( model, Cmd.none )
 
         "bookmarks-changed" ->
             request "bookmarks_get" (E.object []) False ReqBookmarks model
+
+        "topics-changed" ->
+            request "topics_get" (E.object []) False ReqTopics model
 
         "colours-changed" ->
             case D.decodeValue coloursDecoder data of
@@ -5937,16 +6687,13 @@ handleEvent name data model =
                         let
                             dropTarget =
                                 case target of
-                                    Just "bookmark-bar" ->
-                                        Just DropBookmarkBar
-
-                                    Just path ->
-                                        Just (DropFolder path)
+                                    Just value ->
+                                        Just (dropTargetOf value)
 
                                     Nothing ->
                                         activeTab model |> Maybe.map (.path >> DropFolder)
                         in
-                        dropItems { ctrl = False, shift = False, alt = False, under = Nothing } paths dropTarget model
+                        dropItems { ctrl = False, shift = False, alt = False, under = Nothing, bookmarkUnder = Nothing, orderUnder = Nothing } paths dropTarget model
 
                 _ ->
                     ( model, Cmd.none )
@@ -6059,11 +6806,13 @@ subscriptions model =
             Sub.batch
                 [ Browser.Events.onMouseMove (D.map2 MouseMove (D.field "clientX" D.float) (D.field "clientY" D.float))
                 , Browser.Events.onMouseUp
-                    (D.map4 DropMods
+                    (D.map6 DropMods
                         (D.map2 (||) (D.field "ctrlKey" D.bool) (D.field "metaKey" D.bool))
                         (D.field "shiftKey" D.bool)
                         (D.field "altKey" D.bool)
                         (D.field "target" dropAttribute)
+                        (D.field "target" (dataAttribute "bmDrop"))
+                        (D.field "target" (dataAttribute "orderDrop"))
                         |> D.map MouseUp
                     )
                 ]

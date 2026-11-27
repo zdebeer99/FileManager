@@ -5,8 +5,14 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycles **c1** and **c2** are built on top of it and not yet released (Sections 11.2, 11.3). |
-| Changes | c3 (unreleased, 2026-11-14): Create Shortcut (FR-NEW-06); folder colours follow renamed and moved folders (FR-FCOL-03); Favourites drops anywhere on the file list copy, and Cut/Copy in its menus (FR-FAV-03); icons in Bookmark Bar groups (FR-BB-01); errors written to the log (NFR-MNT-03); fixes for the command palette width and Open with VS Code on Windows (FR-OPEN-06). |
+| Status | 0.1.0 released. Update cycles **c1** to **c8** are built on top of it and not yet released (Sections 11.2 to 11.10). |
+| Changes | c8 (unreleased, 2026-11-27): network computers list their shares (FR-ADDR-06); settings page (FR-SET-01). |
+| | c7 (unreleased, 2026-11-27): browser layout with tabs at the top and a ☰ menu, own title bar with window buttons (FR-UI-06, FR-UI-07); Typewriter, Explorer and Modern styles (FR-UI-08). |
+| | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01); light theme fixed: a light frame and readable menus (3.2). |
+| | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
+| | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
+| | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
+| | c3 (unreleased, 2026-11-14): Create Shortcut (FR-NEW-06); folder colours follow renamed and moved folders (FR-FCOL-03); Favourites drops anywhere on the file list copy, and Cut/Copy in its menus (FR-FAV-03); icons in Bookmark Bar groups (FR-BB-01); errors written to the log (NFR-MNT-03); fixes for the command palette width and Open with VS Code on Windows (FR-OPEN-06). |
 | | c2 (unreleased, 2026-11-03): system icons from Windows or the Linux icon theme, with built-in icons as the fallback and a setting to choose (FR-ICON-02, `view.default.icons`, icon cache 4.5); Open with a text editor (FR-OPEN-06, `[editor]` 8.3); menus kept on screen (FR-MENU-02); tab colours (FR-TAB-06). |
 | | c1 (unreleased, 2026-11-03): file type icons (FR-ICON-01), folder colours (6.4.5, `colours.toml` 8.7), foldable bookmark groups (FR-BM-06), group drop-down in the bookmark dialog (FR-BM-01), browsing inside favourites (FR-FAV-03); Context view removed (decision log 13.1). See [FeatureRequest.md](FeatureRequest.md). |
 | | 0.1.0: First stable release. M5 cancelled (decision log 13.1, 2026-11-03). The document now describes only what 0.1.0 does; everything planned but not built is listed in Section 12. Document versions restart at the application version. |
@@ -90,7 +96,7 @@ Its guiding principle is **no lock-in**: everything File Catalog creates (folder
 - All UI is written in Elm, using The Elm Architecture (Model / Update / View).
 - Elm talks to the Rust backend only through **ports**. A small, hand-written JavaScript bridge (`ui/static/bridge.js`) connects Elm ports to Tauri's `invoke`, channel and event APIs. No other JavaScript application logic is allowed.
 - Styling uses plain CSS with CSS custom properties for the light and dark themes. No CSS framework (Tailwind was considered for REQ-018 and not needed; decision log 13.1).
-- **Look ("Studio", REQ-018):** a dark frame (Menu Bar, toolbar, Bookmark Bar, flat tabs with a blue accent line, Address Bar and sidebar) around the file list, which is light in the light theme and dark in the dark theme; a blue status bar; rounder menus and dialogs. The accent is a bright blue (`#60cdff`) on dark surfaces and a deeper blue (`#0f6cbd`) on light ones. Colours are tokens (`--chrome*` for the frame) in `styles.css`.
+- **Look ("Studio", REQ-018):** a frame (Menu Bar, toolbar, Bookmark Bar, flat tabs with a blue accent line, Address Bar and sidebar) around the file list. The frame follows the theme: light grey in the light theme, dark in the dark theme (REQ-034); menus and dialogs always use the theme's normal text colour on their own background. A blue status bar; rounder menus and dialogs. The accent is a bright blue (`#60cdff`) on dark surfaces and a deeper blue (`#0f6cbd`) on light ones. Colours are tokens (`--chrome*` for the frame) in `styles.css`.
 - Build: `elm make --optimize`, then minify with `esbuild` (`ui/build.mjs`). Target bundle size: ≤ 250 KB minified, ≤ 80 KB gzipped.
 
 ### 3.3 Main Rust crates
@@ -182,8 +188,13 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `folder_view_get` / `folder_view_save` / `folder_view_reset` / `folder_view_file` | `{ path, view?, applyToSubfolders? }` | resolved view / file path |
 | `bookmarks_get` / `bookmarks_edit` | `{ edit: { op, … } }` | favourites, bookmarks, warnings |
 | `colours_get` / `colours_set` | — / `{ path, colour }` (`null` clears it) | folder → colour map, warnings |
+| `topics_get` / `topics_edit` | — / `{ edit: { op, … } }` (`add`, `update`, `remove`, `archive`, `moveTo`, `addFolders`, `removeFolder`) | topics, warnings |
+| `export_file_list` | `{ folder, names }` | the saved file's path, or `null` when the save dialog was cancelled |
 | `editor_info` / `open_in_editor` | — / `{ paths }` | the editor's name (empty when none was found) / — |
-| `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>` | key → `data:` URL, or `null` where there is no system icon |
+| `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>`, `dir:<path>` (a folder's own icon, FR-ICON-03) | key → `data:` URL, or `null` where there is no system icon |
+| `open_with` / `open_with_app` | `{ path }` / `{ path, app }` | Windows: shows the system dialog, `{ shown: true }`; Linux: `{ apps, others }` (id, name, default) / — (FR-OPEN-02) |
+| `window_control` / `window_frame` | `{ action }` ("minimize", "maximize", "close", "" to ask) / `{ system }` | whether the window is maximised / — (FR-UI-07) |
+| `quick_access` | — | the file manager's Quick access folders (name, path) (FR-FAV-04) |
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `undo_last` | — | `{ ok } \| { error }` |
 | `fs_rename` / `fs_create` | `{ path, newName }` / `{ parent, item: { kind, … } }` | new path |
@@ -197,7 +208,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `perf_mark` / `app_exit` | — | — |
 | `log_error` | `{ command, message }` | — (the bridge sends every failed command here, NFR-MNT-03) |
 
-**Events (Rust → Elm):** `dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `keybindings-changed`, `toolbar-changed`, `job-progress`, `job-conflict`, `file-drop`. Every event must also be in the `listen` list in `bridge.js`.
+**Events (Rust → Elm):** `dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `topics-changed`, `keybindings-changed`, `toolbar-changed`, `job-progress`, `job-conflict`, `file-drop`. Every event must also be in the `listen` list in `bridge.js`.
 
 **Item record (shared shape):**
 
@@ -240,6 +251,28 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 
 ### 5.1 Layout
 
+**FR-UI-06** There are two layouts (`layout.style`, **View › Layout ▸**; REQ-036). The default is the **browser layout**, laid out like a web browser:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│ [ Vendors × ] [ Acme renewal × ] [ Downloads × ] [+]               [─] [☐] [✕] │  title bar: tabs + window buttons
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ [◀][▶][▲][⟳] 🖴 C: › Vendors › Acme › 2026   [Filter…]  [+Folder][Cut][Copy]… [☰]│  toolbar groups around the Address Bar
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ ★ Acme  ★ Contracts  ★ Weekly notes  📁 Projects ▾  🌐 Intranet      (Bookmark Bar)│
+├───────────────┬──────────────────────────────────────────────────────────────────┤
+│ Sidebar        │ Content container                                               │
+├───────────────┴──────────────────────────────────────────────────────────────────┤
+│ Status Bar                                                                       │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- The toolbar's first group (up to the first `|` in `toolbar.toml`, by default Back, Forward, Up and Refresh) sits left of the path box; its other buttons sit right of the filter box, then **☰**. ☰ (and `Alt`, `F10`, `Alt+<letter>`) opens the whole menu: the menu names in a column, the chosen menu's entries beside it, used with the mouse or the arrow keys like the Menu Bar (FR-MENU-01).
+- The tab row and the Address Bar row are always shown in this layout; the Bookmark Bar, sidebar and status bar can still be hidden (FR-UI-01).
+- **FR-UI-07** File Catalog draws its own title bar (REQ-036): the window's system title bar is hidden, and **Minimise**, **Maximise / Restore** and **Close** sit at the right end of the top row (the tab row, or the Menu Bar row in the classic layout). Dragging the row's empty space moves the window and double-clicking it maximises. `layout.systemTitleBar = true` (**View › Layout ▸ Use the System Title Bar**) brings back the system's title bar, for example on Linux desktops that draw their own.
+
+The **classic layout** keeps a row for each bar, as in 0.1.0:
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │ File  Edit  View  Go  Bookmarks  Tools  Window  Help                 (Menu Bar) │
@@ -265,20 +298,26 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-UI-01** Every bar and panel above, except the content container, can be shown or hidden from the **View** menu and the command palette. Visibility is saved in `settings.toml`.
 - **FR-UI-02** The sidebar can be placed on the left or right edge, resized by dragging its splitter, or hidden. Position and width are saved.
 - **FR-UI-04** Light and dark themes, following the OS by default, with a manual choice in **View › Theme**.
+- **FR-UI-08** Styles (`general.style`, **View › Style ▸**; REQ-035) change the light theme's look; the dark theme always uses Studio's dark look (3.2):
+  - **Studio** (default): a light grey frame with a blue accent (3.2).
+  - **Typewriter:** cream paper, ink-black type in a typewriter-style monospaced face (iA Writer Quattro, IBM Plex Mono or Courier Prime when installed, else the system's monospaced font), a sepia frame and a muted green accent, after the Obsidian theme *Typewriter*.
+  - **Explorer:** like Windows 11 File Explorer: a light grey frame, white list, light-blue selection, yellow folders, a yellow marker on the active tab and sidebar item, and a light status bar.
+  - **Modern:** a light-blue frame with warm brown type, a brown accent, brown folders and a brown status bar.
+  - Fonts are never downloaded or bundled; a style uses the fonts installed on the computer.
 - **FR-UI-05** Every function can be reached with the keyboard alone. Focus is always visible. `F6` / `Shift+F6` moves focus between regions.
 
 ### 5.2 Menu Bar
 
-**FR-MENU-01** All commands are grouped in a standard menu layout. Each menu item shows its current key binding. The Menu Bar opens with `Alt` / `F10` and `Alt+<letter>`. Items planned for a later version are shown disabled.
+**FR-MENU-01** All commands are grouped in a standard menu layout. Each menu item shows its current key binding. The Menu Bar (classic layout) or the ☰ menu (browser layout, FR-UI-06) opens with `Alt` / `F10` and `Alt+<letter>`. Items planned for a later version are shown disabled.
 
 | Menu | Items |
 |---|---|
-| **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Close Tab, Exit |
+| **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open With… (FR-OPEN-02), Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Export File List… (FR-OPEN-07), Close Tab, Exit |
 | **Edit** | Undo, Cut, Copy, Paste, Paste as Shortcut, Duplicate, Create Shortcut, Copy Path, Copy Name, Rename, Delete, Delete Permanently, Select All, Invert Selection, Select None |
-| **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Refresh |
+| **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, Topics, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Style ▸ (Studio, Typewriter, Explorer, Modern), Layout ▸ (Browser, Classic, Use the System Title Bar), Refresh |
 | **Go** | Back, Forward, Up, Home, Go to Address, Recent Folders ▸, Favourites ▸, Pin This Folder to Favourites |
 | **Bookmarks** | Bookmark This Folder, Bookmark Selected Item, Manage Bookmarks, Open Bookmarks File, All Bookmarks ▸ |
-| **Tools** | Quick Find, Quick Filter, Command Palette, Commands…, Save Selection as Template, Edit Templates Folder, Open Settings File, Open Key Bindings File, Open Toolbar File |
+| **Tools** | Quick Find, Quick Filter, Command Palette, Commands…, Save Selection as Template, Edit Templates Folder, Settings… (FR-SET-01), Open Settings File, Open Key Bindings File, Open Toolbar File |
 | **Window** | Jobs, Next Tab, Previous Tab, Tabs ▸, Duplicate Tab, Reopen Closed Tab |
 | **Help** | Keyboard Shortcuts, Open Log Folder, About File Catalog |
 
@@ -289,7 +328,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-TB-01** The toolbar holds buttons that call commands. Its contents, order, separators, flexible space and button style (icon, icon and text, text) are set in `toolbar.toml` (Section 8.5).
 - **FR-TB-02** *Customise Toolbar* (right-click on the toolbar, or **View › Customise Toolbar…**) adds, removes and reorders buttons with *Move Up* / *Move Down*. Changes are written back to `toolbar.toml`.
 - **FR-TB-03** Buttons whose command cannot run right now (e.g. *Paste* with an empty clipboard) are shown disabled.
-- **FR-TB-04** The default toolbar includes the **Save View** button (FR-VIEW-05).
+- **FR-TB-04** The default toolbar does not include the **Save View** button (FR-VIEW-05); it can be added with *Customise Toolbar*, and *Save View* is always in the View menu and on `Ctrl+S`. Toolbar buttons are 36 × 34 px with 20 px icons, so they are easy to hit.
 
 ### 5.4 Bookmark Bar
 
@@ -304,6 +343,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-TAB-02** New tab (`Ctrl+T`) opens the current folder; close (`Ctrl+W`, middle-click); reopen closed tab (`Ctrl+Shift+T`, last 20 kept); switch (`Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+1…9`); reorder by dragging; duplicate.
 - **FR-TAB-04** Open tabs and their locations are restored on start-up (setting `restoreTabs`).
 - **FR-TAB-05** Dropping files onto a tab copies or moves them into that tab's folder.
+- **FR-TAB-07** A tab shows the own icon (FR-ICON-03) of its folder, or of the nearest folder above it that has one, for example the Downloads icon in `Downloads\Invoices` (REQ-027). A tab inside an online drive also shows a small cloud in the drive's colour, with its name as a tooltip (6.4.7), unless the icon already is the drive's own. Plain folders show no icon.
 - **FR-TAB-06** A tab whose folder has a folder colour (6.4.5) shows that colour: a coloured line along its top and a light tint. Sub-folders of a coloured folder take its colour, so the tab keeps it while you browse inside; the nearest coloured folder above wins.
 
 ### 5.6 Address Bar
@@ -311,25 +351,27 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-ADDR-01** Shows the current path in **breadcrumb mode**. Each segment can be clicked to navigate. The `›` separator between segments opens a drop-down of that folder's sub-folders.
 - **FR-ADDR-02** Clicking empty space in the bar, or pressing `Ctrl+L` / `Alt+D`, switches to **edit mode**: a text box with the full path selected. It completes folder names with `Tab`; `Enter` navigates; `Esc` cancels.
 - **FR-ADDR-03** Accepts drive paths, UNC paths (`\\server\share`), `~`, and environment variables (`%USERPROFILE%`, `$HOME`). Typing a file path opens that file's folder with the file selected.
+- **FR-ADDR-06** On Windows, a network computer on its own (`\\server`, `\\server\` or `\\192.168.1.20`) opens a list of its shared folders (REQ-037), read with Windows' share list (`NetShareEnum`); printer and IPC shares are left out, and admin shares (`C$`, `ADMIN$`) are hidden items. The computer is the first breadcrumb, so *Up* from a share goes back to the list. When the computer can't be reached or refuses the list, a readable message says so (open one of its shares in Explorer first to sign in). On Linux, shares are reached through their mount points.
 - **FR-ADDR-04** Long paths shrink from the left: the first segment and the last segments stay visible, and hidden middle segments go into a `…` drop-down.
 - **FR-ADDR-05** The Quick Filter box (FR-QF) sits at the right end of the Address Bar.
 
 ### 5.7 Sidebar
 
-**FR-SB-01** The sidebar has three modes, switched with buttons at its top or with `Ctrl+Shift+1…3`:
+**FR-SB-01** The sidebar has four modes, switched with buttons at its top or with `Ctrl+Shift+1…4`:
 
 | Mode | Content |
 |---|---|
-| **Tree** | Folder tree, starting from Favourites, Home, drives/volumes, network locations and cloud roots. It loads lazily, expands to follow the current folder, and supports keyboard navigation (arrows, `→` expand, `←` collapse, type-ahead). |
-| **Favourites** | A user-ordered list of pinned folders, reordered with *Move Up* / *Move Down*. *Pin to Favourites* is available from the right-click menu, the Go menu and the palette. Clicking a favourite shows its contents (FR-FAV-03). |
-| **Bookmarks** | All bookmarks in their groups, as a tree that can be folded (FR-BM-06), with search, edit and delete. |
+| **Tree** | Folder tree, starting from Home, online drives (6.4.7), drives/volumes and network locations. It loads lazily, expands to follow the current folder, and supports keyboard navigation (arrows, `→` expand, `←` collapse, type-ahead). |
+| **Favourites** | Folders in groups (FR-FAV-04): *Quick access* (the file manager's own), *Pinned* (your favourites, reordered with *Move Up* / *Move Down*; *Pin to Favourites* is in the right-click menu, the Go menu and the palette), *Online drives*, *Drives* and *Network*. Clicking a folder shows its contents (FR-FAV-03). |
+| **Bookmarks** | All bookmarks in their groups, as a tree that can be folded (FR-BM-06), with search, edit and delete. Bookmarks can be dragged to reorder them (FR-BM-07). |
+| **Topics** | Topics: named groups of related folders (6.4.6). |
 
 - **FR-SB-02** Dropping items onto a folder in the Tree or Favourites copies or moves them there (FR-COPY-06).
 - The Context view of the drafts is not part of the sidebar (decision log 13.1, 2026-11-03).
 
 ### 5.8 Content container
 
-- **FR-CC-01** **Details view**: one row per item, with sortable, resizable and reorderable columns (Section 5.8.2). Any column can be shown or hidden by right-clicking a column header or with **View › Columns ▸**, and the choice is part of the folder view (Section 6.5). Visible by default: **Name**, **Date modified**, **Date created**, **Size**, **Sync status** (Sync status only on Windows).
+- **FR-CC-01** **Details view**: one row per item, with sortable, resizable and reorderable columns (Section 5.8.2). Any column can be shown or hidden by right-clicking a column header or with **View › Columns ▸**, and the choice is part of the folder view (Section 6.5). Visible by default: **Name**, **Date modified**, **Date created**, **Size**, **Type**, **Sync status** (Sync status only on Windows).
 - **FR-CC-11** Rows are 28 px high (comfortable density), with 18 px icons; column headers are small upper-case labels and alternate rows are faintly striped (REQ-018).
 - **FR-CC-03** The list is **virtualised**: only visible rows (plus a buffer) are drawn, so folders with 100,000 items scroll smoothly (NFR-PERF-05).
 - **FR-CC-04** Selection: click, `Ctrl+click`, `Shift+click`, `Ctrl+A`, keyboard (arrows, `Home`/`End`, `PgUp`/`PgDn`, with `Shift` to extend and `Ctrl` + `Space` to toggle).
@@ -344,6 +386,10 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
   - Icons are loaded in the background for the rows on screen, the Favourites view and bookmarks, so the list never waits for them; built-in icons show until they arrive. They are cached (Section 4.5).
   - A file's own icon is never read from a network or removable drive or from an online-only cloud file, so reading it can't hang or download the file (spec 4.3, FR-SYNC-03); those files show their type's icon.
   - A folder with a colour keeps the built-in folder icon, so its colour shows (6.4.5).
+- **FR-ICON-03** Folders with an icon of their own show it, in system icon mode, wherever File Catalog shows the folder: the list, the folder tree, the Favourites and Topics views, bookmarks (sidebar and Bookmark Bar, REQ-026) and tabs (FR-TAB-07) (REQ-025):
+  - **Windows:** special folders (Downloads, Pictures, Documents, …), folders with a custom icon (`desktop.ini`) and online drives, as Explorer shows them. Only folders marked read-only or system are asked, which is how Windows marks such folders, so plain folders cost no extra work.
+  - **Linux:** the home folder and the standard folders from `~/.config/user-dirs.dirs` (`folder-download`, `folder-pictures`, …), and online drives (`folder-dropbox`…), from the icon theme.
+  - Never asked on network or removable drives (spec 4.3). A folder colour wins over the folder's own icon. Answers are kept in memory for the session.
 - **FR-CC-10** Empty and error states: *"This folder is empty"*, *"Access denied"*, *"Location not available"* (with a *Retry* button).
 
 #### 5.8.1 Sync status column
@@ -355,6 +401,7 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 | Online-only | ☁ | `FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS` or `FILE_ATTRIBUTE_OFFLINE` |
 | Always keep on this device | ✔ (filled) | `FILE_ATTRIBUTE_PINNED` |
 | Available locally | ✔ (outline) | Other items in a sync folder |
+| In online drive | ☁ | No state from the attributes, but inside an online drive (6.4.7). Google Drive for desktop gives every file the same attributes (`Normal`), whether online-only or kept offline, and Explorer shows the same cloud on all of them, so File Catalog shows this instead of a blank (REQ-032). |
 | (blank) | | Not in a sync root |
 
 - **FR-SYNC-03** Reading sync status never triggers a file download (a "hydration").
@@ -444,6 +491,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-BM-02** Bookmarks are stored in `bookmarks.toml` (Section 8.6) and can be edited by hand. Outside edits are picked up live.
 - **FR-BM-03** A bookmark whose target no longer exists is shown greyed out with a warning icon, and offers *Locate…* and *Delete*.
 - **FR-BM-06** In the sidebar Bookmarks view, groups are shown as a tree (`bar/Legal` sits inside the Bookmark Bar group). Clicking a group heading folds or unfolds it, hiding its bookmarks and sub-groups. Folded groups are remembered in `session.toml`. While the search box has text, every group is shown open.
+- **FR-BM-07** Bookmarks can be dragged, in the sidebar Bookmarks view and on the Bookmark Bar (REQ-007). Dropped on another bookmark, the dragged one goes before it and into that bookmark's group; dropped on a group heading (or a Bar group button, or empty space on the Bookmark Bar), it goes to the end of that group. A line or outline shows where it will land. The new order and group are written to `bookmarks.toml`.
 - **FR-BM-04** A bookmark can be opened with its own key binding: the `bookmark.open` command with `args = { name = "…" }` in `keybindings.toml`.
 
 #### 6.4.3 Favourites
@@ -458,6 +506,33 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 - **FR-FCOL-02** The folder's icon is shown in that colour everywhere File Catalog shows the folder (list, tree, Favourites).
 - **FR-FCOL-03** Colours are stored only in `colours.toml` in the app settings folder (Section 8.7), never in the folders themselves, so other file managers see the folders unchanged. The file can be edited by hand and is reloaded when it changes. A colour follows its folder, and the folders inside it, when File Catalog renames or moves the folder or undoes that (REQ-013). A folder renamed or moved by another program loses its colour, because only its path is known.
 
+- **FR-FAV-05** In the Favourites view's groups, a click shows a folder's contents (FR-FAV-03), and **Ctrl+Click** or the **↗** button next to the folder (shown on hover) opens it in the active tab, like middle-click opens a new tab (REQ-030). Inside a folder, Ctrl+Click on a sub-folder also opens it in the active tab.
+- **FR-FAV-04** The Favourites view shows folders in groups (REQ-029). Each group heading folds or unfolds its group; headings are dragged up or down to change the order. Folded groups and the order are kept in `session.toml`. Empty groups are not shown, except *Pinned*.
+  - **Quick access:** Home, then the file manager's own list, read-only: on Windows, Explorer's Quick access (pinned and frequent folders); on Linux, the standard folders (Desktop, Documents, Downloads, Music, Pictures, Videos) and the GTK bookmarks shared by GNOME Files, Nemo, Caja and Thunar.
+  - **Pinned:** your favourites (FR-FAV-01, FR-FAV-02).
+  - **Online drives** (6.4.7), **Drives** (fixed and removable) and **Network**.
+
+#### 6.4.6 Topics
+
+A **topic** is a title, a short description and a list of related folders, for example every folder that belongs to one project or one contract, wherever the folders are (REQ-021). It works like a group of browser tabs.
+
+- **FR-TOP-01** The sidebar's **Topics** view (`Ctrl+Shift+4`, command `view.sidebarMode.topics`) lists the topics in the user's order, with a search box (title, description and folder paths), the number of folders in each, and **+ New Topic**. Topics that contain the open folder, or a folder above it, are marked. Archived topics are in an *Archived* group below the others, folded away until its heading is clicked (shown open while searching).
+- **FR-TOP-02** Clicking a topic opens it: the title at the top with *Back* (‹) to the list and ✎ to edit, the description below, and the folders. Opening a topic also opens its first folder in the active tab. Clicking a folder opens it in the active tab; middle-click opens a new tab. The open view also offers *+ Add the open folder*. ✎ in the header opens the topic dialog: title, description, *Archive* / *Unarchive* and *Delete…* (asks first; only the topic is deleted, never the folders) (REQ-023).
+- **FR-TOP-06** Each folder in an open topic has ✎ (shown on hover) and *Edit Folder…* in its right-click menu (REQ-023). The dialog, like the bookmark dialog, changes the **name** shown for the folder in this topic (empty: the folder's own name; the folder itself is never renamed) and its **path**, and offers *Remove from Topic*. A path that is already in the topic is refused. The folders of an open topic are reordered by dragging them up or down; dropping below the last folder moves one to the end.
+- **FR-TOP-07** When the active tab goes to a folder that belongs to a topic (the folder itself or a folder inside it), that topic is opened in the Topics view (REQ-023). The open topic stays open when it has the folder; otherwise a topic with exactly that folder is preferred to one with a folder above it, and topics that are not archived to archived ones. *Back* (‹) shows the list until the next folder change.
+- **FR-TOP-08** The open topic's title is a drop-down (REQ-031): it lists the first 7 topics that are not archived, in the user's order, with the open one ticked, and *All Topics*, which goes back to the list. Picking a topic opens it like a click in the list (FR-TOP-02).
+- **FR-TOP-03** Folders are added with **Add to Topic ▸** in the right-click menu of folders (file list, empty space for the current folder, folder tree, Favourites), which lists the topics that are not archived and *New Topic…* (the new topic starts with those folders), or by dragging folders, from the file list or from other apps, onto a topic. Files are skipped, and a folder is never added twice.
+- **FR-TOP-04** Topics are reordered by dragging them up or down. A topic's right-click menu offers Open, Edit…, Add the open folder, Archive / Unarchive and Delete….
+- **FR-TOP-05** Topics are stored only in `topics.toml` in the app settings folder (Section 8.8), never in the folders. The file can be edited by hand and is reloaded when it changes.
+
+#### 6.4.7 Online drives
+
+- **FR-CLOUD-01** File Catalog finds the folders of Dropbox, OneDrive, Google Drive and Proton Drive when it starts (REQ-028):
+  - **Windows:** OneDrive's own settings, the cloud sync roots registered with Windows (OneDrive, Dropbox, Proton Drive and other apps that use the Cloud Files API), Google Drive for desktop's drive (the drive labelled *Google Drive*), and Dropbox's `info.json`.
+  - **Everywhere:** Dropbox's `info.json`, and the folders the apps create in the home folder (`Dropbox`, `OneDrive`, `OneDrive - <organisation>`, `Google Drive`, `Proton Drive`).
+- **FR-CLOUD-02** Online drives are listed in the folder tree and in the Favourites view's *Online drives* group, with the drive's own folder icon or a cloud in the provider's colour, and tabs inside them show it (FR-TAB-07).
+- **FR-CLOUD-03** Their folders use the slow-path I/O pool (spec 4.3), so a drive that has to fetch from the internet never holds up local folders; they are still watched for changes. Syncing itself stays with each provider's app (section 12: sync states, *Always keep on this device*).
+
 ### 6.5 Per-folder view persistence ("Quick persist")
 
 - **FR-VIEW-01** A folder's **view** is: visible columns (order and widths), sort columns and direction, folders-first and show hidden.
@@ -467,7 +542,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
   1. Saved settings for this exact folder (Section 8.4).
   2. Saved settings of the nearest parent folder that has `applyToSubfolders = true`.
   3. The default view in `settings.toml`.
-- **FR-VIEW-05** The **Save View** toolbar button (`Ctrl+S`) saves the current view for the current folder with one click, with no dialog, in the app settings folder. The status bar confirms *"View saved for <folder>"*.
+- **FR-VIEW-05** The **Save View** toolbar button (`Ctrl+S`, also in the View menu; not in the default toolbar, FR-TB-04) saves the current view for the current folder with one click, with no dialog, in the app settings folder. The status bar confirms *"View saved for <folder>"*.
 - **FR-VIEW-06** The drop-down arrow next to *Save View* offers: *Save for this folder and subfolders*, *Reset to default view*, *Open folder settings file*.
 - **FR-VIEW-07** Saving a view never writes anything into the folder itself, so it works the same for read-only, shared and cloud folders.
 
@@ -541,6 +616,7 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
 ### 6.11 Opening items
 
 - **FR-OPEN-01** Files open with the OS default app. Shortcuts open their target. Web links open in the default browser.
+- **FR-OPEN-02** **Open With…** (right-click on one file, **File › Open With…**, command `item.openWith`) opens the file with another app (REQ-024). On Windows it shows the system's own *How do you want to open this file?* dialog, which also lets you choose a new default. On Linux it lists the apps for the file's type from the installed `.desktop` files and `mimeapps.list` (the default marked *default*), with *Show all apps* for the others, and starts the one clicked with the file.
 - **FR-OPEN-03** **Open in Terminal** opens the configured terminal (`general.terminal`; default on Windows: Windows Terminal, else PowerShell; on Linux: `$TERMINAL`, else `x-terminal-emulator`, else `gnome-terminal` / `konsole`) in the current folder.
 - **FR-OPEN-04** **Copy Path** (`Ctrl+Shift+C`) copies the full path(s) of the selection, one per line. **Copy Name** copies names only.
 - **FR-OPEN-05** **Show in File Manager** shows the item in Explorer or the system file manager.
@@ -548,6 +624,8 @@ Each bookmark has a `name`, a `target` (path or URL) and a `group` (path of grou
   - The editor is `editor.command` (a program on PATH such as `code`, `zed` or `subl`, or a full path), with optional `args`. When it is empty, the first one installed of VS Code, VSCodium, Zed, Sublime Text, Notepad++, Kate, GNOME Text Editor and gedit is used; on Windows also VS Code installed without being on PATH. On Windows only files with a runnable extension (`PATHEXT`: `.exe`, `.cmd`, `.bat`, `.com`) count, so VS Code's `bin\code` script for Git Bash is never started (REQ-019); `bin\code.cmd` is replaced by the `Code.exe` next to it.
   - The menus show the editor's name (*Open with VS Code*), or `editor.name` when set. When no editor is found, the items are not shown (File menu: shown disabled).
   - Right-click on files or folders: *Open with …* (all selected items). Right-click on empty space, in the folder tree and on favourites: *Open Folder with …*. **File › Open Folder with …** and the commands `item.openInEditor` (the selection, or the current folder) and `folder.openInEditor` can be bound to keys.
+
+- **FR-OPEN-07** **Export File List…** (right-click on empty space in the file list, the File menu, the palette; command `file.exportList`) saves the names of the items shown in the current folder to a text file (REQ-022). A save dialog opens in that folder with the name *<folder> - file list.txt*. The file has one name per line, folders and files, in the order and with the filters shown on screen, and only the current folder (not sub-folders). Lines end with CRLF on Windows and LF on Linux. The status bar confirms where the file was saved.
 
 ### 6.12 File operations
 
@@ -626,6 +704,7 @@ Reference hardware: 4-core CPU (2020 or newer), 8 GB RAM, NVMe SSD. Targets appl
 ### 7.3 Usability
 
 - **NFR-UX-01** All functions can be reached by keyboard (FR-UI-05).
+- **NFR-UX-05** Text boxes (names, labels, paths, descriptions, searches) show no autofill or earlier-entries drop-down: every text box has `autocomplete="off"`, and on Windows the WebView's general autofill and password saving are turned off (REQ-033).
 - **NFR-UX-04** UI text is in English, with all strings kept in one Elm module (`Text.elm`) so they can be translated later.
 
 ### 7.4 Security and privacy
@@ -668,7 +747,8 @@ FileCatalog/
 ├── toolbar.toml         # Toolbar layout (8.5)
 ├── bookmarks.toml       # Bookmarks and favourites (8.6)
 ├── colours.toml         # Folder colours (8.7)
-├── session.toml         # Open tabs, recent folders, palette and search history, folded bookmark groups (written by the app)
+├── topics.toml          # Topics (8.8)
+├── session.toml         # Open tabs, recent folders, palette and search history, folded groups, Favourites group order (written by the app)
 ├── folders/             # Per-folder view settings (8.4)
 │   └── <name>-<hash>.toml
 ├── templates/           # Templates (6.8)
@@ -676,6 +756,8 @@ FileCatalog/
 ```
 
 ### 8.3 `settings.toml` and `keybindings.toml`
+
+**FR-SET-01** **Settings…** (`Ctrl+,`, the gear on the toolbar, **Tools › Settings…**, command `settings.open`) opens a settings page (REQ-038) with sections: General, Layout, Folder View, Quick Find, Text Editor, Templates and Network. Each value has a toggle, a choice list, a text box, a number or a list (one per line), with a short help text. A change is written to `settings.toml` at once (toggles and choices) or when a text box is left or Enter is pressed, through the same editor as hand-made changes, so the file keeps its comments, and applies straight away. The page also opens the settings file (`settings.openFile`), *Keyboard Shortcuts* and *Customise Toolbar*. Settings the page does not show (columns, sort) are set in the app as before or in the file.
 
 ```toml
 # File Catalog settings
@@ -686,13 +768,16 @@ startupFolder   = "last"          # "last" | "home" | a path
 restoreTabs     = true
 homeFolder      = "~"
 theme           = "system"        # "system" | "light" | "dark"
+style           = "studio"        # light theme look: "studio" | "typewriter" | "explorer" | "modern" (FR-UI-08)
 confirmDelete   = false
 confirmExtensionChange = true
 keepFilterOnNavigate = false
 terminal        = "wt"            # command used by Open in Terminal
 
 [layout]
-menuBar = true
+style = "browser"                 # "browser" | "classic" (FR-UI-06)
+systemTitleBar = false            # true: the system's title bar (FR-UI-07)
+menuBar = true                    # classic layout only, as are toolbar, tabBar and addressBar
 toolbar = true
 bookmarkBar = true
 tabBar = true
@@ -702,7 +787,7 @@ sidebar = { visible = true, side = "left",  width = 260, mode = "tree" }
 
 [view.default]
 mode        = "details"
-columns     = ["name", "modified", "created", "size", "sync"]
+columns     = ["name", "modified", "created", "size", "type", "sync"]
 sort        = [{ column = "name", direction = "asc" }]
 foldersFirst = true
 showHidden  = false
@@ -783,8 +868,6 @@ items = [
   "new.folder", "new.file", "new.fromTemplate",
   "|",
   "edit.cut", "edit.copy", "edit.paste", "edit.delete",
-  "|",
-  "view.saveForFolder",
   "->",                         # push the rest to the right
   "palette.open",
 ]
@@ -822,6 +905,20 @@ group  = ["bar", "Legal"]
 ```
 
 An unknown colour is skipped and reported; a file with errors is never overwritten (NFR-REL-03).
+
+### 8.8 `topics.toml`
+
+```toml
+# File Catalog topics. Safe to edit by hand; changes apply when you save.
+
+[[topic]]
+title       = "Acme renewal"
+description = "Contract renewal 2026"
+folders     = ['C:\Vendors\Acme', { path = 'C:\Projects\Acme renewal', name = "Project" }, '~\Documents\Meetings\Acme']
+archived    = false
+```
+
+A folder is a path, or `{ path = '…', name = "…" }` when it has a name of its own in that topic (FR-TOP-06). Topics are listed in file order. A topic without a title is shown as *Topic 1*, *Topic 2*…. A file with errors is reported and never overwritten (NFR-REL-03); each change keeps the previous file as `topics.toml.bak`.
 
 ---
 
@@ -917,6 +1014,82 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 - REQ-018 was built as a visual refresh in plain CSS, without Tailwind. The look was checked in a browser in both themes, not yet in the desktop app on Windows or Linux.
 - Open with VS Code on Windows and writing to the log file were checked with unit tests and in the UI only; they need a test in the app on Windows.
 
+### 11.5 Update cycle c3, second part (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| Quick request: show the Type column by default | FR-CC-01, 8.3 |
+| Quick request: remove the Save View button | FR-TB-04 (out of the default toolbar; still in the View menu, on `Ctrl+S` and in *Customise Toolbar*), 8.5 |
+| Quick request: larger toolbar buttons | FR-TB-04 |
+| REQ-007 Bookmark reordering | FR-BM-07 |
+| REQ-021 Topic View | 6.4.6 (FR-TOP-01 to 05), 8.8 |
+| REQ-022 Export file names | FR-OPEN-07 |
+
+**Known limits:**
+- The new defaults apply where `settings.toml` and `toolbar.toml` don't set the columns or toolbar; existing files keep what they have.
+- A topic keeps folder paths only: a folder that is renamed or moved (in File Catalog or elsewhere) stays listed under its old path until it is removed from the topic.
+- All three features were checked with unit tests (Rust) and in a browser with a stand-in backend; the save dialog and the drags need a test in the app on Windows and Linux.
+
+
+### 11.6 Update cycle c4 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-023 Topics improvements | FR-TOP-02 (Archive and Delete moved into the topic dialog), FR-TOP-06 (edit a folder's name and path; reorder folders by dragging), FR-TOP-07 (opening a folder opens its topic), 8.8 |
+
+**Known limits:** checked with unit tests (Rust) and in a browser with a stand-in backend; the drags need a test in the app on Windows and Linux.
+
+**Fixed 2026-11-22:** saving a topic folder's name or path failed (the backend did not read the UI's `newPath` field).
+
+### 11.7 Update cycle c5 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-024 Open With | FR-OPEN-02 (moved in from section 12; *Properties* stays there) |
+| REQ-025 OS folder icons | FR-ICON-03 |
+| REQ-026 Bookmark folder icons | FR-ICON-03, FR-BB-01 |
+| REQ-027 Tab folder icons | FR-TAB-07 |
+| REQ-028 Online drives | 6.4.7 (FR-CLOUD-01 to 03), 4.3 |
+| REQ-029 Favourites groups | FR-FAV-04, FR-SB-01 |
+
+**Known limits:**
+- Most of this is Windows system code: Open With's dialog, folder icons, the cloud sync-root registry, Google Drive's drive and Quick access. It was checked by compiling for Windows (`cargo clippy --target x86_64-pc-windows-msvc`) and in a browser with a stand-in backend, not yet in the app on Windows. The Linux parts have unit tests.
+- Quick access is read when the app starts and each time the Favourites view is opened; it is read-only (pin and unpin in Explorer). Explorer's *Gallery* is not a folder and is not shown.
+- On Linux, only the standard folders (`user-dirs.dirs`) and online drives have their own folder icon; folder icons set in a file manager (GNOME's custom icon, KDE's `.directory`) are not read.
+- Online drives are found when the app starts; a drive added later shows after a restart.
+
+
+### 11.8 Update cycle c6 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-030 Open Favourites folders in the active tab | FR-FAV-05 |
+| REQ-031 Topic switcher | FR-TOP-08 |
+| REQ-033 No autocomplete in text boxes | NFR-UX-05 |
+| REQ-032 Google Drive sync status | FR-SYNC-01 (*In online drive*) |
+| REQ-034 Light theme fix | 3.2: the frame is light in the light theme, and menu text is readable |
+
+REQ-032: checked on a real Google Drive (2026-11-22): every file reports `Normal` (0x80), online-only or not, and Explorer has no per-file status, only the same cloud overlay. Google Drive files therefore show *In online drive*; telling online-only and offline files apart would need Google's own API, which is not used.
+
+### 11.9 Update cycle c7 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-035 More styles | FR-UI-08: Typewriter, Explorer and Modern for the light theme |
+| REQ-036 Browser layout and own title bar | FR-UI-06 (browser layout, ☰ menu), FR-UI-07 (own title bar with window buttons) |
+
+**Known limits:**
+- The own title bar was checked in a browser with a stand-in backend and by compiling for Windows, not yet in the app. Windows' Snap Layouts flyout (hovering Maximise) is not offered by a drawn title bar.
+- On Linux, a desktop that adds its own title bar anyway may show two; use *Use the System Title Bar* there.
+
+### 11.10 Update cycle c8 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-037 Network computers | FR-ADDR-06 |
+| REQ-038 Settings page | FR-SET-01 |
+
+**Known limits:** listing a computer's shares was checked by compiling for Windows, not yet on a network; the settings page was checked in a browser with a stand-in backend.
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -932,13 +1105,13 @@ These were specified in the drafts but are not built. Each keeps its ID so it ca
 | Accessibility: WCAG 2.1 AA contrast checked in both themes, full ARIA roles for screen readers, display scaling 100–300% and per-monitor DPI checked | NFR-UX-02, NFR-UX-03 |
 | Installer polish (signing, upgrade checks) beyond the standard Tauri bundles | NFR-PERF-11 |
 | Saving column filters as part of a folder view | FR-CF-04, FR-VIEW-01 |
-| `»` overflow menu on a full Bookmark Bar; reordering bookmarks by dragging | FR-BB-05, FR-BB-03 |
+| `»` overflow menu on a full Bookmark Bar | FR-BB-05 |
 | Reordering favourites, and toolbar buttons in *Customise Toolbar*, by dragging | FR-SB-01, FR-TB-02 |
 | Several jobs at once on different drives | FR-OP-02 |
 | Batch rename with live preview | FR-REN-04 |
 | Checking that files changed since the operation before undoing; undo history limit | FR-UNDO-01, FR-UNDO-02 |
 | Filling in a web link's name from the page title | FR-NEW-04, NFR-SEC-01 |
-| *Open With ▸* and *Properties* (`Alt+Enter`), including the native Windows Properties dialog | FR-OPEN-02, FR-PROP-01, FR-PROP-02 |
+| *Properties* (`Alt+Enter`), including the native Windows Properties dialog | FR-PROP-01, FR-PROP-02 |
 | Windows *Show more options* (the native Explorer menu) | FR-CC-07 |
 | Highlighting the target folder while files from another app are dragged over the window; a drag cursor that shows copy / move / shortcut | FR-CC-08, FR-COPY-06 |
 | Hints that name a key (status-bar hints, Bookmark Bar tooltips) showing a changed key | FR-KEY-01 |
@@ -1006,6 +1179,19 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-03 | Context view removed from the sidebar (feature request c1); context bookmarks are no longer planned | 5.7, 12 |
 | 2026-11-03 | Folder colours stored in `colours.toml` in the app settings folder, never in the folders | 6.4.5, 8.7 |
 | 2026-11-14 | Visual refresh in the "Studio" direction with plain CSS; Tailwind not adopted (the goal was the look, not the tooling). Comfortable 28 px rows, blue accent, redrawn icons | 3.2, 5.8 |
+| 2026-11-21 | Type column shown by default; Save View taken out of the default toolbar (kept in the View menu and on `Ctrl+S`); larger toolbar buttons | FR-CC-01, FR-TB-04 |
+| 2026-11-21 | Topics (REQ-021) kept in `topics.toml` in the app settings folder, as a fourth sidebar view; opening a topic opens its first folder in the active tab; folders added with *Add to Topic ▸* or by dragging; archived topics folded away by default | 6.4.6, 8.8 |
+| 2026-11-21 | Export File List writes visible names only, in screen order, not recursive, as a `.txt` chosen in a save dialog | FR-OPEN-07 |
+| 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
+| 2026-11-22 | Open With uses Windows' own dialog, and a list of apps from the desktop files on Linux; it moves in from section 12 (Properties stays there) | FR-OPEN-02 |
+| 2026-11-22 | Online drives are found from each provider's settings, the Windows sync-root registry and the default folders, and use the slow-path pool; sync states stay in section 12 | 6.4.7 |
+| 2026-11-27 | `settings.open` (`Ctrl+,`, the gear) now opens the settings page; opening the file is `settings.openFile` (REQ-038) | FR-SET-01 |
+| 2026-11-27 | `\\server` on its own lists the computer's shares with NetShareEnum, Windows only (REQ-037) | FR-ADDR-06 |
+| 2026-11-27 | Browser layout (tabs at the top, toolbar around the Address Bar, ☰ menu) becomes the default, the classic layout stays a setting; File Catalog draws its own title bar on Windows and Linux, with a setting for the system one (REQ-036) | 5.1 |
+| 2026-11-27 | Styles Typewriter, Explorer and Modern change the light theme only; the dark theme keeps Studio's dark look; no fonts are bundled (REQ-035) | FR-UI-08 |
+| 2026-11-27 | The Studio frame follows the theme (light in the light theme) instead of staying dark in both; menus always use the normal text colour (REQ-034) | 3.2 |
+| 2026-11-22 | Google Drive files show *In online drive*: Google Drive for desktop reports no per-file state through attributes (checked: `Normal`, 0x80, for online-only and offline files), and Google's API is not used | FR-SYNC-01 |
+| 2026-11-22 | The Favourites view is grouped (Quick access, Pinned, Online drives, Drives, Network), foldable and reorderable; Quick access is read from the OS and read-only | FR-FAV-04 |
 
 ---
 
@@ -1078,6 +1264,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `edit.copyPath` / `edit.copyName` | Copy Path / Copy Name | `Ctrl+Shift+C` / — |
 | `edit.duplicate` | Duplicate | — |
 | `edit.createShortcut` | Create Shortcut | — |
+| `file.exportList` | Export File List… | — |
 | `edit.rename` | Rename | `F2` |
 | `edit.delete` / `edit.deletePermanent` | Delete / Delete Permanently | `Del` / `Shift+Del` |
 | `edit.undo` | Undo | `Ctrl+Z` |
@@ -1085,12 +1272,15 @@ The application has more commands than this table lists (for example `view.toggl
 | `item.open` / `item.openNewTab` | Open / Open in New Tab | `Enter` / `Ctrl+Enter` |
 | `item.openTerminal` | Open in Terminal | `` Ctrl+` `` |
 | `item.reveal` | Show in File Manager | — |
+| `item.openWith` | Open With… | — |
+| `view.style.studio/typewriter/explorer/modern` | Style | — |
+| `view.layout.browser/classic`, `view.systemTitleBar` | Layout, Use the System Title Bar | — |
 | `item.openInEditor` / `folder.openInEditor` | Open with Text Editor / Open Folder with Text Editor | — |
 | `item.contextMenu` | Right-click Menu | `Shift+F10`, Menu key |
 | `view.saveForFolder` | Save View for This Folder | `Ctrl+S` |
 | `view.saveForSubfolders` / `view.resetForFolder` / `view.openFolderSettings` | Save for Subfolders / Reset View / Open Folder Settings File | — |
 | `view.toggleSidebar` | Toggle Sidebar | `Ctrl+B` |
-| `view.sidebarMode.tree/favourites/bookmarks` | Sidebar Mode | `Ctrl+Shift+1…3` |
+| `view.sidebarMode.tree/favourites/bookmarks/topics` | Sidebar Mode | `Ctrl+Shift+1…4` |
 | `view.toggleHidden` | Show Hidden Files | `Ctrl+H` |
 | `view.theme.system/light/dark` | Theme | — |
 | `view.icons.system` / `view.icons.builtin` | System Icons / Built-in Icons | — |
@@ -1100,6 +1290,7 @@ The application has more commands than this table lists (for example `view.toggl
 | `bookmark.open` | Open a bookmark (`args = { name = "…" }`) | — |
 | `favourite.toggle` | Pin / Unpin Favourite | — |
 | `jobs.toggle` | Jobs panel | — |
-| `settings.open` / `keybindings.open` / `toolbar.open` | Open Settings / Key Bindings / Toolbar File | `Ctrl+,` / `Ctrl+K Ctrl+S` / — |
+| `settings.open` | Settings… (FR-SET-01) | `Ctrl+,` |
+| `settings.openFile` / `keybindings.open` / `toolbar.open` | Open Settings / Key Bindings / Toolbar File | — / `Ctrl+K Ctrl+S` / — |
 | `help.shortcuts` | Keyboard Shortcuts | `Ctrl+/` |
 | `app.exit` | Exit | — |

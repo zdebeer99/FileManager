@@ -35,7 +35,7 @@ cargo fmt --check           # rustfmt.toml: max_width 120
 
 **Rule: the UI never waits for the file system** (spec 4.3). Elm does no file system work. Every Rust command is `async`, and it sends file system work to the I/O pools in [pools.rs](src-tauri/src/pools.rs):
 - `local` pool for local disks.
-- `slow` pool for network shares, removable drives and cloud paths, chosen by `platform::is_slow_path`.
+- `slow` pool for network shares, removable drives and online drives, chosen by `platform::is_slow_path` (`platform::is_slow_device` for network and removable drives only, as the watcher and folder icons use).
 - Use `IoPools::run(path, timeout, work)` to wait with a timeout (`network.timeoutSeconds`), or `spawn` to stream results.
 
 ### IPC path
@@ -43,7 +43,7 @@ cargo fmt --check           # rustfmt.toml: max_width 120
 1. Elm calls `request cmd args stream kind model` ([Main.elm](ui/src/Main.elm), HELPERS section). It stores `kind` (a `Request` variant) in `model.requests` under a new id.
 2. The message goes out through `Ports.toBackend`. [bridge.js](ui/static/bridge.js) turns it into Tauri `invoke(cmd, args)`. When `stream` is true, the bridge also passes a `Channel` as `onEvent`.
 3. Replies come back through `Ports.fromBackend` as `{ id, type: ok|err|stream|event, data, name? }`. `handleEnvelope` and `handleResponse` match each reply to its stored request. Stale replies are dropped by id.
-4. Push events from Rust are emitted by [watcher.rs](src-tauri/src/watcher.rs) (`dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `keybindings-changed`, `toolbar-changed`) and [jobs.rs](src-tauri/src/jobs.rs) (`job-progress`, `job-conflict`), plus `file-drop` from [main.rs](src-tauri/src/main.rs) for files dropped in from other apps (bridge.js adds the `data-drop` target under the pointer). They reach `handleEvent`. **If you add a new event, also add it to the `listen` list in bridge.js.**
+4. Push events from Rust are emitted by [watcher.rs](src-tauri/src/watcher.rs) (`dir-changed`, `settings-changed`, `bookmarks-changed`, `colours-changed`, `topics-changed`, `keybindings-changed`, `toolbar-changed`) and [jobs.rs](src-tauri/src/jobs.rs) (`job-progress`, `job-conflict`), plus `file-drop` from [main.rs](src-tauri/src/main.rs) for files dropped in from other apps (bridge.js adds the `data-drop` target under the pointer). They reach `handleEvent`. **If you add a new event, also add it to the `listen` list in bridge.js.**
 
 **To add a backend command:**
 1. Write a `#[tauri::command] pub async fn` in [commands.rs](src-tauri/src/commands.rs).
@@ -64,28 +64,31 @@ Command names are snake_case (`dir_list`, `folder_view_save`), even where spec 4
 | `toolbar.rs` | `toolbar.toml`: style and items, with the defaults. |
 | `templates.rs` | Templates folders (`[templates]` in settings), the `_Group` menu tree, and creating items with placeholders filled in. `today` comes from the UI, so dates use the user's time zone. |
 | `listing.rs` | `read_dir_streaming` (sends items in chunks), `DirEvent` (`Cached` → `Chunk`s or `Patch` → `Done`/`Error`), `diff`, LRU `DirCache` |
-| `watcher.rs` | `notify` watcher for the folders open in tabs (set with `watch_set`) and for the settings folder. Debounce is 100 ms. Sends patches, not full reloads. Reloads settings, bookmarks, folder colours, key bindings and the toolbar when their files change. |
+| `watcher.rs` | `notify` watcher for the folders open in tabs (set with `watch_set`) and for the settings folder. Debounce is 100 ms. Sends patches, not full reloads. Reloads settings, bookmarks, folder colours, topics, key bindings and the toolbar when their files change. |
 | `settings.rs` | `settings.toml`. Each section is read on its own, so an error in one section resets only that section and adds a warning. `set_value` edits a dotted key with `toml_edit`, keeps the user's comments, keeps a `.bak` copy, and never overwrites a file that has syntax errors. |
 | `folder_view.rs` | Saved per-folder views in `<config>/folders/<name>-<hash>.toml`, with *apply to subfolders* |
 | `bookmarks.rs` | `bookmarks.toml`: bookmarks with groups, and favourites. Changes are made through `Edit` ops. |
 | `editor.rs` | `[editor]` settings and Open with … (FR-OPEN-06): finds the configured editor, or the first known one installed (VS Code, Zed, …), on PATH. |
-| `icons.rs` | System icons (FR-ICON-02) by key (`folder`, `ext:<ext>`, `file:<path>`), as `data:` URLs; memory cache plus a disk cache in `<cache>/icons/<version>/`. Never reads a file's own icon from slow or online-only files. |
+| `icons.rs` | System icons (FR-ICON-02) by key (`folder`, `ext:<ext>`, `file:<path>`, and `dir:<path>` for a folder's own icon, FR-ICON-03), as `data:` URLs; memory cache plus a disk cache in `<cache>/icons/<version>/`. Never reads a file's own icon from slow or online-only files; `dir:` answers plain folders at once. |
 | `colours.rs` | `colours.toml`: folder colours (spec 6.4.5), a `[folders]` table of path → colour name. `set` keeps the user's comments. |
-| `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded bookmark groups) and the start-up listing snapshot in the cache folder |
+| `cloud.rs` | Online drives (spec 6.4.7): Dropbox, OneDrive, Google Drive and Proton Drive folders, found once (`roots`, `provider_of`). The Windows-only sources (sync-root registry, Google Drive's drive) are in `platform::cloud_candidates`. |
+| `topics.rs` | `topics.toml`: Topics (spec 6.4.6), `[[topic]]` entries with title, description, folders and archived. Changes are made through `Edit` ops, like bookmarks. |
+| `session.rs` | `session.toml` (open tabs, recent folders, palette and search history, folded groups, the Favourites group order) and the start-up listing snapshot in the cache folder |
 | `paths.rs` | `AppPaths` (config, cache and log folders; portable mode), `write_atomic`, path normalising and `~` expansion, and `split_header`/`join_header` to keep a TOML file's top comments when `toml_edit` rewrites it |
 | `model.rs` | The `Item` record that is shared with Elm (spec 4.4), and `read_item` |
-| `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection, system icons. `windows.rs` uses `windows-sys` (icons through `SHGetFileInfoW`, encoded with `png`). `unix.rs` covers everything that is not Windows; `freedesktop.rs` finds icons in the icon theme. Check Windows code here with `cargo clippy --target x86_64-pc-windows-msvc` (needs `rustup target add x86_64-pc-windows-msvc`). |
+| `platform/` | Everything that differs between operating systems: hidden files, attributes, sync state, roots, slow-path detection, system icons. `windows.rs` uses `windows-sys` (icons through `SHGetFileInfoW`, encoded with `png`). `unix.rs` covers everything that is not Windows; `freedesktop.rs` finds icons in the icon theme and the XDG special folders; `apps.rs` lists and starts apps for Open With (FR-OPEN-02). Windows' Quick access (FR-FAV-04) uses COM through the `windows` crate (already part of Tauri's build); everything else uses `windows-sys`. Check Windows code here with `cargo clippy --target x86_64-pc-windows-msvc` (needs `rustup target add x86_64-pc-windows-msvc`). |
 
 Notes:
 - Write files with `paths::write_atomic`.
 - A failing task must never take the app down. The pools log panics instead of crashing. Return user-readable `String` errors.
 - Logs go to `<config>/logs/` (daily files, kept for 7 days).
+- Native save dialogs come from `tauri-plugin-dialog`, called from Rust (`DialogExt`, inside `spawn_blocking`), as in `export_file_list`. The UI never opens dialogs itself.
 
 ### Elm modules (`ui/src/`)
 
 - `Main.elm`: `init`, `update`, keyboard routing, and the backend message handlers. It is about 5,500 lines, divided by `-- SECTION` comment headers.
 - `View/`: all drawing, one module per component. `View.App` draws the window and puts the components together; `Main` uses only `View.App.view`, `View.Sidebar.treeRows` and `View.Popup.filterPopupValues`.
-  - Components: `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites, Bookmarks), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
+  - Components: `TitleBar` (window buttons and drag regions, FR-UI-07), `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites in groups, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`, `SettingsDialog` (the settings page; which values it shows is in the feature module `SettingsPage.elm`, labels in `Text.settingLabel`).
   - Shared: `Icons` (system and built-in icons, folder colours), `Common` (small helpers such as `viewIf`, `contextMenu`, `dropTarget`, `px`), `Keyboard` (key and mouse-button routing).
   - A component imports only `Common`, `Icons` or another component it draws; keep the imports one-way (no cycles).
 - `Types.elm`: `Model`, `Msg`, `Request` and the tab state, shared by Main and the view.
@@ -100,6 +103,7 @@ Notes:
   - `FileName.elm`: name checks while renaming or creating, and the F2 selection cycle.
   - `Path.elm`, `Format.elm` and `Settings.elm`: path helpers, size and date formatting, and the settings decoder.
 - **All user-facing text lives in `Text.elm`** (NFR-UX-04). Don't put text in other modules.
+- Layouts and styles: `View.App` builds the browser or classic layout from `layout.style` (spec 5.1); `.app` carries `data-layout`, `data-theme` and `data-style`. A style (spec FR-UI-08) is a block of colour tokens in `styles.css` that applies to the light theme only.
 - `ui/static/` holds `index.html`, `styles.css` and `bridge.js`. `ui/build.mjs` builds them into `ui/dist/`.
 - The CSP (in `tauri.conf.json`) allows only `'self'` scripts. No CDNs.
 

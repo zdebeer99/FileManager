@@ -1,4 +1,4 @@
-module View.AddressBar exposing (viewAddressBar)
+module View.AddressBar exposing (viewAddressBar, viewAddressBarWith)
 
 {-| The Address Bar (spec 5.6): breadcrumbs, edit mode and the Quick Filter box.
 -}
@@ -10,53 +10,71 @@ import Json.Decode as D
 import Path
 import Text
 import Types exposing (..)
-import View.Common exposing (inputKeys)
+import View.Common exposing (inputKeys, noAutocomplete)
 
 
 viewAddressBar : Model -> Tab -> Html Msg
-viewAddressBar model tab =
+viewAddressBar =
+    viewAddressBarWith [] []
+
+
+{-| The Address Bar with other controls before and after it: in the browser
+layout, the toolbar's groups and the ☰ button (spec 5.1).
+-}
+viewAddressBarWith : List (Html Msg) -> List (Html Msg) -> Model -> Tab -> Html Msg
+viewAddressBarWith before after model tab =
     div [ class "addressbar" ]
-        [ case model.address of
-            Editing typed error ->
-                div [ class "address-edit" ]
-                    [ input
-                        [ id addressInputId
-                        , class "address-input"
-                        , value typed
-                        , onInput AddressInput
-                        , onBlur AddressBlur
-                        , Html.Events.custom "keydown" (inputKeys [ "Enter", "Escape", "Tab" ] AddressKey)
-                        , attribute "data-select-on-focus" ""
-                        , spellcheck False
-                        ]
-                        []
-                    , case error of
-                        Just message ->
-                            span [ class "address-error" ] [ text message ]
+        (before
+            ++ addressParts model tab
+            ++ after
+        )
 
-                        Nothing ->
-                            text ""
+
+addressParts : Model -> Tab -> List (Html Msg)
+addressParts model tab =
+    [ case model.address of
+        Editing typed error ->
+            div [ class "address-edit" ]
+                [ input
+                    [ noAutocomplete
+                    , id addressInputId
+                    , class "address-input"
+                    , value typed
+                    , onInput AddressInput
+                    , onBlur AddressBlur
+                    , Html.Events.custom "keydown" (inputKeys [ "Enter", "Escape", "Tab" ] AddressKey)
+                    , attribute "data-select-on-focus" ""
+                    , spellcheck False
                     ]
+                    []
+                , case error of
+                    Just message ->
+                        span [ class "address-error" ] [ text message ]
 
-            ShowCrumbs ->
-                div [ class "crumbs", onClick StartEditAddress, title tab.path ]
-                    (List.concatMap viewCrumb (Path.crumbs model.sep tab.path))
-        , div [ class "filter-box", classList [ ( "active", tab.filter /= "" ) ] ]
-            [ span [ class "icon filter" ] []
-            , input
-                [ id filterInputId
-                , class "filter-input"
-                , placeholder Text.filterPlaceholder
-                , value tab.filter
-                , onInput FilterInput
-                , onFocus (RegionFocused RegionFilter)
-                , Html.Events.custom "keydown" (inputKeys [ "Escape", "Enter", "ArrowDown", "F6" ] FilterKey)
-                , spellcheck False
-                , attribute "aria-label" Text.filterPlaceholder
+                    Nothing ->
+                        text ""
                 ]
-                []
+
+        ShowCrumbs ->
+            div [ class "crumbs", onClick StartEditAddress, title tab.path ]
+                (List.concatMap viewCrumb (Path.crumbs model.sep tab.path))
+    , div [ class "filter-box", classList [ ( "active", tab.filter /= "" ) ] ]
+        [ span [ class "icon filter" ] []
+        , input
+            [ noAutocomplete
+            , id filterInputId
+            , class "filter-input"
+            , placeholder Text.filterPlaceholder
+            , value tab.filter
+            , onInput FilterInput
+            , onFocus (RegionFocused RegionFilter)
+            , Html.Events.custom "keydown" (inputKeys [ "Escape", "Enter", "ArrowDown", "F6" ] FilterKey)
+            , spellcheck False
+            , attribute "aria-label" Text.filterPlaceholder
             ]
+            []
         ]
+    ]
 
 
 viewCrumb : Path.Crumb -> List (Html Msg)

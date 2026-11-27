@@ -13,7 +13,7 @@ import Menu
 import Set
 import Text
 import Types exposing (..)
-import View.Common exposing (inputKeys, keepOnScreen, px, viewIf)
+import View.Common exposing (inputKeys, keepOnScreen, noAutocomplete, px, viewIf)
 
 
 viewPopup : Model -> Html Msg
@@ -132,7 +132,8 @@ viewColumnFilter s =
         , stopPropagationOn "click" (D.succeed ( NoOp, True ))
         ]
         [ input
-            [ id "colfilter-search"
+            [ noAutocomplete
+            , id "colfilter-search"
             , class "colfilter-search"
             , placeholder (Text.searchColumn (Columns.title s.column))
             , value s.search
@@ -197,7 +198,8 @@ viewColumnFilter s =
 rangeInput : String -> Bool -> Html Msg
 rangeInput current isFrom =
     input
-        [ value current
+        [ noAutocomplete
+        , value current
         , onInput (ColumnFilterRange isFrom)
         , placeholder
             (if isFrom then

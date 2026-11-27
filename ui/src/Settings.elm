@@ -9,6 +9,13 @@ import Json.Decode as D
 
 type alias Settings =
     { theme : String
+
+    -- The light theme's look (spec 3.2): "studio", "typewriter", "explorer" or "modern".
+    , style : String
+
+    -- "browser" or "classic" (spec 5.1), and whether the system title bar is used.
+    , layoutStyle : String
+    , systemTitleBar : Bool
     , startupFolder : String
     , restoreTabs : Bool
     , keepFilterOnNavigate : Bool
@@ -39,6 +46,9 @@ type alias Settings =
 default : Settings
 default =
     { theme = "system"
+    , style = "studio"
+    , layoutStyle = "browser"
+    , systemTitleBar = False
     , startupFolder = "last"
     , restoreTabs = True
     , keepFilterOnNavigate = False
@@ -54,7 +64,7 @@ default =
     , sidebarSide = "left"
     , sidebarWidth = 260
     , sidebarMode = "tree"
-    , columns = [ "name", "modified", "created", "size", "sync" ]
+    , columns = [ "name", "modified", "created", "size", "type", "sync" ]
     , sort = [ ( "name", False ) ]
     , foldersFirst = True
     , showHidden = False
@@ -81,6 +91,9 @@ decoder =
     in
     D.succeed Settings
         |> andMap (general "theme" D.string)
+        |> andMap (D.oneOf [ general "style" D.string, D.succeed "studio" ])
+        |> andMap (D.oneOf [ D.at [ "layout", "style" ] D.string, D.succeed "browser" ])
+        |> andMap (D.oneOf [ layout "systemTitleBar", D.succeed False ])
         |> andMap (general "startupFolder" D.string)
         |> andMap (general "restoreTabs" D.bool)
         |> andMap (general "keepFilterOnNavigate" D.bool)

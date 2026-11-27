@@ -28,6 +28,10 @@ pub enum SyncState {
     OnlineOnly,
     Syncing,
     Error,
+    /// In an online drive whose app reports no state per file, such as Google
+    /// Drive for desktop (REQ-032): shown as "In online drive", as Explorer
+    /// shows the same cloud on every such file.
+    InCloud,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -60,6 +64,28 @@ pub fn read_item(dir: &Path, entry: &DirEntry) -> Option<Item> {
     Some(build(name, dir.join(entry.file_name()), &link_meta))
 }
 
+/// A folder known only by name and path, such as a computer's shared folder
+/// (REQ-037), listed without reading it.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn virtual_folder(name: String, path: String, hidden: bool) -> Item {
+    Item {
+        name,
+        path,
+        kind: Kind::Folder,
+        is_dir: true,
+        size: 0,
+        created: None,
+        modified: None,
+        accessed: None,
+        attributes: String::new(),
+        ext: String::new(),
+        hidden,
+        readonly: false,
+        sync: SyncState::None,
+        target: None,
+    }
+}
+
 /// Builds an item from its symlink metadata (the link itself, not its target).
 pub fn build(name: String, path: PathBuf, link_meta: &Metadata) -> Item {
     let is_symlink = link_meta.file_type().is_symlink();
@@ -89,7 +115,10 @@ pub fn build(name: String, path: PathBuf, link_meta: &Metadata) -> Item {
 
     Item {
         hidden: platform::is_hidden(&name, link_meta),
-        sync: platform::sync_state(link_meta),
+        sync: match platform::sync_state(link_meta) {
+            SyncState::None if crate::cloud::provider_of(&path).is_some() => SyncState::InCloud,
+            state => state,
+        },
         name,
         path: path.to_string_lossy().into_owned(),
         kind,

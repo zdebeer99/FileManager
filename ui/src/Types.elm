@@ -117,6 +117,13 @@ type Request
     | ReqFreeSpace String
     | ReqBookmarks
     | ReqBookmarkEdit
+    | ReqTopics
+    | ReqTopicEdit
+    | ReqOpenWith String
+    | ReqOpenedWith
+    | ReqQuickAccess
+    | ReqWindow
+    | ReqSettingSaved
     | ReqViewSaved Int String
     | ReqViewReset Int String
     | ReqOpenSettingsFile
@@ -137,6 +144,7 @@ type Request
     | ReqOpenReturnedFile
     | ReqLocate Bookmark
     | ReqColours
+    | ReqExported
     | ReqEditorInfo
     | ReqIcons
     | ReqFavList
@@ -209,6 +217,57 @@ type Dialog
     | ConfirmDialog Confirm
     | ShortcutsDialog ShortcutsState
     | ToolbarDialog ToolbarForm
+    | TopicDialog TopicForm
+    | TopicFolderDialog TopicFolderForm
+    | OpenWithDialog OpenWithState
+    | SettingsDialog SettingsState
+
+
+{-| The settings page (REQ-038): the section shown.
+-}
+type alias SettingsState =
+    { section : String }
+
+
+{-| Open With on Linux (FR-OPEN-02): the apps for the file's type, and all
+other apps when _Show all apps_ is on. Windows shows its own dialog instead.
+-}
+type alias OpenWithState =
+    { path : String
+    , apps : List OpenWithApp
+    , others : List OpenWithApp
+    , showAll : Bool
+    }
+
+
+type alias OpenWithApp =
+    { id : String
+    , name : String
+    , default : Bool
+    }
+
+
+{-| New Topic and Edit Topic (REQ-021). A new topic starts with `folders`.
+-}
+type alias TopicForm =
+    { index : Maybe Int
+    , title : String
+    , description : String
+    , folders : List String
+    , archived : Bool
+    , error : Maybe String
+    }
+
+
+{-| Editing one folder of a topic (REQ-023): the name shown for it and its path.
+-}
+type alias TopicFolderForm =
+    { topic : Int
+    , path : String
+    , newPath : String
+    , name : String
+    , error : Maybe String
+    }
 
 
 {-| Help › Keyboard Shortcuts (FR-KEY-04).
@@ -305,6 +364,8 @@ type alias Template =
 type DropTarget
     = DropFolder String
     | DropBookmarkBar
+      -- A topic in the Topics view (REQ-021): dropped folders are added to it.
+    | DropTopic Int
 
 
 type alias DragState =
@@ -331,7 +392,21 @@ type alias DropMods =
 
     -- The `data-drop` value of the element under the pointer, if any.
     , under : Maybe String
+
+    -- The `data-bm-drop` value there: where a dragged bookmark goes (REQ-007).
+    , bookmarkUnder : Maybe String
+
+    -- The `data-order-drop` value there: where a dragged topic, topic folder or Favourites group goes (REQ-021, REQ-023, REQ-029).
+    , orderUnder : Maybe String
     }
+
+
+{-| Where a dragged bookmark is dropped (REQ-007): before another bookmark
+(taking its group), or at the end of a group.
+-}
+type BookmarkDrop
+    = BeforeBookmark Int (List String)
+    | IntoGroup (List String)
 
 
 type alias NewItemForm =
@@ -445,6 +520,25 @@ type alias BookmarkForm =
 -- SIDEBAR AND BOOKMARKS
 
 
+{-| A topic from topics.toml (REQ-021): related folders under one title.
+-}
+type alias Topic =
+    { index : Int
+    , title : String
+    , description : String
+    , folders : List TopicFolder
+    , archived : Bool
+    }
+
+
+{-| A folder in a topic, with the name shown for it ("" shows the folder's own name).
+-}
+type alias TopicFolder =
+    { path : String
+    , name : String
+    }
+
+
 {-| The colours a folder can have (spec 6.4.5); the same names as colours.toml.
 -}
 folderColours : List String
@@ -556,13 +650,42 @@ type SidebarMode
     = TreeMode
     | FavouritesMode
     | BookmarksMode
+    | TopicsMode
 
 
 type alias Root =
     { name : String
     , path : String
     , kind : String
+
+    -- For online drives (REQ-028): "dropbox", "onedrive", "gdrive" or "proton"; else "".
+    , provider : String
     }
+
+
+{-| A folder from the file manager's Quick access list (REQ-029).
+-}
+type alias Place =
+    { name : String
+    , path : String
+    }
+
+
+{-| The Favourites view's groups (REQ-029), in their default order.
+-}
+favouriteGroupIds : List String
+favouriteGroupIds =
+    [ "quick", "favourites", "cloud", "drives", "network" ]
+
+
+{-| The online drive a path is in, if any: the deepest one (REQ-028).
+-}
+cloudRootOf : Model -> String -> Maybe Root
+cloudRootOf model path =
+    model.roots
+        |> List.filter (\r -> r.kind == "cloud" && Path.isInside model.sep r.path path)
+        |> List.sortBy (\r -> negate (String.length r.path))
+        |> List.head
 
 
 type alias Bookmark =
@@ -588,6 +711,14 @@ type Drag
     | DragItems DragState
       -- Reordering tabs (FR-TAB-02): the dragged tab and the tab under the pointer.
     | MoveTab { tabId : Int, startX : Float, moved : Bool, over : Maybe Int }
+      -- Reordering bookmarks and moving them between groups (REQ-007).
+    | MoveBookmark { index : Int, name : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool, over : Maybe BookmarkDrop }
+      -- Reordering topics (REQ-021).
+    | MoveTopic { index : Int, title : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
+      -- Reordering the Favourites view's groups (REQ-029).
+    | MoveFavGroup { group : String, label : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
+      -- Reordering the folders of an open topic (REQ-023).
+    | MoveTopicFolder { topic : Int, path : String, label : String, startX : Float, startY : Float, x : Float, y : Float, moved : Bool }
 
 
 type Region
@@ -617,6 +748,9 @@ type alias Model =
     , settingsFile : String
     , bookmarksFile : String
     , settings : Settings
+
+    -- settings.toml as the backend sent it, for the settings page (REQ-038).
+    , settingsRaw : D.Value
     , zone : Time.Zone
     , tabs : List Tab
     , active : Int
@@ -669,6 +803,21 @@ type alias Model =
 
     -- Bookmark groups folded in the sidebar (spec 5.7), as "bar/Legal".
     , foldedGroups : Set String
+
+    -- Topics (REQ-021): from topics.toml, the search text, the open topic
+    -- (by index) and whether the Archived group is shown.
+    , topics : List Topic
+    , topicWarnings : List String
+    , topicSearch : String
+    , openTopic : Maybe Int
+    , archivedTopicsOpen : Bool
+
+    -- The Favourites view (REQ-029): the OS Quick access folders, and the group order.
+    , quickAccess : List Place
+
+    -- Whether the window is maximised, for the Maximise / Restore button (spec 5.1).
+    , maximized : Bool
+    , favouriteGroups : List String
     , clipboard : Maybe Clipboard
     , jobs : Dict Int JobStatus
     , jobsPanel : Bool
@@ -710,6 +859,8 @@ type Msg
     | ListScrolled Float Float
     | GotListViewport (Result Dom.Error Dom.Viewport)
     | WindowResized Float Float
+      -- The window buttons in File Catalog's own title bar (spec 5.1): "minimize", "maximize", "close".
+    | WindowControl String
     | RowClicked Int Mods
     | RowActivated Int
     | RowMiddleClicked Int
@@ -766,7 +917,34 @@ type Msg
     | SidebarResizeStart Float
     | ItemContextMenu (List MenuEntry) Float Float
     | BookmarkSearch String
+      -- Topics (REQ-021)
+    | TopicEditOp (List ( String, D.Value ))
+    | TopicSearch String
+    | OpenTopic Int
+    | CloseTopic
+    | ToggleArchivedTopics
+    | EditTopic (Maybe Int) (List String)
+    | TopicTitle String
+    | TopicDescription String
+    | TopicSubmit
+    | DeleteTopic Int
+    | RemoveTopic Int
+    | TopicMouseDown Int String Float Float
+    | TopicFolderMouseDown Int String String Float Float
+    | EditTopicFolder Int TopicFolder
+    | TopicFolderPath String
+    | TopicFolderName String
+    | TopicFolderSubmit
+    | TopicFolderRemove
+    | OpenWithPick String
+    | OpenWithShowAll
+    | FavGroupMouseDown String String Float Float
+      -- The settings page (REQ-038)
+    | SettingsSection String
+    | SettingChange String D.Value
     | ToggleBookmarkGroup String
+    | BookmarkMouseDown Int String Float Float
+    | BookmarkDragOver (Maybe BookmarkDrop)
     | FavBrowseTo String String
     | FavUp
     | FavHome
@@ -881,6 +1059,9 @@ type Command
     | CmdToggleFoldersFirst
     | CmdSetting String Bool
     | CmdSetTheme String
+    | CmdSetStyle String
+    | CmdSetLayout String
+    | CmdToggleSystemTitleBar
     | CmdSetIcons String
     | CmdToggleSidebar
     | CmdSidebarMode SidebarMode
@@ -889,6 +1070,7 @@ type Command
     | CmdBookmarkItem
     | CmdTogglePin
     | CmdOpenSettingsFile
+    | CmdSettingsPage
     | CmdOpenBookmarksFile
     | CmdOpenLogFolder
     | CmdAbout
@@ -908,7 +1090,9 @@ type Command
     | CmdUndo
     | CmdOpenTerminal
     | CmdOpenInEditor
+    | CmdOpenWith
     | CmdCreateShortcut
+    | CmdExportFileList
     | CmdOpenFolderInEditor
     | CmdReveal
     | CmdItemMenu
@@ -1017,6 +1201,9 @@ sidebarModeName mode =
         BookmarksMode ->
             "bookmarks"
 
+        TopicsMode ->
+            "topics"
+
 
 sidebarModeFromString : String -> SidebarMode
 sidebarModeFromString s =
@@ -1026,6 +1213,9 @@ sidebarModeFromString s =
 
         "bookmarks" ->
             BookmarksMode
+
+        "topics" ->
+            TopicsMode
 
         _ ->
             TreeMode

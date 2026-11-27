@@ -588,6 +588,16 @@ undo =
     "Undo"
 
 
+exportFileList : String
+exportFileList =
+    "Export File List…"
+
+
+fileListSaved : String -> String
+fileListSaved file =
+    "File list saved to " ++ file
+
+
 createShortcut : String
 createShortcut =
     "Create Shortcut"
@@ -1179,8 +1189,14 @@ commandName id =
         "item.openInEditor" ->
             "Open with Text Editor"
 
+        "item.openWith" ->
+            "Open With…"
+
         "folder.openInEditor" ->
             "Open Folder with Text Editor"
+
+        "file.exportList" ->
+            "Export File List…"
 
         "item.reveal" ->
             "Show in File Manager"
@@ -1211,6 +1227,30 @@ commandName id =
 
         "view.sidebarMode.bookmarks" ->
             "Sidebar: Bookmarks"
+
+        "view.sidebarMode.topics" ->
+            "Sidebar: Topics"
+
+        "view.style.studio" ->
+            "Style: Studio"
+
+        "view.style.typewriter" ->
+            "Style: Typewriter"
+
+        "view.style.explorer" ->
+            "Style: Explorer"
+
+        "view.style.modern" ->
+            "Style: Modern"
+
+        "view.layout.browser" ->
+            "Layout: Browser"
+
+        "view.layout.classic" ->
+            "Layout: Classic"
+
+        "view.systemTitleBar" ->
+            "Use the System Title Bar"
 
         "view.sidebarLeft" ->
             "Sidebar on the Left"
@@ -1294,6 +1334,9 @@ commandName id =
             "Jobs"
 
         "settings.open" ->
+            "Settings…"
+
+        "settings.openFile" ->
             "Open Settings File"
 
         "keybindings.open" ->
@@ -1648,3 +1691,588 @@ sizeFromHint =
 sizeToHint : String
 sizeToHint =
     "e.g. 10 MB"
+
+
+
+-- TOPICS (REQ-021)
+
+
+topicsMode : String
+topicsMode =
+    "Topics (Ctrl+Shift+4)"
+
+
+searchTopics : String
+searchTopics =
+    "Search topics"
+
+
+noTopics : String
+noTopics =
+    "No topics yet. A topic keeps related folders together, for example everything for one project."
+
+
+newTopicButton : String
+newTopicButton =
+    "+ New Topic"
+
+
+newTopicMenu : String
+newTopicMenu =
+    "New Topic…"
+
+
+addToTopic : String
+addToTopic =
+    "Add to Topic"
+
+
+archivedTopics : String
+archivedTopics =
+    "Archived"
+
+
+newTopicTitle : String
+newTopicTitle =
+    "New topic"
+
+
+editTopicTitle : String
+editTopicTitle =
+    "Edit topic"
+
+
+topicTitleField : String
+topicTitleField =
+    "Title"
+
+
+topicDescriptionField : String
+topicDescriptionField =
+    "Description"
+
+
+topicTitleNeeded : String
+topicTitleNeeded =
+    "Give the topic a title."
+
+
+topicStartsWith : Int -> String
+topicStartsWith count =
+    if count == 1 then
+        "The topic starts with the selected folder."
+
+    else
+        "The topic starts with the " ++ String.fromInt count ++ " selected folders."
+
+
+deleteTopicTitle : String -> String
+deleteTopicTitle title =
+    "Delete the topic \"" ++ title ++ "\"?"
+
+
+deleteTopicNote : String
+deleteTopicNote =
+    "Only the topic is deleted. Its folders and their files are not touched."
+
+
+deleteTopic : String
+deleteTopic =
+    "Delete…"
+
+
+archiveTopic : String
+archiveTopic =
+    "Archive"
+
+
+unarchiveTopic : String
+unarchiveTopic =
+    "Unarchive"
+
+
+backToTopics : String
+backToTopics =
+    "Back to all topics"
+
+
+topicNoFolders : String
+topicNoFolders =
+    "No folders yet. Add the open folder below, drop folders here, or use Add to Topic in a folder's right-click menu."
+
+
+addOpenFolder : String
+addOpenFolder =
+    "+ Add the open folder"
+
+
+removeFromTopic : String
+removeFromTopic =
+    "Remove from Topic"
+
+
+topicFolderCount : Int -> String
+topicFolderCount count =
+    if count == 1 then
+        "1 folder"
+
+    else
+        String.fromInt count ++ " folders"
+
+
+editTopicFolder : String
+editTopicFolder =
+    "Edit Folder…"
+
+
+editTopicFolderTitle : String
+editTopicFolderTitle =
+    "Edit folder in topic"
+
+
+topicFolderPath : String
+topicFolderPath =
+    "Folder"
+
+
+topicFolderHint : String
+topicFolderHint =
+    "The name is only shown in this topic; leave it empty to show the folder's own name. The folder itself is not renamed."
+
+
+topicFolderPathNeeded : String
+topicFolderPathNeeded =
+    "Enter the folder's path."
+
+
+
+-- OPEN WITH (FR-OPEN-02)
+
+
+openWithMenu : String
+openWithMenu =
+    "Open With…"
+
+
+openWithTitle : String -> String
+openWithTitle shown =
+    "Open \"" ++ shown ++ "\" with"
+
+
+openWithDefault : String
+openWithDefault =
+    "default"
+
+
+openWithShowAll : String
+openWithShowAll =
+    "Show all apps"
+
+
+openWithNone : String
+openWithNone =
+    "No app is registered for this type of file."
+
+
+openWithFolder : String
+openWithFolder =
+    "Open With works on files. Select a file first."
+
+
+
+-- FAVOURITES GROUPS AND ONLINE DRIVES (REQ-028, REQ-029)
+
+
+favouriteGroup : String -> String
+favouriteGroup id =
+    case id of
+        "quick" ->
+            "Quick access"
+
+        "favourites" ->
+            "Pinned"
+
+        "cloud" ->
+            "Online drives"
+
+        "drives" ->
+            "Drives"
+
+        "network" ->
+            "Network"
+
+        _ ->
+            id
+
+
+favouriteGroupHint : String
+favouriteGroupHint =
+    "Click to fold or unfold. Drag up or down to change the order."
+
+
+homeFolder : String
+homeFolder =
+    "Home"
+
+
+onlineDrive : String -> String
+onlineDrive provider =
+    case provider of
+        "dropbox" ->
+            "In Dropbox"
+
+        "onedrive" ->
+            "In OneDrive"
+
+        "gdrive" ->
+            "In Google Drive"
+
+        "proton" ->
+            "In Proton Drive"
+
+        _ ->
+            "In an online drive"
+
+
+openInActiveTab : String
+openInActiveTab =
+    "Open in the active tab (Ctrl+Click)"
+
+
+switchTopic : String
+switchTopic =
+    "Switch to another topic"
+
+
+allTopics : String
+allTopics =
+    "All Topics"
+
+
+
+-- STYLES, LAYOUT AND TITLE BAR (spec 3.2, 5.1)
+
+
+styleMenu : String
+styleMenu =
+    "Style"
+
+
+styleName : String -> String
+styleName id =
+    case id of
+        "typewriter" ->
+            "Typewriter"
+
+        "explorer" ->
+            "Explorer"
+
+        "modern" ->
+            "Modern"
+
+        _ ->
+            "Studio"
+
+
+styleHint : String
+styleHint =
+    "Light theme only"
+
+
+layoutMenu : String
+layoutMenu =
+    "Layout"
+
+
+layoutBrowser : String
+layoutBrowser =
+    "Browser (tabs at the top, ☰ menu)"
+
+
+layoutClassic : String
+layoutClassic =
+    "Classic (menu bar and toolbar)"
+
+
+systemTitleBar : String
+systemTitleBar =
+    "Use the System Title Bar"
+
+
+mainMenu : String
+mainMenu =
+    "Menu (Alt or F10)"
+
+
+minimizeWindow : String
+minimizeWindow =
+    "Minimise"
+
+
+maximizeWindow : String
+maximizeWindow =
+    "Maximise"
+
+
+restoreWindow : String
+restoreWindow =
+    "Restore Down"
+
+
+closeWindow : String
+closeWindow =
+    "Close"
+
+
+
+-- SETTINGS PAGE (REQ-038)
+
+
+settingsMenu : String
+settingsMenu =
+    "Settings…"
+
+
+settingsTitle : String
+settingsTitle =
+    "Settings"
+
+
+openSettingsFile : String
+openSettingsFile =
+    "Open Settings File"
+
+
+keyboardShortcutsButton : String
+keyboardShortcutsButton =
+    "Keyboard Shortcuts…"
+
+
+customiseToolbarButton : String
+customiseToolbarButton =
+    "Customise Toolbar…"
+
+
+done : String
+done =
+    "Done"
+
+
+settingsSection : String -> String
+settingsSection id =
+    case id of
+        "general" ->
+            "General"
+
+        "layout" ->
+            "Layout"
+
+        "view" ->
+            "Folder View"
+
+        "search" ->
+            "Quick Find"
+
+        "editor" ->
+            "Text Editor"
+
+        "templates" ->
+            "Templates"
+
+        "network" ->
+            "Network"
+
+        _ ->
+            id
+
+
+settingLabel : String -> String
+settingLabel key =
+    case key of
+        "general.theme" ->
+            "Theme"
+
+        "general.style" ->
+            "Style (light theme)"
+
+        "general.startupFolder" ->
+            "Open at start-up"
+
+        "general.restoreTabs" ->
+            "Reopen the tabs from last time"
+
+        "general.homeFolder" ->
+            "Home folder"
+
+        "general.confirmDelete" ->
+            "Ask before moving items to the Recycle Bin"
+
+        "general.confirmExtensionChange" ->
+            "Ask before changing a file's extension"
+
+        "general.keepFilterOnNavigate" ->
+            "Keep the Quick Filter when opening another folder"
+
+        "general.terminal" ->
+            "Terminal program"
+
+        "layout.style" ->
+            "Layout"
+
+        "layout.systemTitleBar" ->
+            "Use the system title bar"
+
+        "layout.bookmarkBar" ->
+            "Show the Bookmark Bar"
+
+        "layout.statusBar" ->
+            "Show the status bar"
+
+        "layout.sidebar.visible" ->
+            "Show the sidebar"
+
+        "layout.sidebar.side" ->
+            "Sidebar side"
+
+        "layout.menuBar" ->
+            "Show the Menu Bar"
+
+        "layout.toolbar" ->
+            "Show the toolbar"
+
+        "layout.tabBar" ->
+            "Show the Tab Bar"
+
+        "layout.addressBar" ->
+            "Show the Address Bar"
+
+        "view.default.foldersFirst" ->
+            "Folders first"
+
+        "view.default.showHidden" ->
+            "Show hidden files"
+
+        "view.default.showExtensions" ->
+            "Show file extensions"
+
+        "view.default.icons" ->
+            "Icons"
+
+        "view.default.dateFormat" ->
+            "Date format"
+
+        "search.includeHidden" ->
+            "Include hidden files"
+
+        "search.followLinks" ->
+            "Follow links and junctions"
+
+        "search.skipOnlineOnlyFolders" ->
+            "Skip online-only folders"
+
+        "search.maxDepth" ->
+            "Deepest folder level"
+
+        "search.maxResults" ->
+            "Most results"
+
+        "editor.command" ->
+            "Program"
+
+        "editor.name" ->
+            "Name in menus"
+
+        "editor.args" ->
+            "Extra arguments"
+
+        "templates.folders" ->
+            "Templates folders"
+
+        "templates.dateFormat" ->
+            "Date format for {date}"
+
+        "network.timeoutSeconds" ->
+            "Network time-out (seconds)"
+
+        _ ->
+            key
+
+
+settingHelp : String -> String
+settingHelp key =
+    case key of
+        "general.startupFolder" ->
+            "last, home, or a folder path."
+
+        "general.homeFolder" ->
+            "Where Home goes; ~ is your user folder."
+
+        "general.terminal" ->
+            "Empty: Windows Terminal or PowerShell on Windows, $TERMINAL on Linux."
+
+        "layout.systemTitleBar" ->
+            "Off: File Catalog draws its own title bar with the window buttons."
+
+        "layout.menuBar" ->
+            "Menu Bar, toolbar, Tab Bar and Address Bar: classic layout only."
+
+        "view.default.dateFormat" ->
+            "For example yyyy-MM-dd HH:mm."
+
+        "view.default.showHidden" ->
+            "The default for folders without a saved view."
+
+        "search.maxDepth" ->
+            "0 means no limit."
+
+        "editor.command" ->
+            "A program on PATH (code, zed, subl) or a full path. Empty: the first known editor found."
+
+        "editor.args" ->
+            "One per line, put before the file, for example --new-window."
+
+        "templates.folders" ->
+            "One per line; relative to the settings folder or full paths."
+
+        "network.timeoutSeconds" ->
+            "How long to wait for a network folder before showing it as not available."
+
+        _ ->
+            ""
+
+
+settingChoice : String -> String -> String
+settingChoice key value =
+    case ( key, value ) of
+        ( "general.theme", "system" ) ->
+            "Follow the system"
+
+        ( "general.theme", "light" ) ->
+            "Light"
+
+        ( "general.theme", "dark" ) ->
+            "Dark"
+
+        ( "general.style", _ ) ->
+            styleName value
+
+        ( "layout.style", "browser" ) ->
+            layoutBrowser
+
+        ( "layout.style", "classic" ) ->
+            layoutClassic
+
+        ( "layout.sidebar.side", "left" ) ->
+            "Left"
+
+        ( "layout.sidebar.side", "right" ) ->
+            "Right"
+
+        ( "view.default.icons", "system" ) ->
+            systemIcons
+
+        ( "view.default.icons", "builtin" ) ->
+            builtinIcons
+
+        _ ->
+            value

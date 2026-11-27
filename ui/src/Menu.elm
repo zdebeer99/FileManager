@@ -1,4 +1,4 @@
-module Menu exposing (Menu, colourEntries, columnEntries, menuHeight, menus, selectable, templateEntries, viewDropdown, viewMenuBar)
+module Menu exposing (Menu, colourEntries, columnEntries, menuHeight, menus, selectable, templateEntries, topicEntries, viewDropdown, viewMenuBar, viewMenuButton)
 
 {-| The Menu Bar (FR-MENU-01): every command grouped in standard menus.
 Commands that later milestones add are shown disabled, so the menus
@@ -12,6 +12,7 @@ import Html exposing (Html, button, div, span, text)
 import Html.Attributes exposing (attribute, class, classList, disabled, style, tabindex, title)
 import Html.Events exposing (onClick, onMouseEnter, stopPropagationOn)
 import Json.Decode as D
+import Json.Encode as E
 import Path
 import Text
 import Types exposing (..)
@@ -68,6 +69,13 @@ baseMenus model tab =
 
         sidebarMode =
             sidebarModeFromString s.sidebarMode
+
+        rowToggle label checked key =
+            if s.layoutStyle == "classic" then
+                toggle label "" checked (CmdToggleSetting key)
+
+            else
+                Action { label = label, key = "", msg = Nothing, checked = Just True }
     in
     [ { title = "File"
       , entries =
@@ -81,7 +89,7 @@ baseMenus model tab =
             , Submenu "New from Template" (templateEntries model)
             , Separator
             , cmd "Open" "Enter" CmdOpen
-            , later "Open With" ""
+            , cmd Text.openWithMenu "" CmdOpenWith
             , cmd "Open in Terminal" "Ctrl+`" CmdOpenTerminal
             , if model.editorName == "" then
                 later Text.openFolderWithEditor ""
@@ -89,6 +97,7 @@ baseMenus model tab =
               else
                 cmd (Text.openFolderWith model.editorName) "" CmdOpenFolderInEditor
             , cmd "Show in File Manager" "" CmdReveal
+            , cmd Text.exportFileList "" CmdExportFileList
             , later "Properties" "Alt+Enter"
             , Separator
             , cmd "Close Tab" "Ctrl+W" CmdCloseTab
@@ -119,11 +128,12 @@ baseMenus model tab =
       }
     , { title = "View"
       , entries =
-            [ toggle "Menu Bar" "" s.menuBar (CmdToggleSetting "layout.menuBar")
-            , toggle "Toolbar" "" s.toolbar (CmdToggleSetting "layout.toolbar")
+            -- The browser layout always shows its two top rows (spec 5.1).
+            [ rowToggle "Menu Bar" s.menuBar "layout.menuBar"
+            , rowToggle "Toolbar" s.toolbar "layout.toolbar"
             , toggle "Bookmark Bar" "" s.bookmarkBar (CmdToggleSetting "layout.bookmarkBar")
-            , toggle "Tab Bar" "" s.tabBar (CmdToggleSetting "layout.tabBar")
-            , toggle "Address Bar" "" s.addressBar (CmdToggleSetting "layout.addressBar")
+            , rowToggle "Tab Bar" s.tabBar "layout.tabBar"
+            , rowToggle "Address Bar" s.addressBar "layout.addressBar"
             , toggle "Sidebar" "Ctrl+B" s.sidebarVisible CmdToggleSidebar
             , later "Quick View" "Ctrl+Q"
             , toggle "Status Bar" "" s.statusBar (CmdToggleSetting "layout.statusBar")
@@ -133,6 +143,7 @@ baseMenus model tab =
                 [ toggle "Folder Tree" "Ctrl+Shift+1" (sidebarMode == TreeMode) (CmdSidebarMode TreeMode)
                 , toggle "Favourites" "Ctrl+Shift+2" (sidebarMode == FavouritesMode) (CmdSidebarMode FavouritesMode)
                 , toggle "Bookmarks" "Ctrl+Shift+3" (sidebarMode == BookmarksMode) (CmdSidebarMode BookmarksMode)
+                , toggle "Topics" "Ctrl+Shift+4" (sidebarMode == TopicsMode) (CmdSidebarMode TopicsMode)
                 , Separator
                 , toggle "On the Left" "" (s.sidebarSide /= "right") (CmdSidebarSide "left")
                 , toggle "On the Right" "" (s.sidebarSide == "right") (CmdSidebarSide "right")
@@ -170,6 +181,17 @@ baseMenus model tab =
                 [ toggle "Follow System" "" (s.theme /= "light" && s.theme /= "dark") (CmdSetTheme "system")
                 , toggle "Light" "" (s.theme == "light") (CmdSetTheme "light")
                 , toggle "Dark" "" (s.theme == "dark") (CmdSetTheme "dark")
+                ]
+            , Submenu Text.styleMenu
+                (List.map (\id -> toggle (Text.styleName id) "" (s.style == id || id == "studio" && not (List.member s.style [ "typewriter", "explorer", "modern" ])) (CmdSetStyle id))
+                    [ "studio", "typewriter", "explorer", "modern" ]
+                    ++ [ Separator, Action { label = Text.styleHint, key = "", msg = Nothing, checked = Nothing } ]
+                )
+            , Submenu Text.layoutMenu
+                [ toggle Text.layoutBrowser "" (s.layoutStyle /= "classic") (CmdSetLayout "browser")
+                , toggle Text.layoutClassic "" (s.layoutStyle == "classic") (CmdSetLayout "classic")
+                , Separator
+                , toggle Text.systemTitleBar "" s.systemTitleBar CmdToggleSystemTitleBar
                 ]
             , Submenu Text.icons
                 [ toggle Text.systemIcons "" (s.icons /= "builtin") (CmdSetIcons "system")
@@ -219,7 +241,8 @@ baseMenus model tab =
             , cmd "Save Selection as Template" "" CmdSaveAsTemplate
             , cmd "Edit Templates Folder" "" CmdEditTemplates
             , Separator
-            , cmd "Open Settings File" "Ctrl+," CmdOpenSettingsFile
+            , cmd Text.settingsMenu "Ctrl+," CmdSettingsPage
+            , cmd "Open Settings File" "" CmdOpenSettingsFile
             , cmd "Open Key Bindings File" "" CmdOpenKeybindingsFile
             , cmd "Open Toolbar File" "" CmdOpenToolbarFile
             ]
@@ -279,6 +302,34 @@ colourEntries model paths =
                     Nothing
     in
     Submenu Text.folderColour [ ColourPalette paths current ]
+
+
+{-| Add to Topic ▸ (REQ-021): the topics that are not archived, and New Topic….
+-}
+topicEntries : Model -> List String -> MenuEntry
+topicEntries model paths =
+    let
+        add topic =
+            Action
+                { label = topic.title
+                , key = ""
+                , msg = Just (TopicEditOp [ ( "op", E.string "addFolders" ), ( "index", E.int topic.index ), ( "paths", E.list E.string paths ) ])
+                , checked = Nothing
+                }
+
+        active =
+            List.filter (not << .archived) model.topics
+    in
+    Submenu Text.addToTopic
+        (List.map add active
+            ++ (if List.isEmpty active then
+                    []
+
+                else
+                    [ Separator ]
+               )
+            ++ [ Action { label = Text.newTopicMenu, key = "", msg = Just (EditTopic Nothing paths), checked = Nothing } ]
+        )
 
 
 {-| The column chooser, used by View › Columns and the header right-click menu.
@@ -386,6 +437,66 @@ viewMenuBar model tab =
             )
             (menus model tab)
         )
+
+
+{-| The browser layout's ☰ button (spec 5.1) and, while it is open, the whole
+menu: the menu names in a column on the right, and the chosen menu's entries
+to their left. It uses the Menu Bar's state, so Alt, F10, Alt+letter, the
+arrow keys and Enter work as they do on the Menu Bar.
+-}
+viewMenuButton : Model -> Tab -> Html Msg
+viewMenuButton model tab =
+    let
+        all =
+            menus model tab
+    in
+    div [ class "menu-button-wrap" ]
+        [ button
+            [ class "menu-button"
+            , classList [ ( "open", model.menuBar /= Nothing ) ]
+            , stopPropagationOn "click" (D.succeed ( KeyCommand CmdMenuBar, True ))
+            , title Text.mainMenu
+            , attribute "aria-label" Text.mainMenu
+            , attribute "aria-haspopup" "menu"
+            , tabindex -1
+            ]
+            [ span [ class "icon hamburger" ] [] ]
+        , case model.menuBar of
+            Just state ->
+                div [ class "menu-panel", stopPropagationOn "click" (D.succeed ( NoOp, True )) ]
+                    [ case List.head (List.drop state.index all) of
+                        Just menu ->
+                            viewDropdown model.windowHeight menuPanelTop state.active state.sub True menu.entries
+
+                        Nothing ->
+                            text ""
+                    , div [ class "menu menu-titles", attribute "role" "menubar" ]
+                        (List.indexedMap
+                            (\i menu ->
+                                button
+                                    [ class "menu-item"
+                                    , classList [ ( "active", i == state.index ) ]
+                                    , onMouseEnter (MenuBarHover i)
+                                    , stopPropagationOn "click" (D.succeed ( MenuBarHover i, True ))
+                                    , tabindex -1
+                                    , attribute "role" "menuitem"
+                                    ]
+                                    [ span [ class "check" ] [ text "◂" ], span [ class "label" ] [ text menu.title ] ]
+                            )
+                            all
+                        )
+                    ]
+
+            Nothing ->
+                text ""
+        ]
+
+
+{-| Where the ☰ menu's entries start on screen (below the tab and address rows).
+-}
+menuPanelTop : Float
+menuPanelTop =
+    84
 
 
 {-| Heights used to keep menus on screen (they match styles.css).

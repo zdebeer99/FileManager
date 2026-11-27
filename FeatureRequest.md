@@ -1,7 +1,11 @@
+---
+feature: file:C:/Users/zdebe/Documents/CodeProjects/FileCatalog/md-FeatureRequest/image-20261121210836923.png
+thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
+---
 # File Catalog Feature Requests
 2026-11-02
 
- Update Cycle: c3
+ Update Cycle: c8
 
 ## How to use this file
 
@@ -21,48 +25,16 @@
 ## Open requests
 
 
-
 **Quick Requests**
 
-- Show the file type column by default
-- Remove the Save view button, it's not realy used at this stage.
-- Make the toolbar icons/buttons larger
 - 
+
+
 
 **Request table**
 
-| ID      | Name                | Area           | Description                                                  | Priority | Status    | Update Cycle | Comment       |
-| ------- | ------------------- | -------------- | ------------------------------------------------------------ | -------- | --------- | ------------ | ------------- |
-| REQ-007 | Bookmark Reordering | Bookmarks      | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal   | implement | c3           | 02Nov26 new   |
-| REQ-021 | Topic View          | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" Section Below | Normal   | implement | c3           | 14Nov26 Added |
-| REQ-022 | Export file names   | File View      | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal   | implement | c3           | 21Nov26 added |
-| REQ-023 |                     |                |                                                              |          |           |              |               |
-| REQ-024 |                     |                |                                                              |          |           |              |               |
-
-
-
-### REQ-021 Topic View
-
-2026-11-14
-
-This is very similar behavior than grouped tab supported in chrome.
-
-
-
-- The topic view is a tap on the left side panel, next to bookmark tab.
-- a Topics is a title and short description and a list of folders that is related to each other. The list is build up by the user by adding a folder to a topic. when any of the folders in a topic is opened.
-- The main or start view show the topics title defined, and a `+` to add a new topic.
-- when you click on the topic the topic is opened showing the title at the top, description below and the list of folders, be default the top folder is open in the active tab.
-- in the topic open view you can jump between different folders, delete folders from the topic, delete the topic, change the topic name, and description or navigate back to the main topic view.
-- topic should be searchable and the order can be changed by dragiing them up or down.
-- you can archive or delete a topic, archiving will whow them in a archiving group below all the normal topics. that is hidden by default.
-
-
-
-Great enjoy developing.
-
-
-
+| ID      | Name                | Area            | Description     | Priority | Status | Update Cycle | Comment       |
+| ------- | ------------------- | --------------- | --------------- | -------- | ------ | ------------ | ------------- |
 
 ## Done
 
@@ -86,9 +58,58 @@ Great enjoy developing.
 | REQ-017 | Bookmark icons not showing | Bookmarks Bar | In the bookmark bar groups the icons is not showing. | Normal | c3 | 14Nov26 Added. 14Nov26 Built: FR-BB-01: group drop-downs show bookmark icons. |
 | REQ-019 | Open in VSCode Error | Command | Open in VSCode is not working, it gives an error.  "Could not open VS Code: %1 is not a valid Win32 application. (os error 193)" | Normal | c3 | 14Nov26 Added. 14Nov26 Built: FR-OPEN-06: on Windows only .exe/.cmd/.bat/.com are started (VS Code's bin\code script was picked). |
 | REQ-020 | Logging Errors | Log File | Errors is not logged in the log file. | Normal | c3 | 14Nov26 Added. 14Nov26 Built: NFR-MNT-03: command errors, listing errors and job errors go to the log. |
+| REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal | c3 | 02Nov26 new. 21Nov26 Built: FR-BM-07: drag in the sidebar and on the Bookmark Bar; drop on a bookmark (before it) or a group (end of it). |
+| REQ-021 | Topic View | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" below. | Normal | c3 | 14Nov26 Added. 21Nov26 Built: spec 6.4.6 (FR-TOP-01 to 05), topics.toml (8.8): fourth sidebar view, Add to Topic in folder menus, drag folders onto a topic. |
+| REQ-022 | Export file names | File View | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal | c3 | 21Nov26 added. 21Nov26 Built: FR-OPEN-07: Export File List… (right-click on empty space, File menu, palette); the names shown, one per line, in a .txt you choose. |
+| REQ-037 | Network computers | File List | `\\hostname\` or `\\ipaddress\` should open the network device and show all its shared folders; it only worked with the share name included. | Normal | c8 | 27Nov26 added from the quick requests. 27Nov26 Built: FR-ADDR-06: Windows lists the computer's shares; Up from a share goes back to the list. |
+| REQ-038 | Settings page | General | Add setup pages to change the application settings in the UI. | Normal | c8 | 27Nov26 added from the quick requests. 27Nov26 Built: FR-SET-01: Settings… (Ctrl+, and the gear) with seven sections; changes are written to settings.toml at once. |
+| REQ-035 | More styles | Look and Feel | Add styles: Typewriter (like the Obsidian Typewriter theme), a yellow Windows File Explorer look, and Modern with light blue and brown. | Normal | c7 | 27Nov26 added. 27Nov26 Built: FR-UI-08: View › Style ▸; light theme only (your choice), the dark theme keeps Studio's dark look. |
+| REQ-036 | Browser layout | Layout | Hide the Windows title bar and draw the window buttons in the app. Lay it out like Chrome: tabs at the top, then the Bookmark Bar and the path box, with the menu behind one button. | Normal | c7 | 27Nov26 added. 27Nov26 Built: FR-UI-06, FR-UI-07: tabs and window buttons in the top row, the toolbar around the path box, ☰ for the menu; the classic layout and the system title bar stay as settings (View › Layout ▸). |
+| REQ-034 | Light theme | Look and Feel | The light theme is not correct: only the file view and the menu drop-downs are light, and the menu items' text is too light to read on the light background. | Normal | c6 | 27Nov26 reported. 27Nov26 Fixed: 3.2: the frame (menus, toolbar, tabs, address bar, sidebar) is light in the light theme; menus use the normal text colour. |
+| REQ-032 | Google Drive sync status | File List | The sync status for Google Drive files is not showing in the Sync status column. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Checked: Google Drive gives every file `Normal` (0x80) and Explorer shows no status. Built: FR-SYNC-01: files in an online drive with no state of their own show ☁ *In online drive*. |
+| REQ-030 | Favourites: open in the active tab | Side Bar | In the Favourites view, open a folder directly in the active tab: the ↗ button next to each folder, and Ctrl+Click. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-FAV-05. |
+| REQ-031 | Topic switcher | Topics Side Bar | In an open topic, the title is a drop-down with the top 7 topics, to switch quickly. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-TOP-08. |
+| REQ-033 | No autocomplete | General | No autocomplete when editing folder names, labels, paths and descriptions. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: NFR-UX-05: autocomplete="off" on every text box, and WebView2 autofill off on Windows. |
+| REQ-024 | Open With | File List | Add an "Open With" action to open a file with an app other than the default one. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-OPEN-02: Open With… in the file's right-click menu and the File menu; Windows' own dialog, an app list on Linux. |
+| REQ-025 | OS folder icons | File List | Show the OS folder icons for folders like Downloads and Pictures, and for folders with a custom icon set. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-ICON-03: folders' own icons (Downloads, Pictures, custom icons, online drives) in the list, tree, Favourites and Topics. |
+| REQ-026 | Bookmark folder icons | Bookmarks | Bookmarked folders show their folder icon, e.g. the Downloads icon for a Downloads bookmark. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-ICON-03, FR-BB-01: bookmarked folders show the folder's own icon, in the sidebar and on the Bookmark Bar. |
+| REQ-027 | Tab folder icons | Tabs | A tab shows the icon of the nearest folder above it with its own icon, and shows when the folder is in an online drive (Dropbox, OneDrive, Google Drive). | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-TAB-07: the nearest own folder icon, and a cloud badge inside an online drive. |
+| REQ-028 | Online drives | General | Support the online drives Dropbox, OneDrive, Google Drive and Proton Drive. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: Spec 6.4.7 (FR-CLOUD-01 to 03): found from the providers' settings, the Windows sync-root registry and the default folders; shown in the tree and Favourites; slow-path pool. |
+| REQ-029 | Favourites groups | Side Bar | Show the OS file explorer's pinned folders at the top of the Favourites view (on Windows: Home and Quick access), then groups for your pinned folders, drives, network drives and so on. Groups can be folded and reordered. | Normal | c5 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-FAV-04: Quick access (Explorer's on Windows, standard folders and GTK bookmarks on Linux), Pinned, Online drives, Drives, Network; fold and drag to reorder. |
+| REQ-023 | Topics Improvements | Topics Side Bar | See "REQ-023 Topics Improvements" below. | Normal | c4 | 21Nov26 added. 21Nov26 Built: FR-TOP-02 (Archive and Delete in the ✎ topic dialog), FR-TOP-06 (✎ per folder: name shown and path, Remove from Topic; drag folders to reorder), FR-TOP-07 (opening a folder opens its topic). |
+| — | Quick requests | General | Show the Type column by default; remove the Save View button; larger toolbar buttons. | Normal | c3 | 21Nov26 Built: FR-CC-01 (Type column), FR-TB-04 (Save View out of the default toolbar, 36 × 34 px buttons). |
 | REQ-018 | UI Style (visual refresh) | Look and Feel | Use Tailwind css style sheets to style the application components | Normal | c3 | 14Nov26 Added. 14Nov26 Decided: a visual refresh, not Tailwind. Built in the "Studio" direction: dark frame and flat tabs, blue accent, 28 px rows, redrawn icons (see details below). |
 
 ## Details
+
+### REQ-023 Topics Improvements
+
+- The three button at the bottom of the folders ![image-20261121210836923](./md-FeatureRequest/image-20261121210836923.png) can be removed and added into the dialog window when clicked on the pen icon to edit the topic name and description.
+- The folder name must be editable, you can use the edit icon next to each folder name to open a similiar dialog for changing the folder path, folder name, delete. you can reuse the dialog and functionaltiyt from the bookmarks.
+- reordering the folders in the topic is not working, please fix.
+- when a folder is open thats added in a topic, also open that topic, currently the topic is only selected.
+
+21Nov26 built. The folder name is a label shown in the topic only; the folder on disk is not renamed (spec FR-TOP-06).
+
+### REQ-021 Topic View
+
+2026-11-14 (built 21Nov26, see the Done table)
+
+This is very similar behavior than grouped tab supported in chrome.
+
+
+
+- The topic view is a tap on the left side panel, next to bookmark tab.
+- a Topics is a title and short description and a list of folders that is related to each other. The list is build up by the user by adding a folder to a topic. when any of the folders in a topic is opened.
+- The main or start view show the topics title defined, and a `+` to add a new topic.
+- when you click on the topic the topic is opened showing the title at the top, description below and the list of folders, be default the top folder is open in the active tab.
+- in the topic open view you can jump between different folders, delete folders from the topic, delete the topic, change the topic name, and description or navigate back to the main topic view.
+- topic should be searchable and the order can be changed by dragiing them up or down.
+- you can archive or delete a topic, archiving will whow them in a archiving group below all the normal topics. that is hidden by default.
+
+
+
+Great enjoy developing.
 
 ### REQ-018 UI Style (visual refresh)
 
@@ -119,3 +140,11 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
+- **27Nov26 c8 built** on branch `dev`: REQ-037 network computers (Windows), REQ-038 settings page. See spec section 11.10. Ctrl+, and the gear now open the settings page; *Open Settings File* is still in the Tools menu and on the page.
+- **27Nov26 c7 built** on branch `dev`: REQ-035 styles (Typewriter, Explorer, Modern; light theme only) and REQ-036 browser layout with File Catalog's own title bar (classic layout and the system title bar stay as settings; both platforms). See spec section 11.9.
+- **27Nov26 Fixed (REQ-034)**: the light theme. The Studio frame kept its dark colours in the light theme, and drop-down menus took the frame's light text colour onto their white background. The frame now follows the theme, and menus always use the normal text colour. See spec 3.2.
+- **22Nov26 c6 built** on branch `dev`: REQ-030, REQ-031, REQ-033. See spec section 11.8. REQ-032 followed after a check on your Google Drive: every file reports `Normal` (0x80) and Explorer shows no status, so files in an online drive with no state of their own now show ☁ *In online drive*.
+- **22Nov26 c5 built** on branch `dev`: REQ-024 Open With, REQ-025 OS folder icons, REQ-026 bookmark folder icons, REQ-027 tab folder icons, REQ-028 online drives, REQ-029 Favourites groups (logged from the quick requests). See spec section 11.7. The Windows parts were checked by compiling for Windows and need a test in the app.
+- **22Nov26 Fixed (REQ-023)**: saving a folder's name or path in a topic did nothing. The backend expected the field `new_path` while the UI sends `newPath`, so every save failed; a test now reads each topic change exactly as the UI sends it.
+- **21Nov26 c4 built** on branch `dev`: REQ-023 Topics improvements. Reordering folders had not been built in REQ-021; it is now. See spec section 11.6.
+- **21Nov26 c3 second part built** on branch `dev`: quick requests (Type column by default, Save View out of the default toolbar, larger toolbar buttons), REQ-007 bookmark dragging, REQ-021 Topics, REQ-022 Export File List. See spec section 11.5. Choices made for REQ-021: topics live in `topics.toml` in the app settings folder; opening a topic opens its first folder in the active tab; topics with the open folder in them are marked.

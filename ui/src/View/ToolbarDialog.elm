@@ -9,6 +9,7 @@ import Html.Attributes exposing (attribute, class, classList, disabled, id, plac
 import Html.Events exposing (onClick, onInput)
 import Text
 import Types exposing (..)
+import View.Common exposing (noAutocomplete)
 import View.Toolbar exposing (toolbarFace)
 
 
@@ -71,7 +72,7 @@ viewToolbarDialog model form =
                     ]
                 , div [ class "toolbar-column" ]
                     [ div [ class "column-title" ] [ text Text.toolbarAvailable ]
-                    , input [ class "toolbar-search", value form.search, onInput ToolbarSearch, placeholder Text.shortcutsSearch, spellcheck False ] []
+                    , input [ noAutocomplete, class "toolbar-search", value form.search, onInput ToolbarSearch, placeholder Text.shortcutsSearch, spellcheck False ] []
                     , div [ class "toolbar-list" ]
                         (List.map (\id -> div [ class "toolbar-entry", onClick (ToolbarAdd id), title id ] [ text ("+ " ++ itemLabel id) ]) available)
                     ]

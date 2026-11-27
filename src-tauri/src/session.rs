@@ -25,6 +25,8 @@ pub struct Session {
     pub find_history: Vec<String>,
     /// Bookmark groups folded in the sidebar, as `bar/Legal` (spec 5.7).
     pub folded_groups: Vec<String>,
+    /// The order of the Favourites view's groups (REQ-029): `quick`, `favourites`, `cloud`, `drives`, `network`.
+    pub favourite_groups: Vec<String>,
 }
 
 pub fn load(paths: &AppPaths) -> Session {

@@ -45,6 +45,9 @@ pub struct General {
     pub home_folder: String,
     /// "system", "light" or "dark".
     pub theme: String,
+    /// The look in the light theme (spec 3.2): "studio", "typewriter", "explorer" or "modern".
+    /// The dark theme always uses Studio's dark look.
+    pub style: String,
     pub confirm_delete: bool,
     pub confirm_extension_change: bool,
     pub typing_starts_filter: bool,
@@ -59,6 +62,7 @@ impl Default for General {
             restore_tabs: true,
             home_folder: "~".into(),
             theme: "system".into(),
+            style: "studio".into(),
             confirm_delete: false,
             confirm_extension_change: true,
             typing_starts_filter: false,
@@ -71,6 +75,10 @@ impl Default for General {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Layout {
+    /// "browser" (tabs at the top, ☰ menu) or "classic" (menu bar and toolbar rows) (spec 5.1).
+    pub style: String,
+    /// Use the system's title bar instead of File Catalog's own (spec 5.1).
+    pub system_title_bar: bool,
     pub menu_bar: bool,
     pub toolbar: bool,
     pub bookmark_bar: bool,
@@ -84,6 +92,8 @@ pub struct Layout {
 impl Default for Layout {
     fn default() -> Self {
         Self {
+            style: "browser".into(),
+            system_title_bar: false,
             menu_bar: true,
             toolbar: true,
             bookmark_bar: true,
@@ -138,7 +148,7 @@ impl Default for ViewSettings {
     fn default() -> Self {
         Self {
             mode: "details".into(),
-            columns: ["name", "modified", "created", "size", "sync"].map(String::from).to_vec(),
+            columns: ["name", "modified", "created", "size", "type", "sync"].map(String::from).to_vec(),
             sort: vec![SortKey::default()],
             folders_first: true,
             show_hidden: false,
@@ -240,9 +250,12 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 # restoreTabs     = true
 # homeFolder      = "~"
 # theme           = "system"        # "system" | "light" | "dark"
+# style           = "studio"        # light theme look: "studio" | "typewriter" | "explorer" | "modern"
 # keepFilterOnNavigate = false      # keep the Quick Filter text when opening another folder
 
 # [layout]
+# style       = "browser"           # "browser": tabs at the top and a ☰ menu | "classic": menu bar and toolbar rows
+# systemTitleBar = false            # true: the system's title bar instead of File Catalog's own
 # menuBar     = true
 # toolbar     = true
 # bookmarkBar = true
@@ -252,7 +265,7 @@ const DEFAULT_FILE: &str = r##"# File Catalog settings.
 # sidebar     = { visible = true, side = "left", width = 260, mode = "tree" }   # mode: "tree" | "favourites" | "bookmarks"
 
 # [view.default]
-# columns      = ["name", "modified", "created", "size", "sync"]   # also: "type", "ext"
+# columns      = ["name", "modified", "created", "size", "type", "sync"]   # also: "ext", "accessed", "attributes", "linkTarget"
 # sort         = [{ column = "name", direction = "asc" }]
 # foldersFirst = true
 # showHidden   = false
