@@ -6,7 +6,7 @@
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
 | Status | 0.1.0 released. Update cycles **c1** to **c6** are built on top of it and not yet released (Sections 11.2 to 11.8). |
-| Changes | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01). |
+| Changes | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01); light theme fixed: a light frame and readable menus (3.2). |
 | | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
 | | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
 | | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
@@ -94,7 +94,7 @@ Its guiding principle is **no lock-in**: everything File Catalog creates (folder
 - All UI is written in Elm, using The Elm Architecture (Model / Update / View).
 - Elm talks to the Rust backend only through **ports**. A small, hand-written JavaScript bridge (`ui/static/bridge.js`) connects Elm ports to Tauri's `invoke`, channel and event APIs. No other JavaScript application logic is allowed.
 - Styling uses plain CSS with CSS custom properties for the light and dark themes. No CSS framework (Tailwind was considered for REQ-018 and not needed; decision log 13.1).
-- **Look ("Studio", REQ-018):** a dark frame (Menu Bar, toolbar, Bookmark Bar, flat tabs with a blue accent line, Address Bar and sidebar) around the file list, which is light in the light theme and dark in the dark theme; a blue status bar; rounder menus and dialogs. The accent is a bright blue (`#60cdff`) on dark surfaces and a deeper blue (`#0f6cbd`) on light ones. Colours are tokens (`--chrome*` for the frame) in `styles.css`.
+- **Look ("Studio", REQ-018):** a frame (Menu Bar, toolbar, Bookmark Bar, flat tabs with a blue accent line, Address Bar and sidebar) around the file list. The frame follows the theme: light grey in the light theme, dark in the dark theme (REQ-034); menus and dialogs always use the theme's normal text colour on their own background. A blue status bar; rounder menus and dialogs. The accent is a bright blue (`#60cdff`) on dark surfaces and a deeper blue (`#0f6cbd`) on light ones. Colours are tokens (`--chrome*` for the frame) in `styles.css`.
 - Build: `elm make --optimize`, then minify with `esbuild` (`ui/build.mjs`). Target bundle size: ≤ 250 KB minified, ≤ 80 KB gzipped.
 
 ### 3.3 Main Rust crates
@@ -1030,6 +1030,7 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | REQ-031 Topic switcher | FR-TOP-08 |
 | REQ-033 No autocomplete in text boxes | NFR-UX-05 |
 | REQ-032 Google Drive sync status | FR-SYNC-01 (*In online drive*) |
+| REQ-034 Light theme fix | 3.2: the frame is light in the light theme, and menu text is readable |
 
 REQ-032: checked on a real Google Drive (2026-11-22): every file reports `Normal` (0x80), online-only or not, and Explorer has no per-file status, only the same cloud overlay. Google Drive files therefore show *In online drive*; telling online-only and offline files apart would need Google's own API, which is not used.
 ---
@@ -1127,6 +1128,7 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
 | 2026-11-22 | Open With uses Windows' own dialog, and a list of apps from the desktop files on Linux; it moves in from section 12 (Properties stays there) | FR-OPEN-02 |
 | 2026-11-22 | Online drives are found from each provider's settings, the Windows sync-root registry and the default folders, and use the slow-path pool; sync states stay in section 12 | 6.4.7 |
+| 2026-11-27 | The Studio frame follows the theme (light in the light theme) instead of staying dark in both; menus always use the normal text colour (REQ-034) | 3.2 |
 | 2026-11-22 | Google Drive files show *In online drive*: Google Drive for desktop reports no per-file state through attributes (checked: `Normal`, 0x80, for online-only and offline files), and Google's API is not used | FR-SYNC-01 |
 | 2026-11-22 | The Favourites view is grouped (Quick access, Pinned, Online drives, Drives, Network), foldable and reorderable; Quick access is read from the OS and read-only | FR-FAV-04 |
 
