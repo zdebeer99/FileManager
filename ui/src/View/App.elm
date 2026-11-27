@@ -4,12 +4,12 @@ module View.App exposing (view)
 -}
 
 import Html exposing (Html, div, text)
-import Html.Attributes exposing (attribute, class, tabindex)
+import Html.Attributes exposing (attribute, class, classList, tabindex)
 import Html.Events exposing (on, onClick, preventDefaultOn)
 import Json.Decode as D
 import Menu
 import Types exposing (..)
-import View.AddressBar exposing (viewAddressBar)
+import View.AddressBar exposing (viewAddressBar, viewAddressBarWith)
 import View.BookmarkBar exposing (viewBookmarkBar)
 import View.Common exposing (viewIf)
 import View.Dialogs exposing (viewDialog)
@@ -21,7 +21,8 @@ import View.Popup exposing (viewPopup)
 import View.Sidebar exposing (viewSidebar)
 import View.StatusBar exposing (viewStatusBar)
 import View.TabBar exposing (viewTabBar)
-import View.Toolbar exposing (viewToolbar)
+import View.TitleBar exposing (dragRegion, viewWindowControls)
+import View.Toolbar exposing (viewToolbar, viewToolbarGroups)
 
 
 view : Model -> Html Msg
@@ -36,6 +37,16 @@ view model =
          , on "mouseleave" (D.succeed DragLeftWindow)
          ]
             ++ themeAttribute model.settings.theme
+            ++ [ attribute "data-style" model.settings.style
+               , attribute "data-layout"
+                    (if isBrowserLayout model then
+                        "browser"
+
+                     else
+                        "classic"
+                    )
+               , classList [ ( "own-titlebar", not model.settings.systemTitleBar ) ]
+               ]
             ++ (if model.popup /= Nothing || model.menuBar /= Nothing then
                     [ onClick ClosePopups ]
 
@@ -62,25 +73,70 @@ view model =
                     []
 
                 Just tab ->
-                    [ viewIf (model.settings.menuBar || model.menuBar /= Nothing) (Menu.viewMenuBar model tab)
-                    , viewIf model.settings.toolbar (viewToolbar model tab)
-                    , viewIf model.settings.bookmarkBar (viewBookmarkBar model)
-                    , viewIf model.settings.tabBar (viewTabBar model)
-                    , viewIf model.settings.addressBar (viewAddressBar model tab)
-                    , viewMain model tab
-                    , viewIf model.settings.statusBar (viewStatusBar model tab)
-                    , viewIf model.jobsPanel (viewJobsPanel model)
-                    , viewPopup model
-                    , viewDragGhost model
-                    , case model.conflicts of
-                        conflict :: _ ->
-                            viewConflict model conflict
+                    viewTopRows model tab
+                        ++ [ viewMain model tab
+                           , viewIf model.settings.statusBar (viewStatusBar model tab)
+                           , viewIf model.jobsPanel (viewJobsPanel model)
+                           , viewPopup model
+                           , viewDragGhost model
+                           , case model.conflicts of
+                                conflict :: _ ->
+                                    viewConflict model conflict
 
-                        [] ->
-                            viewDialog model
-                    , viewPalette model
-                    ]
+                                [] ->
+                                    viewDialog model
+                           , viewPalette model
+                           ]
         )
+
+
+isBrowserLayout : Model -> Bool
+isBrowserLayout model =
+    model.settings.layoutStyle /= "classic"
+
+
+{-| The rows above the file list (spec 5.1).
+
+  - Browser layout: the tabs with the window buttons (the title bar), then the
+    toolbar's first group, the Address Bar, the other toolbar buttons and ☰,
+    then the Bookmark Bar.
+  - Classic layout: the Menu Bar (with the window buttons), toolbar, Bookmark
+    Bar, tabs and Address Bar, each as set in View. With File Catalog's own
+    title bar the Menu Bar row is always shown, as it is the title bar.
+
+-}
+viewTopRows : Model -> Tab -> List (Html Msg)
+viewTopRows model tab =
+    let
+        s =
+            model.settings
+
+        ownTitleBar =
+            not s.systemTitleBar
+    in
+    if isBrowserLayout model then
+        let
+            ( left, right ) =
+                viewToolbarGroups model tab
+        in
+        [ div ([ class "titlebar" ] ++ dragRegion model) [ viewTabBar model, viewWindowControls model ]
+        , viewAddressBarWith [ left ] [ right, Menu.viewMenuButton model tab ] model tab
+        , viewIf s.bookmarkBar (viewBookmarkBar model)
+        ]
+
+    else
+        [ viewIf (s.menuBar || model.menuBar /= Nothing || ownTitleBar)
+            (div ([ class "titlebar classic" ] ++ dragRegion model)
+                [ Menu.viewMenuBar model tab
+                , div ([ class "titlebar-space" ] ++ dragRegion model) []
+                , viewWindowControls model
+                ]
+            )
+        , viewIf s.toolbar (viewToolbar model tab)
+        , viewIf s.bookmarkBar (viewBookmarkBar model)
+        , viewIf s.tabBar (viewTabBar model)
+        , viewIf s.addressBar (viewAddressBar model tab)
+        ]
 
 
 themeAttribute : String -> List (Html.Attribute msg)

@@ -5,7 +5,7 @@ thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
 # File Catalog Feature Requests
 2026-11-02
 
- Update Cycle: c6
+ Update Cycle: c7
 
 ## How to use this file
 
@@ -66,6 +66,8 @@ thumbnail: thumbnails/resized/3589ee70fe80b9df38e2a72752d794f8_86cf658e.webp
 | REQ-007 | Bookmark Reordering | Bookmarks | Allow drag and drop bookmarks to reorder them quickly, also allow moving bookmarks between groups. | Normal | c3 | 02Nov26 new. 21Nov26 Built: FR-BM-07: drag in the sidebar and on the Bookmark Bar; drop on a bookmark (before it) or a group (end of it). |
 | REQ-021 | Topic View | Left Side View | Add a Topic view that links folders to the current visible folder. See "REQ-021 Topic View" below. | Normal | c3 | 14Nov26 Added. 21Nov26 Built: spec 6.4.6 (FR-TOP-01 to 05), topics.toml (8.8): fourth sidebar view, Add to Topic in folder menus, drag folders onto a topic. |
 | REQ-022 | Export file names | File View | Export current folder file list as a text file containing all the folder and file names in the folder. | Normal | c3 | 21Nov26 added. 21Nov26 Built: FR-OPEN-07: Export File List… (right-click on empty space, File menu, palette); the names shown, one per line, in a .txt you choose. |
+| REQ-035 | More styles | Look and Feel | Add styles: Typewriter (like the Obsidian Typewriter theme), a yellow Windows File Explorer look, and Modern with light blue and brown. | Normal | c7 | 27Nov26 added. 27Nov26 Built: FR-UI-08: View › Style ▸; light theme only (your choice), the dark theme keeps Studio's dark look. |
+| REQ-036 | Browser layout | Layout | Hide the Windows title bar and draw the window buttons in the app. Lay it out like Chrome: tabs at the top, then the Bookmark Bar and the path box, with the menu behind one button. | Normal | c7 | 27Nov26 added. 27Nov26 Built: FR-UI-06, FR-UI-07: tabs and window buttons in the top row, the toolbar around the path box, ☰ for the menu; the classic layout and the system title bar stay as settings (View › Layout ▸). |
 | REQ-034 | Light theme | Look and Feel | The light theme is not correct: only the file view and the menu drop-downs are light, and the menu items' text is too light to read on the light background. | Normal | c6 | 27Nov26 reported. 27Nov26 Fixed: 3.2: the frame (menus, toolbar, tabs, address bar, sidebar) is light in the light theme; menus use the normal text colour. |
 | REQ-032 | Google Drive sync status | File List | The sync status for Google Drive files is not showing in the Sync status column. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Checked: Google Drive gives every file `Normal` (0x80) and Explorer shows no status. Built: FR-SYNC-01: files in an online drive with no state of their own show ☁ *In online drive*. |
 | REQ-030 | Favourites: open in the active tab | Side Bar | In the Favourites view, open a folder directly in the active tab: the ↗ button next to each folder, and Ctrl+Click. | Normal | c6 | 22Nov26 added from the quick requests. 22Nov26 Built: FR-FAV-05. |
@@ -141,6 +143,7 @@ Update the favorite sidebar view to work as follow. When the view it's initial s
 - **04Nov26 c2 built** on branch `dev`: REQ-009 Open Text Editor, REQ-011 menu placement, REQ-012 tab colour. IDs REQ-0011 to REQ-0014 written as REQ-011 to REQ-014. See spec section 11.3.
 - **14Nov26 c3 built** on branch `dev`: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-019, REQ-020. REQ-018 (Tailwind) left open. See spec section 11.4.
 - **14Nov26 REQ-018 built** (c3) on branch `dev`: Studio look, 28 px rows, new icons. See spec 3.2.
+- **27Nov26 c7 built** on branch `dev`: REQ-035 styles (Typewriter, Explorer, Modern; light theme only) and REQ-036 browser layout with File Catalog's own title bar (classic layout and the system title bar stay as settings; both platforms). See spec section 11.9.
 - **27Nov26 Fixed (REQ-034)**: the light theme. The Studio frame kept its dark colours in the light theme, and drop-down menus took the frame's light text colour onto their white background. The frame now follows the theme, and menus always use the normal text colour. See spec 3.2.
 - **22Nov26 c6 built** on branch `dev`: REQ-030, REQ-031, REQ-033. See spec section 11.8. REQ-032 followed after a check on your Google Drive: every file reports `Normal` (0x80) and Explorer shows no status, so files in an online drive with no state of their own now show ☁ *In online drive*.
 - **22Nov26 c5 built** on branch `dev`: REQ-024 Open With, REQ-025 OS folder icons, REQ-026 bookmark folder icons, REQ-027 tab folder icons, REQ-028 online drives, REQ-029 Favourites groups (logged from the quick requests). See spec section 11.7. The Windows parts were checked by compiling for Windows and need a test in the app.

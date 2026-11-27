@@ -1,4 +1,4 @@
-module View.Toolbar exposing (toolbarFace, viewToolbar)
+module View.Toolbar exposing (toolbarFace, viewToolbar, viewToolbarGroups)
 
 {-| The toolbar (spec 5.3) and its Save View button (FR-VIEW-05).
 -}
@@ -20,6 +20,52 @@ viewToolbar model tab =
         , preventDefaultOn "contextmenu" (D.map2 (\x y -> ( ToolbarContext x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
         ]
         (List.map (viewToolbarItem model tab) model.toolbar.items)
+
+
+{-| The toolbar in the browser layout (spec 5.1, 5.3): its first group (up to
+the first `|`, by default Back, Forward, Up and Refresh) goes left of the
+path box, and the other items right of the filter box. `->` is not used there.
+-}
+viewToolbarGroups : Model -> Tab -> ( Html Msg, Html Msg )
+viewToolbarGroups model tab =
+    let
+        firstGroup items =
+            case items of
+                [] ->
+                    ( [], [] )
+
+                "|" :: rest ->
+                    ( [], rest )
+
+                item :: rest ->
+                    let
+                        ( leading, others ) =
+                            firstGroup rest
+                    in
+                    ( item :: leading, others )
+
+        ( left, right ) =
+            firstGroup (List.filter ((/=) "->") model.toolbar.items)
+
+        trimSeparators =
+            List.reverse >> dropSeparators >> List.reverse >> dropSeparators
+
+        dropSeparators items =
+            case items of
+                "|" :: rest ->
+                    dropSeparators rest
+
+                _ ->
+                    items
+
+        group name items =
+            div
+                [ class ("toolbar toolbar-group " ++ name ++ " style-" ++ model.toolbar.style)
+                , preventDefaultOn "contextmenu" (D.map2 (\x y -> ( ToolbarContext x y, True )) (D.field "clientX" D.float) (D.field "clientY" D.float))
+                ]
+                (List.map (viewToolbarItem model tab) items)
+    in
+    ( group "toolbar-left" left, group "toolbar-right" (trimSeparators right) )
 
 
 {-| One toolbar.toml item: a command button, `|` a separator, `->` flexible space (spec 8.5).

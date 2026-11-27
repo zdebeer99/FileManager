@@ -88,7 +88,7 @@ Notes:
 
 - `Main.elm`: `init`, `update`, keyboard routing, and the backend message handlers. It is about 5,500 lines, divided by `-- SECTION` comment headers.
 - `View/`: all drawing, one module per component. `View.App` draws the window and puts the components together; `Main` uses only `View.App.view`, `View.Sidebar.treeRows` and `View.Popup.filterPopupValues`.
-  - Components: `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites in groups, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
+  - Components: `TitleBar` (window buttons and drag regions, FR-UI-07), `Toolbar`, `BookmarkBar`, `TabBar`, `AddressBar`, `Sidebar` (tree, Favourites in groups, Bookmarks, Topics), `FileList` (Details view and drag ghost), `StatusBar`, `Jobs` (Jobs panel and conflict dialog), `Palette`, `Popup` (right-click menus and column filters), `Dialogs`, `Shortcuts`, `ToolbarDialog`.
   - Shared: `Icons` (system and built-in icons, folder colours), `Common` (small helpers such as `viewIf`, `contextMenu`, `dropTarget`, `px`), `Keyboard` (key and mouse-button routing).
   - A component imports only `Common`, `Icons` or another component it draws; keep the imports one-way (no cycles).
 - `Types.elm`: `Model`, `Msg`, `Request` and the tab state, shared by Main and the view.
@@ -103,6 +103,7 @@ Notes:
   - `FileName.elm`: name checks while renaming or creating, and the F2 selection cycle.
   - `Path.elm`, `Format.elm` and `Settings.elm`: path helpers, size and date formatting, and the settings decoder.
 - **All user-facing text lives in `Text.elm`** (NFR-UX-04). Don't put text in other modules.
+- Layouts and styles: `View.App` builds the browser or classic layout from `layout.style` (spec 5.1); `.app` carries `data-layout`, `data-theme` and `data-style`. A style (spec FR-UI-08) is a block of colour tokens in `styles.css` that applies to the light theme only.
 - `ui/static/` holds `index.html`, `styles.css` and `bridge.js`. `ui/build.mjs` builds them into `ui/dist/`.
 - The CSP (in `tauri.conf.json`) allows only `'self'` scripts. No CDNs.
 

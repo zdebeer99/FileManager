@@ -126,6 +126,10 @@ pub async fn app_init(app: AppHandle, state: State<'_, AppState>) -> Result<Init
 
     *state.settings.write().unwrap() = loaded.clone();
     *state.session.lock().unwrap() = last_session.clone();
+    // File Catalog draws its own title bar unless the system one is wanted (spec 5.1).
+    if let Some(window) = tauri::Manager::get_webview_window(&app, "main") {
+        let _ = window.set_decorations(loaded.layout.system_title_bar);
+    }
 
     let home = if loaded.general.home_folder.trim().is_empty() || loaded.general.home_folder == "~" {
         paths::home_dir()
@@ -631,6 +635,28 @@ pub async fn open_in_editor(state: State<'_, AppState>, paths: Vec<String>) -> R
     let settings = state.settings.read().unwrap().editor.clone();
     let config = state.paths.config.clone();
     state.pools.run(&config, Duration::from_secs(10), move || editor::open(&settings, &paths)).await?
+}
+
+/// The window buttons in File Catalog's own title bar (spec 5.1). `action` is
+/// "minimize", "maximize" (toggles), "close" or "" (only asks). Returns
+/// whether the window is maximised, so the button can show Restore.
+#[tauri::command]
+pub async fn window_control(window: tauri::WebviewWindow, action: String) -> Result<bool, String> {
+    let result = match action.as_str() {
+        "minimize" => window.minimize(),
+        "maximize" if window.is_maximized().unwrap_or(false) => window.unmaximize(),
+        "maximize" => window.maximize(),
+        "close" => window.close(),
+        _ => Ok(()),
+    };
+    result.map_err(|e| e.to_string())?;
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
+/// Switches between the system's title bar and File Catalog's own (spec 5.1).
+#[tauri::command]
+pub async fn window_frame(window: tauri::WebviewWindow, system: bool) -> Result<(), String> {
+    window.set_decorations(system).map_err(|e| e.to_string())
 }
 
 /// The file manager's Quick access folders (REQ-029): Explorer's on Windows,

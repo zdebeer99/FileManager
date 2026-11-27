@@ -122,6 +122,7 @@ type Request
     | ReqOpenWith String
     | ReqOpenedWith
     | ReqQuickAccess
+    | ReqWindow
     | ReqViewSaved Int String
     | ReqViewReset Int String
     | ReqOpenSettingsFile
@@ -802,6 +803,9 @@ type alias Model =
 
     -- The Favourites view (REQ-029): the OS Quick access folders, and the group order.
     , quickAccess : List Place
+
+    -- Whether the window is maximised, for the Maximise / Restore button (spec 5.1).
+    , maximized : Bool
     , favouriteGroups : List String
     , clipboard : Maybe Clipboard
     , jobs : Dict Int JobStatus
@@ -844,6 +848,8 @@ type Msg
     | ListScrolled Float Float
     | GotListViewport (Result Dom.Error Dom.Viewport)
     | WindowResized Float Float
+      -- The window buttons in File Catalog's own title bar (spec 5.1): "minimize", "maximize", "close".
+    | WindowControl String
     | RowClicked Int Mods
     | RowActivated Int
     | RowMiddleClicked Int
@@ -1039,6 +1045,9 @@ type Command
     | CmdToggleFoldersFirst
     | CmdSetting String Bool
     | CmdSetTheme String
+    | CmdSetStyle String
+    | CmdSetLayout String
+    | CmdToggleSystemTitleBar
     | CmdSetIcons String
     | CmdToggleSidebar
     | CmdSidebarMode SidebarMode

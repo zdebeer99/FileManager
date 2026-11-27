@@ -13,13 +13,18 @@ import Text
 import Types exposing (..)
 import View.Common exposing (dropTarget, middleClick, viewIf)
 import View.Icons exposing (ownFolderIcon)
+import View.TitleBar exposing (dragRegion)
 
 
 viewTabBar : Model -> Html Msg
 viewTabBar model =
-    div [ class "tabbar", attribute "role" "tablist" ]
+    div ([ class "tabbar", attribute "role" "tablist" ] ++ dragRegion model)
         (List.map (viewTab model) model.tabs
-            ++ [ button [ class "newtab", onClick NewTab, title Text.newTab, tabindex -1 ] [ text "+" ] ]
+            ++ [ button [ class "newtab", onClick NewTab, title Text.newTab, tabindex -1 ] [ text "+" ]
+
+               -- Empty space after the tabs moves the window (spec 5.1).
+               , div ([ class "tabbar-space" ] ++ dragRegion model) []
+               ]
         )
 
 

@@ -103,6 +103,7 @@ init _ =
             , openTopic = Nothing
             , archivedTopicsOpen = False
             , quickAccess = []
+            , maximized = False
             , favouriteGroups = favouriteGroupIds
             , clipboard = Nothing
             , jobs = Dict.empty
@@ -423,6 +424,18 @@ update msg model =
 
         WindowResized width height ->
             ( { model | windowWidth = width, windowHeight = height }, measureList )
+                -- Maximising or restoring resizes the window; ask which it is now (spec 5.1).
+                |> andThen
+                    (\m ->
+                        if m.booted && not m.settings.systemTitleBar then
+                            request "window_control" (E.object [ ( "action", E.string "" ) ]) False ReqWindow m
+
+                        else
+                            ( m, Cmd.none )
+                    )
+
+        WindowControl action ->
+            request "window_control" (E.object [ ( "action", E.string action ) ]) False ReqWindow model
 
         RowClicked index mods ->
             ( updateActive (clickRow index mods) { model | popup = Nothing, menuBar = Nothing }, Cmd.none )
@@ -1681,6 +1694,20 @@ runCommand command model =
 
         CmdSetTheme theme ->
             setSetting "general.theme" (E.string theme) (\s -> { s | theme = theme }) model
+
+        CmdSetStyle style ->
+            setSetting "general.style" (E.string style) (\s -> { s | style = style }) model
+
+        CmdSetLayout layout ->
+            setSetting "layout.style" (E.string layout) (\s -> { s | layoutStyle = layout }) { model | menuBar = Nothing }
+
+        CmdToggleSystemTitleBar ->
+            let
+                system =
+                    not model.settings.systemTitleBar
+            in
+            setSetting "layout.systemTitleBar" (E.bool system) (\s -> { s | systemTitleBar = system }) model
+                |> andThen (request "window_frame" (E.object [ ( "system", E.bool system ) ]) False ReqIgnore)
 
         CmdSetIcons icons ->
             setSetting "view.default.icons" (E.string icons) (\s -> { s | icons = icons }) model
@@ -5880,6 +5907,14 @@ handleResponse reqId req envelope model =
                 Nothing ->
                     flashError model
 
+        ReqWindow ->
+            case ok D.bool of
+                Just maximized ->
+                    ( { model | maximized = maximized }, Cmd.none )
+
+                Nothing ->
+                    flashError model
+
         ReqQuickAccess ->
             case ok (D.list (D.map2 Place (D.field "name" D.string) (D.field "path" D.string))) of
                 Just places ->
@@ -6560,6 +6595,14 @@ handleEvent name data model =
                     ( { updated | tabs = List.map adjust model.tabs }, measureList )
                         -- [editor] may have changed (FR-OPEN-06).
                         |> andThen (request "editor_info" (E.object []) False ReqEditorInfo)
+                        -- The title bar setting was changed in the file (spec 5.1).
+                        |> andThen
+                            (if settings.systemTitleBar /= model.settings.systemTitleBar then
+                                request "window_frame" (E.object [ ( "system", E.bool settings.systemTitleBar ) ]) False ReqIgnore
+
+                             else
+                                \m -> ( m, Cmd.none )
+                            )
 
                 Err _ ->
                     ( model, Cmd.none )

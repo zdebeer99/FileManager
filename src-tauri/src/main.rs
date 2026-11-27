@@ -78,6 +78,8 @@ fn main() {
             commands::open_in_editor,
             commands::open_with,
             commands::quick_access,
+            commands::window_control,
+            commands::window_frame,
             commands::open_with_app,
             commands::app_exit,
             commands::job_start,

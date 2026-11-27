@@ -1231,6 +1231,27 @@ commandName id =
         "view.sidebarMode.topics" ->
             "Sidebar: Topics"
 
+        "view.style.studio" ->
+            "Style: Studio"
+
+        "view.style.typewriter" ->
+            "Style: Typewriter"
+
+        "view.style.explorer" ->
+            "Style: Explorer"
+
+        "view.style.modern" ->
+            "Style: Modern"
+
+        "view.layout.browser" ->
+            "Layout: Browser"
+
+        "view.layout.classic" ->
+            "Layout: Classic"
+
+        "view.systemTitleBar" ->
+            "Use the System Title Bar"
+
         "view.sidebarLeft" ->
             "Sidebar on the Left"
 
@@ -1923,3 +1944,78 @@ switchTopic =
 allTopics : String
 allTopics =
     "All Topics"
+
+
+
+-- STYLES, LAYOUT AND TITLE BAR (spec 3.2, 5.1)
+
+
+styleMenu : String
+styleMenu =
+    "Style"
+
+
+styleName : String -> String
+styleName id =
+    case id of
+        "typewriter" ->
+            "Typewriter"
+
+        "explorer" ->
+            "Explorer"
+
+        "modern" ->
+            "Modern"
+
+        _ ->
+            "Studio"
+
+
+styleHint : String
+styleHint =
+    "Light theme only"
+
+
+layoutMenu : String
+layoutMenu =
+    "Layout"
+
+
+layoutBrowser : String
+layoutBrowser =
+    "Browser (tabs at the top, ☰ menu)"
+
+
+layoutClassic : String
+layoutClassic =
+    "Classic (menu bar and toolbar)"
+
+
+systemTitleBar : String
+systemTitleBar =
+    "Use the System Title Bar"
+
+
+mainMenu : String
+mainMenu =
+    "Menu (Alt or F10)"
+
+
+minimizeWindow : String
+minimizeWindow =
+    "Minimise"
+
+
+maximizeWindow : String
+maximizeWindow =
+    "Maximise"
+
+
+restoreWindow : String
+restoreWindow =
+    "Restore Down"
+
+
+closeWindow : String
+closeWindow =
+    "Close"

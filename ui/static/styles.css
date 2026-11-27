@@ -145,8 +145,9 @@ html, body, #app {
 
 body {
   font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, Ubuntu, Cantarell, "Noto Sans", sans-serif;
-  background: #1f2329;
+  background: #f3f4f6;
 }
+.app { font-family: var(--font-ui, inherit); }
 
 @media (prefers-color-scheme: dark) {
   body { background: #15171b; }
@@ -1633,8 +1634,8 @@ button.small { height: 24px; padding: 0 8px; font-size: 12px; }
 .list:focus .row.selected { background: var(--bg-selected); box-shadow: inset 2px 0 0 var(--accent); }
 .list:focus .row.cursor { box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--focus); }
 
-.statusbar { background: var(--status-bg); color: #ffffff; border: none; height: 24px; font-size: 12px; }
-.statusbar .message, .statusbar .warning, .statusbar .job-summary { color: #ffffff; }
+.statusbar { background: var(--status-bg); color: var(--status-text, #ffffff); border: none; height: 24px; font-size: 12px; }
+.statusbar .message, .statusbar .warning, .statusbar .job-summary { color: var(--status-text, #ffffff); }
 .statusbar .job-summary:hover { background: rgba(255, 255, 255, 0.15); }
 
 /* Menus, popups and dialogs: rounder, softer. */
@@ -1737,3 +1738,277 @@ button.small { height: 24px; padding: 0 8px; font-size: 12px; }
 .bm.bm-drop-before { box-shadow: inset 2px 0 0 var(--chrome-accent); }
 .bm-drop-into { outline: 2px solid var(--accent); outline-offset: -2px; }
 .bookmarkbar.bm-drop-into { outline-color: var(--chrome-accent); }
+
+
+/* ---------------------------------------------------------------------------
+   Title bar and layouts (spec 5.1). File Catalog draws its own title bar unless
+   layout.systemTitleBar is on: the window buttons sit at the end of the top
+   row, and the row's empty space moves the window.
+   --------------------------------------------------------------------------- */
+
+.titlebar {
+  display: flex;
+  align-items: stretch;
+  min-height: 36px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--chrome-border);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.titlebar .tabbar { flex: 1; min-width: 0; border-bottom: none; }
+.titlebar .menubar { border-bottom: none; background: transparent; }
+.tabbar-space, .titlebar-space { flex: 1; min-width: 40px; }
+.window-controls { display: flex; flex-shrink: 0; }
+.window-control {
+  width: 46px;
+  height: 100%;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--chrome-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.window-control .icon { width: 12px; height: 12px; background-color: var(--chrome-text); }
+.window-control:hover { background: var(--chrome-hover); }
+.window-control.close:hover { background: #c42b1c; }
+.window-control.close:hover .icon { background-color: #ffffff; }
+.icon.win-minimize { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 8h12v1H2z'/%3E%3C/svg%3E"); }
+.icon.win-maximize { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 2h12v12H2zm1 1v10h10V3z'/%3E%3C/svg%3E"); }
+.icon.win-restore { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 2h10v10h-2v2H2V4h2zm1 2h7v7h1V3H5zM3 5v8h8V5z'/%3E%3C/svg%3E"); }
+.icon.win-close { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m2.7 2 5.3 5.3L13.3 2l.7.7L8.7 8l5.3 5.3-.7.7L8 8.7 2.7 14l-.7-.7L7.3 8 2 2.7z'/%3E%3C/svg%3E"); }
+.icon.hamburger { --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 3.5h12v1.5H2zm0 3.75h12v1.5H2zM2 11h12v1.5H2z'/%3E%3C/svg%3E"); }
+
+/* Browser layout: the toolbar's groups and ☰ share the Address Bar's row. */
+.app[data-layout="browser"] .addressbar { gap: 6px; padding: 5px 8px; }
+.toolbar.toolbar-group { padding: 0; border: none; background: transparent; overflow: visible; flex-shrink: 0; gap: 2px; }
+.toolbar.toolbar-group:empty { display: none; }
+.app[data-layout="browser"] .tabbar { padding-top: 4px; }
+.app[data-layout="browser"] .tab { height: 32px; border-radius: 8px 8px 0 0; }
+.app[data-layout="browser"] .tab.active { height: 32px; }
+
+/* ☰ and the whole menu (spec 5.1). */
+.menu-button-wrap { position: relative; flex-shrink: 0; }
+.menu-button {
+  width: 36px; height: 34px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 6px; background: transparent;
+}
+.menu-button .icon { width: 18px; height: 18px; background-color: var(--chrome-text); }
+.menu-button:hover, .menu-button.open { background: var(--chrome-hover); }
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.menu-panel .menu { position: static; max-height: calc(100vh - 100px); }
+.menu-panel .menu.dropdown { position: static; overflow: visible; }
+.menu-panel .submenu { left: auto; right: 100%; }
+.menu-panel .menu-titles { min-width: 140px; }
+.menu-panel .menu-titles .check { color: var(--text-muted); }
+
+
+/* ---------------------------------------------------------------------------
+   Styles (spec 3.2): general.style changes the light theme only. The dark
+   theme always uses Studio's dark look, so every rule here is limited to the
+   light theme: chosen explicitly, or System while the OS is in light mode.
+   --------------------------------------------------------------------------- */
+
+/* Typewriter: cream paper, ink-black type in a typewriter face, a sepia frame
+   and a muted green accent, after the Obsidian theme "Typewriter" (its Solarized-
+   based light colours). */
+.app[data-style="typewriter"][data-theme="light"] {
+  --bg: #fcf5e4;
+  --bg-bar: #f5ecd6;
+  --bg-hover: #f0e5cb;
+  --bg-selected: #d9ead3;
+  --bg-selected-blur: #ebe1c8;
+  --bg-input: #fffaf0;
+  --border: #e4d9c1;
+  --text: #262626;
+  --text-muted: #5a5650;
+  --accent: #4c8f55;
+  --focus: #4c8f55;
+  --link: #3f7f48;
+  --folder: #b58a45;
+  --chrome: #e6dcc4;
+  --chrome-2: #efe6d0;
+  --chrome-hover: #dacfb3;
+  --chrome-border: #cfc2a4;
+  --chrome-text: #262626;
+  --chrome-strong: #000000;
+  --chrome-muted: #5e584d;
+  --chrome-accent: #4c8f55;
+  --chrome-selected: #d6e4c9;
+  --chrome-input: #fcf5e4;
+  --status-bg: #3b362f;
+  --status-text: #f5ecd6;
+  --icon-paper: #fffaf0;
+  --font-ui: "iA Writer Quattro S", "iA Writer Quattro V", "iA Writer Duo S", "IBM Plex Mono", "Courier Prime", "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: light) {
+  .app[data-style="typewriter"]:not([data-theme="dark"]) {
+    --bg: #fcf5e4;
+    --bg-bar: #f5ecd6;
+    --bg-hover: #f0e5cb;
+    --bg-selected: #d9ead3;
+    --bg-selected-blur: #ebe1c8;
+    --bg-input: #fffaf0;
+    --border: #e4d9c1;
+    --text: #262626;
+    --text-muted: #5a5650;
+    --accent: #4c8f55;
+    --focus: #4c8f55;
+    --link: #3f7f48;
+    --folder: #b58a45;
+    --chrome: #e6dcc4;
+    --chrome-2: #efe6d0;
+    --chrome-hover: #dacfb3;
+    --chrome-border: #cfc2a4;
+    --chrome-text: #262626;
+    --chrome-strong: #000000;
+    --chrome-muted: #5e584d;
+    --chrome-accent: #4c8f55;
+    --chrome-selected: #d6e4c9;
+    --chrome-input: #fcf5e4;
+    --status-bg: #3b362f;
+    --status-text: #f5ecd6;
+    --icon-paper: #fffaf0;
+    --font-ui: "iA Writer Quattro S", "iA Writer Quattro V", "iA Writer Duo S", "IBM Plex Mono", "Courier Prime", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  }
+}
+.app[data-style="typewriter"][data-theme="light"] .hcell { letter-spacing: 0.08em; }
+@media (prefers-color-scheme: light) { .app[data-style="typewriter"]:not([data-theme="dark"]) .hcell { letter-spacing: 0.08em; } }
+
+/* Explorer: the Windows 11 File Explorer look: a light grey frame, white list,
+   light-blue selection, classic yellow folders and a yellow marker on the active
+   tab and sidebar item. */
+.app[data-style="explorer"][data-theme="light"] {
+  --bg: #ffffff;
+  --bg-bar: #fafafa;
+  --bg-hover: #e5f3ff;
+  --bg-selected: #cce8ff;
+  --bg-selected-blur: #dcedfa;
+  --bg-input: #ffffff;
+  --border: #e5e5e5;
+  --text: #1a1a1a;
+  --text-muted: #5c5c5c;
+  --accent: #005fb8;
+  --focus: #005fb8;
+  --link: #005fb8;
+  --folder: #f2b632;
+  --chrome: #f3f3f3;
+  --chrome-2: #fbfbfb;
+  --chrome-hover: #e6e6e6;
+  --chrome-border: #e0e0e0;
+  --chrome-text: #1a1a1a;
+  --chrome-strong: #000000;
+  --chrome-muted: #5c5c5c;
+  --chrome-accent: #d99a06;
+  --chrome-selected: #fdf0c9;
+  --chrome-input: #ffffff;
+  --status-bg: #f3f3f3;
+  --status-text: #1a1a1a;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  .app[data-style="explorer"]:not([data-theme="dark"]) {
+    --bg: #ffffff;
+    --bg-bar: #fafafa;
+    --bg-hover: #e5f3ff;
+    --bg-selected: #cce8ff;
+    --bg-selected-blur: #dcedfa;
+    --bg-input: #ffffff;
+    --border: #e5e5e5;
+    --text: #1a1a1a;
+    --text-muted: #5c5c5c;
+    --accent: #005fb8;
+    --focus: #005fb8;
+    --link: #005fb8;
+    --folder: #f2b632;
+    --chrome: #f3f3f3;
+    --chrome-2: #fbfbfb;
+    --chrome-hover: #e6e6e6;
+    --chrome-border: #e0e0e0;
+    --chrome-text: #1a1a1a;
+    --chrome-strong: #000000;
+    --chrome-muted: #5c5c5c;
+    --chrome-accent: #d99a06;
+    --chrome-selected: #fdf0c9;
+    --chrome-input: #ffffff;
+    --status-bg: #f3f3f3;
+    --status-text: #1a1a1a;
+    --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+}
+.app[data-style="explorer"][data-theme="light"] .statusbar { border-top: 1px solid var(--chrome-border); }
+@media (prefers-color-scheme: light) { .app[data-style="explorer"]:not([data-theme="dark"]) .statusbar { border-top: 1px solid var(--chrome-border); } }
+
+/* Modern: a light-blue frame with warm brown type and a brown accent. */
+.app[data-style="modern"][data-theme="light"] {
+  --bg: #fcfdff;
+  --bg-bar: #f1f6fb;
+  --bg-hover: #e7f0f8;
+  --bg-selected: #cfe2f4;
+  --bg-selected-blur: #e1eaf3;
+  --bg-input: #ffffff;
+  --border: #d9e5ef;
+  --text: #2b2420;
+  --text-muted: #6b5a4e;
+  --accent: #8b5a2b;
+  --focus: #3f86c0;
+  --link: #8b5a2b;
+  --folder: #b5814f;
+  --chrome: #e2eef8;
+  --chrome-2: #eef5fb;
+  --chrome-hover: #d0e2f1;
+  --chrome-border: #c3d7e8;
+  --chrome-text: #2b2420;
+  --chrome-strong: #1a1410;
+  --chrome-muted: #6b5a4e;
+  --chrome-accent: #8b5a2b;
+  --chrome-selected: #d3e5f4;
+  --chrome-input: #ffffff;
+  --status-bg: #8b5a2b;
+  --status-text: #ffffff;
+  --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  .app[data-style="modern"]:not([data-theme="dark"]) {
+    --bg: #fcfdff;
+    --bg-bar: #f1f6fb;
+    --bg-hover: #e7f0f8;
+    --bg-selected: #cfe2f4;
+    --bg-selected-blur: #e1eaf3;
+    --bg-input: #ffffff;
+    --border: #d9e5ef;
+    --text: #2b2420;
+    --text-muted: #6b5a4e;
+    --accent: #8b5a2b;
+    --focus: #3f86c0;
+    --link: #8b5a2b;
+    --folder: #b5814f;
+    --chrome: #e2eef8;
+    --chrome-2: #eef5fb;
+    --chrome-hover: #d0e2f1;
+    --chrome-border: #c3d7e8;
+    --chrome-text: #2b2420;
+    --chrome-strong: #1a1410;
+    --chrome-muted: #6b5a4e;
+    --chrome-accent: #8b5a2b;
+    --chrome-selected: #d3e5f4;
+    --chrome-input: #ffffff;
+    --status-bg: #8b5a2b;
+    --status-text: #ffffff;
+    --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+}
+.app[data-style="modern"][data-theme="light"] .tab.active { font-weight: 600; }
+@media (prefers-color-scheme: light) { .app[data-style="modern"]:not([data-theme="dark"]) .tab.active { font-weight: 600; } }

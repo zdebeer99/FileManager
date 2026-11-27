@@ -5,8 +5,9 @@
 | Version | 0.1.0 (Stable release) |
 | Date | 2026-11-03 |
 | Source | [RequirementsDocument.md](RequirementsDocument.md) (2026-10-31) |
-| Status | 0.1.0 released. Update cycles **c1** to **c6** are built on top of it and not yet released (Sections 11.2 to 11.8). |
-| Changes | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01); light theme fixed: a light frame and readable menus (3.2). |
+| Status | 0.1.0 released. Update cycles **c1** to **c7** are built on top of it and not yet released (Sections 11.2 to 11.9). |
+| Changes | c7 (unreleased, 2026-11-27): browser layout with tabs at the top and a ☰ menu, own title bar with window buttons (FR-UI-06, FR-UI-07); Typewriter, Explorer and Modern styles (FR-UI-08). |
+| | c6 (unreleased, 2026-11-22): Ctrl+Click and ↗ open Favourites folders in the active tab (FR-FAV-05), topic switcher (FR-TOP-08), no autocomplete in text boxes (NFR-UX-05), *In online drive* sync state for Google Drive (FR-SYNC-01); light theme fixed: a light frame and readable menus (3.2). |
 | | c5 (unreleased, 2026-11-22): Open With (FR-OPEN-02), folders' own icons (FR-ICON-03) in the list, sidebar, bookmarks and tabs (FR-TAB-07), online drives (6.4.7), Favourites in groups with Quick access (FR-FAV-04). |
 | | c4 (unreleased, 2026-11-21): Topics: Archive and Delete in the topic dialog, folders with their own name and path, folders reordered by dragging, and opening a folder opens its topic (FR-TOP-02, 06, 07). |
 | | c3, second part (unreleased, 2026-11-21): Topics in the sidebar (6.4.6, `topics.toml` 8.8); bookmarks reordered and moved between groups by dragging (FR-BM-07); Export File List (FR-OPEN-07); Type column shown by default (FR-CC-01); Save View no longer in the default toolbar, and larger toolbar buttons (FR-TB-04). |
@@ -191,6 +192,7 @@ Elm sends every request with a new id and stores what it is waiting for under th
 | `editor_info` / `open_in_editor` | — / `{ paths }` | the editor's name (empty when none was found) / — |
 | `icons_get` | `{ keys }`: `folder`, `ext:<extension>`, `file:<path>`, `dir:<path>` (a folder's own icon, FR-ICON-03) | key → `data:` URL, or `null` where there is no system icon |
 | `open_with` / `open_with_app` | `{ path }` / `{ path, app }` | Windows: shows the system dialog, `{ shown: true }`; Linux: `{ apps, others }` (id, name, default) / — (FR-OPEN-02) |
+| `window_control` / `window_frame` | `{ action }` ("minimize", "maximize", "close", "" to ask) / `{ system }` | whether the window is maximised / — (FR-UI-07) |
 | `quick_access` | — | the file manager's Quick access folders (name, path) (FR-FAV-04) |
 | `job_start` / `job_cancel` / `job_pause` / `job_resolve` | `{ request: { kind, sources, dest?, permanent } }` / `{ jobId, … }` | job id; then `job-progress` and `job-conflict` events |
 | `undo_last` | — | `{ ok } \| { error }` |
@@ -248,6 +250,28 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 
 ### 5.1 Layout
 
+**FR-UI-06** There are two layouts (`layout.style`, **View › Layout ▸**; REQ-036). The default is the **browser layout**, laid out like a web browser:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│ [ Vendors × ] [ Acme renewal × ] [ Downloads × ] [+]               [─] [☐] [✕] │  title bar: tabs + window buttons
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ [◀][▶][▲][⟳] 🖴 C: › Vendors › Acme › 2026   [Filter…]  [+Folder][Cut][Copy]… [☰]│  toolbar groups around the Address Bar
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ ★ Acme  ★ Contracts  ★ Weekly notes  📁 Projects ▾  🌐 Intranet      (Bookmark Bar)│
+├───────────────┬──────────────────────────────────────────────────────────────────┤
+│ Sidebar        │ Content container                                               │
+├───────────────┴──────────────────────────────────────────────────────────────────┤
+│ Status Bar                                                                       │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- The toolbar's first group (up to the first `|` in `toolbar.toml`, by default Back, Forward, Up and Refresh) sits left of the path box; its other buttons sit right of the filter box, then **☰**. ☰ (and `Alt`, `F10`, `Alt+<letter>`) opens the whole menu: the menu names in a column, the chosen menu's entries beside it, used with the mouse or the arrow keys like the Menu Bar (FR-MENU-01).
+- The tab row and the Address Bar row are always shown in this layout; the Bookmark Bar, sidebar and status bar can still be hidden (FR-UI-01).
+- **FR-UI-07** File Catalog draws its own title bar (REQ-036): the window's system title bar is hidden, and **Minimise**, **Maximise / Restore** and **Close** sit at the right end of the top row (the tab row, or the Menu Bar row in the classic layout). Dragging the row's empty space moves the window and double-clicking it maximises. `layout.systemTitleBar = true` (**View › Layout ▸ Use the System Title Bar**) brings back the system's title bar, for example on Linux desktops that draw their own.
+
+The **classic layout** keeps a row for each bar, as in 0.1.0:
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
 │ File  Edit  View  Go  Bookmarks  Tools  Window  Help                 (Menu Bar) │
@@ -273,17 +297,23 @@ The cache folder is the OS cache location (`%LOCALAPPDATA%\FileCatalog\cache` on
 - **FR-UI-01** Every bar and panel above, except the content container, can be shown or hidden from the **View** menu and the command palette. Visibility is saved in `settings.toml`.
 - **FR-UI-02** The sidebar can be placed on the left or right edge, resized by dragging its splitter, or hidden. Position and width are saved.
 - **FR-UI-04** Light and dark themes, following the OS by default, with a manual choice in **View › Theme**.
+- **FR-UI-08** Styles (`general.style`, **View › Style ▸**; REQ-035) change the light theme's look; the dark theme always uses Studio's dark look (3.2):
+  - **Studio** (default): a light grey frame with a blue accent (3.2).
+  - **Typewriter:** cream paper, ink-black type in a typewriter-style monospaced face (iA Writer Quattro, IBM Plex Mono or Courier Prime when installed, else the system's monospaced font), a sepia frame and a muted green accent, after the Obsidian theme *Typewriter*.
+  - **Explorer:** like Windows 11 File Explorer: a light grey frame, white list, light-blue selection, yellow folders, a yellow marker on the active tab and sidebar item, and a light status bar.
+  - **Modern:** a light-blue frame with warm brown type, a brown accent, brown folders and a brown status bar.
+  - Fonts are never downloaded or bundled; a style uses the fonts installed on the computer.
 - **FR-UI-05** Every function can be reached with the keyboard alone. Focus is always visible. `F6` / `Shift+F6` moves focus between regions.
 
 ### 5.2 Menu Bar
 
-**FR-MENU-01** All commands are grouped in a standard menu layout. Each menu item shows its current key binding. The Menu Bar opens with `Alt` / `F10` and `Alt+<letter>`. Items planned for a later version are shown disabled.
+**FR-MENU-01** All commands are grouped in a standard menu layout. Each menu item shows its current key binding. The Menu Bar (classic layout) or the ☰ menu (browser layout, FR-UI-06) opens with `Alt` / `F10` and `Alt+<letter>`. Items planned for a later version are shown disabled.
 
 | Menu | Items |
 |---|---|
 | **File** | New Tab, New Folder, New File…, New Shortcut…, New Web Link…, New from Template ▸, Open, Open in Terminal, Open With… (FR-OPEN-02), Open Folder with *editor* (FR-OPEN-06), Show in File Manager, Export File List… (FR-OPEN-07), Close Tab, Exit |
 | **Edit** | Undo, Cut, Copy, Paste, Paste as Shortcut, Duplicate, Create Shortcut, Copy Path, Copy Name, Rename, Delete, Delete Permanently, Select All, Invert Selection, Select None |
-| **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, Topics, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Refresh |
+| **View** | Menu Bar / Toolbar / Bookmark Bar / Tab Bar / Address Bar / Sidebar / Status Bar (toggles), Customise Toolbar…, Sidebar ▸ (Folder Tree, Favourites, Bookmarks, Topics, On the Left, On the Right), View Mode ▸ (Details), Columns ▸, Sort By ▸, Show Hidden Files, Show File Extensions, Quick Filter, Clear All Filters, Save View for This Folder, Save View for This Folder and Subfolders, Reset View for This Folder, Open Folder Settings File, Theme ▸, Style ▸ (Studio, Typewriter, Explorer, Modern), Layout ▸ (Browser, Classic, Use the System Title Bar), Refresh |
 | **Go** | Back, Forward, Up, Home, Go to Address, Recent Folders ▸, Favourites ▸, Pin This Folder to Favourites |
 | **Bookmarks** | Bookmark This Folder, Bookmark Selected Item, Manage Bookmarks, Open Bookmarks File, All Bookmarks ▸ |
 | **Tools** | Quick Find, Quick Filter, Command Palette, Commands…, Save Selection as Template, Edit Templates Folder, Open Settings File, Open Key Bindings File, Open Toolbar File |
@@ -734,13 +764,16 @@ startupFolder   = "last"          # "last" | "home" | a path
 restoreTabs     = true
 homeFolder      = "~"
 theme           = "system"        # "system" | "light" | "dark"
+style           = "studio"        # light theme look: "studio" | "typewriter" | "explorer" | "modern" (FR-UI-08)
 confirmDelete   = false
 confirmExtensionChange = true
 keepFilterOnNavigate = false
 terminal        = "wt"            # command used by Open in Terminal
 
 [layout]
-menuBar = true
+style = "browser"                 # "browser" | "classic" (FR-UI-06)
+systemTitleBar = false            # true: the system's title bar (FR-UI-07)
+menuBar = true                    # classic layout only, as are toolbar, tabBar and addressBar
 toolbar = true
 bookmarkBar = true
 tabBar = true
@@ -1033,6 +1066,17 @@ Built from the feature requests marked **c1** in [FeatureRequest.md](FeatureRequ
 | REQ-034 Light theme fix | 3.2: the frame is light in the light theme, and menu text is readable |
 
 REQ-032: checked on a real Google Drive (2026-11-22): every file reports `Normal` (0x80), online-only or not, and Explorer has no per-file status, only the same cloud overlay. Google Drive files therefore show *In online drive*; telling online-only and offline files apart would need Google's own API, which is not used.
+
+### 11.9 Update cycle c7 (unreleased)
+
+| Feature request | Built as |
+|---|---|
+| REQ-035 More styles | FR-UI-08: Typewriter, Explorer and Modern for the light theme |
+| REQ-036 Browser layout and own title bar | FR-UI-06 (browser layout, ☰ menu), FR-UI-07 (own title bar with window buttons) |
+
+**Known limits:**
+- The own title bar was checked in a browser with a stand-in backend and by compiling for Windows, not yet in the app. Windows' Snap Layouts flyout (hovering Maximise) is not offered by a drawn title bar.
+- On Linux, a desktop that adds its own title bar anyway may show two; use *Use the System Title Bar* there.
 ---
 
 ## 12. Not in 0.1.0 (later versions)
@@ -1128,6 +1172,8 @@ None at the moment. New questions are added here as they come up.
 | 2026-11-21 | A topic folder's "name" is a label shown in that topic only; the folder on disk is not renamed (REQ-023) | FR-TOP-06 |
 | 2026-11-22 | Open With uses Windows' own dialog, and a list of apps from the desktop files on Linux; it moves in from section 12 (Properties stays there) | FR-OPEN-02 |
 | 2026-11-22 | Online drives are found from each provider's settings, the Windows sync-root registry and the default folders, and use the slow-path pool; sync states stay in section 12 | 6.4.7 |
+| 2026-11-27 | Browser layout (tabs at the top, toolbar around the Address Bar, ☰ menu) becomes the default, the classic layout stays a setting; File Catalog draws its own title bar on Windows and Linux, with a setting for the system one (REQ-036) | 5.1 |
+| 2026-11-27 | Styles Typewriter, Explorer and Modern change the light theme only; the dark theme keeps Studio's dark look; no fonts are bundled (REQ-035) | FR-UI-08 |
 | 2026-11-27 | The Studio frame follows the theme (light in the light theme) instead of staying dark in both; menus always use the normal text colour (REQ-034) | 3.2 |
 | 2026-11-22 | Google Drive files show *In online drive*: Google Drive for desktop reports no per-file state through attributes (checked: `Normal`, 0x80, for online-only and offline files), and Google's API is not used | FR-SYNC-01 |
 | 2026-11-22 | The Favourites view is grouped (Quick access, Pinned, Online drives, Drives, Network), foldable and reorderable; Quick access is read from the OS and read-only | FR-FAV-04 |
@@ -1212,6 +1258,8 @@ The application has more commands than this table lists (for example `view.toggl
 | `item.openTerminal` | Open in Terminal | `` Ctrl+` `` |
 | `item.reveal` | Show in File Manager | — |
 | `item.openWith` | Open With… | — |
+| `view.style.studio/typewriter/explorer/modern` | Style | — |
+| `view.layout.browser/classic`, `view.systemTitleBar` | Layout, Use the System Title Bar | — |
 | `item.openInEditor` / `folder.openInEditor` | Open with Text Editor / Open Folder with Text Editor | — |
 | `item.contextMenu` | Right-click Menu | `Shift+F10`, Menu key |
 | `view.saveForFolder` | Save View for This Folder | `Ctrl+S` |
